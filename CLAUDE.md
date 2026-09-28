@@ -46,7 +46,8 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   End it with `npm run sync -- "what changed"` (commits everything, pulls, pushes).
   It never force-pushes; a conflict stops it and it says why.
 - Work on a branch and open a PR for anything bigger than a tweak; CI (`.github/workflows/ci.yml`)
-  builds, checks `scripts/balance.mjs`, and plays the headless scenarios listed in the workflow file.
+  builds, checks `scripts/balance.mjs`, and plays every headless scenario whose first line is the comment `# ci`
+  (add that line to a new scenario; no need to edit the workflow).
   Merges are automatic: `.github/workflows/automerge.yml` merges any of the owner's PRs into
   `main` once `build` and `playtest` pass (label a PR `hold` to stop it). Keep PRs based on `main`.
 - After opening any PR, turn on Auto-fix for it (the CI monitor switch) so red CI wakes the session;
@@ -62,6 +63,20 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   jogging; standing swings stay full-body). A dodge or jump cuts a swing off at any time.
   `tests/playtest/combat_flow.py` checks all of it. Known gap: no strafe clips, so side-steps
   during a swing play the forward jog.
+- Richer textures (done): the GLB textures were fine, but plaster, skin and cloth are almost
+  flat paint. `src/engine/detail.js` patches every normal-mapped GLB material (kits, chars,
+  monsters) with a shared noise map: colour grain, tiny bumps in the normal, slow mottling,
+  fading out by ~120 m; buildings map it by world position, people by their UVs. GLB textures
+  now get anisotropic filtering through `assets.setAnisotropy`. Both follow the graphics setting
+  (`aniso`/`detail` in `QUALITY`: High 16x + full, Medium 8x + one read, Low 4x + off).
+  `tests/playtest/look.py` takes before/after viewpoints (`LOOK_TAG`, `LOOK_Q`); shots in `docs/look/`.
+
+## Open feedback from the player (do these next)
+
+1. **The camera clips into buildings.** The rig's line-of-sight test sees wall colliders
+   but interiors have no ceiling colliders (the dungeon adds a `noFloor` box under its
+   vault for this), so the camera rises through ceilings; also check door jambs and
+   corners against the 0.28 m camera padding and the 0.08 m near plane.
 - Camera clipping (done): the rig sweeps a camera-sized ball (`Colliders.sweep`, fully 3D, 0.2 m
   pad, may squeeze to 0.14 m) instead of a thin ray, so ceilings, roofs and door lintels
   (`cameraOnly` shapes, added in `buildings.js` and `village.js`) hold it in; the shoulder

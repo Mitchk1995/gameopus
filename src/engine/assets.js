@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { enhanceTree, setDetailAnisotropy } from './detail.js';
 
 // Everything the game downloads lives under assets/, next to the page.
 const BASE = new URL('assets/', document.baseURI);
@@ -37,6 +38,39 @@ export class Assets {
     this.total = 0;
     this.loaded = 0;
     this.onProgress = null;
+    // Textures inside GLBs come in with anisotropy 1 (blurry at a slant: walls seen
+    // along a street, the ground under a person's boots). Every one is registered here so
+    // the graphics setting can sharpen them all at once.
+    this.anisotropy = 8;
+    this.embedded = new Set();
+  }
+
+  // Sets filtering sharpness for every texture inside a loaded model.
+  setAnisotropy(n) {
+    this.anisotropy = n;
+    setDetailAnisotropy(n);
+    for (const t of this.embedded) {
+      if (t.anisotropy === n) continue;
+      t.anisotropy = n;
+      t.needsUpdate = true;
+    }
+  }
+
+  #prepare(gltf, path) {
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of [o.material].flat())
+        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) {
+          const t = m?.[k];
+          if (t && !this.embedded.has(t)) {
+            this.embedded.add(t);
+            t.anisotropy = this.anisotropy;
+          }
+        }
+    });
+    // Villages, people and monsters get the fine surface detail layer.
+    if (/^(kits|chars|monsters)\//.test(path)) enhanceTree(gltf.scene, path);
+    return gltf;
   }
 
   #track(key, make) {
@@ -52,7 +86,7 @@ export class Assets {
   }
 
   model(path) {
-    return this.#track(`m:${path}`, async () => this.gltf.parseAsync(await fetchBinary(path), assetURL(path).replace(/[^/]*$/, '')));
+    return this.#track(`m:${path}`, async () => this.#prepare(await this.gltf.parseAsync(await fetchBinary(path), assetURL(path).replace(/[^/]*$/, '')), path));
   }
 
   texture(path, { srgb = true, repeat = true, anisotropy = 8 } = {}) {

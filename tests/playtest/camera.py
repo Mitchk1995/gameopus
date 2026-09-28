@@ -1,3 +1,4 @@
+# ci
 # Camera never clips: at village doorways, inside the bank, store and inn, against building
 # corners, at the mine mouth and in the Old Warren, the camera must never sit inside a solid
 # shape, above an interior ceiling, under the ground or above the dungeon vault, and it must
