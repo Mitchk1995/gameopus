@@ -9,3 +9,6 @@ dist-artifact
 tests/playtest/out
 __pycache__
 release
+
+# Helper agents work in copies under here
+.claude/worktrees
