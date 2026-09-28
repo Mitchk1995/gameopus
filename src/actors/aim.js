@@ -8,7 +8,7 @@ import { ITEMS } from '../game/items.js';
 // hand on the line of sight and the draw hand at the cheek. The bow, its string and
 // the nocked arrow are placed in world space from the hands each frame.
 
-const UPPER = ['spine_01', 'spine_02', 'spine_03', 'neck_01', 'Head', 'clavicle_l', 'upperarm_l', 'lowerarm_l', 'hand_l', 'clavicle_r', 'upperarm_r', 'lowerarm_r', 'hand_r'];
+export const UPPER = ['spine_01', 'spine_02', 'spine_03', 'neck_01', 'Head', 'clavicle_l', 'upperarm_l', 'lowerarm_l', 'hand_l', 'clavicle_r', 'upperarm_r', 'lowerarm_r', 'hand_r'];
 const UP = new THREE.Vector3(0, 1, 0);
 
 const v = () => new THREE.Vector3();

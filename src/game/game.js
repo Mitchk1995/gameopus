@@ -107,6 +107,7 @@ export class Game {
   // Runs after the character's animation each frame: the aim pose, bow and spell glow.
   afterAnimate(dt) {
     const r = this.ranged, P = this.player;
+    P.applySwing(dt);
     const active = r.aiming && P.state === 'move';
     let dir = null;
     if (active) {
