@@ -221,14 +221,16 @@ export class Player {
       // Shallow water slows you down.
       const depth = this.world.waterDepth(this.pos.x, this.pos.z);
       if (depth > 0.15) target *= 1 - Math.min(0.55, depth * 0.6);
-      const accel = moving ? 26 : 34;
-      const k = 1 - Math.exp(-accel * dt / Math.max(1, target || SPEED.jog));
       if (this.aimYaw != null) target = Math.min(target, SPEED.aim);
+      // Snappy: starts and stops take a few frames, and the jog-to-sprint change is a
+      // touch softer so it reads as a gear change. The time constants are in seconds.
+      const tau = !moving ? 0.035 : target > SPEED.jog + 0.1 && this.vel.length() < target ? 0.09 : 0.05;
+      const k = 1 - Math.exp(-dt / tau);
       this.vel.x += (wish.x * target - this.vel.x) * k;
       this.vel.z += (wish.z * target - this.vel.z) * k;
       // Aiming: face the crosshair and walk, strafing as needed.
       if (this.aimYaw != null) this.#turnTowards(this.aimYaw, dt, 16);
-      else if (moving) this.#turnTowards(Math.atan2(wish.x, wish.z), dt, target > SPEED.jog ? 9 : 12);
+      else if (moving) this.#turnTowards(Math.atan2(wish.x, wish.z), dt, target > SPEED.jog + 0.1 ? 15 : 22);
     } else {
       this.vel.x *= Math.exp(-20 * dt);
       this.vel.z *= Math.exp(-20 * dt);
@@ -326,17 +328,18 @@ export class Player {
     }
   }
 
-  // Idle, walk, jog or sprint by speed, with each clip's rate matched to the ground speed.
+  // Idle, walk, jog (regular) or run (sprint, Shift) by what the player asked for, with
+  // each clip's rate matched to the real ground speed so the feet don't skate.
   #animate(speed, target) {
     let gait;
-    if (target === 0) gait = speed < 0.8 ? 'Idle_Loop' : this.gait || 'Idle_Loop';
+    if (target === 0) gait = speed < 1.5 ? 'Idle_Loop' : this.gait || 'Idle_Loop';
     else if (target <= SPEED.walk + 0.01 || this.aimYaw != null) gait = 'Walk_Loop';
-    else if (target > SPEED.jog + 0.1 && speed > 5.8) gait = 'Sprint_Loop';
+    else if (target > SPEED.jog + 0.1 && speed > SPEED.jog - 0.3) gait = 'Sprint_Loop';
     else gait = 'Jog_Fwd_Loop';
-    if (gait === 'Roll' || !(gait in CLIP_SPEED || gait === 'Idle_Loop')) gait = 'Idle_Loop';
-    const rate = gait === 'Idle_Loop' ? 1 : Math.min(1.35, Math.max(0.55, speed / CLIP_SPEED[gait]));
+    if (!(gait in CLIP_SPEED || gait === 'Idle_Loop')) gait = 'Idle_Loop';
+    const rate = gait === 'Idle_Loop' ? 1 : Math.min(1.25, Math.max(0.75, speed / CLIP_SPEED[gait]));
     if (gait !== this.gait) {
-      this.char.play(gait, { fade: 0.2, speed: rate });
+      this.char.play(gait, { fade: gait === 'Idle_Loop' ? 0.15 : 0.1, speed: rate });
       this.gait = gait;
     } else if (gait !== 'Idle_Loop') this.char.current.timeScale = rate;
   }
