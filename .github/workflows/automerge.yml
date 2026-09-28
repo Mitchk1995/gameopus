@@ -1,0 +1,45 @@
+name: Automerge
+
+# Merges a pull request into main once its CI checks (build and playtest) have passed.
+# Skips drafts, PRs labelled "hold", and PRs from anyone but the repo owner. It runs when
+# CI finishes, on demand, and hourly as a safety net. Add the "hold" label to stop one.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+concurrency:
+  group: automerge
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+    steps:
+      - name: Merge the green ones
+        run: |
+          prs=$(gh pr list --state open --base main --json number,isDraft,author,labels \
+            --jq '.[] | select(.isDraft | not) | select(.author.login == env.OWNER) | select([.labels[].name] | index("hold") | not) | .number')
+          for pr in $prs; do
+            sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+            green=$(gh api "repos/$GH_REPO/commits/$sha/check-runs?per_page=100" --jq \
+              '[.check_runs[] | select(.name == "build" or .name == "playtest")] | group_by(.name) | map(sort_by(.started_at) | last | .conclusion) | (length == 2 and all(. == "success"))')
+            state=$(gh pr view "$pr" --json mergeable --jq .mergeable)
+            echo "PR #$pr: checks green=$green mergeable=$state"
+            if [ "$green" = "true" ] && [ "$state" = "MERGEABLE" ]; then
+              gh pr merge "$pr" --merge --delete-branch || echo "PR #$pr: merge failed, will retry next run"
+            fi
+          done
