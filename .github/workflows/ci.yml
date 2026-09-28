@@ -34,7 +34,7 @@ jobs:
   playtest:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,7 +54,8 @@ jobs:
         run: |
           export CHROME="$(node -e "import('playwright-core').then(m => console.log(m.chromium.executablePath()))")"
           status=0
-          for scenario in movement combat_flow melee gathering; do
+          for f in $(grep -l '^# ci' tests/playtest/*.py | sort); do
+            scenario=$(basename "$f" .py)
             echo "::group::$scenario"
             python3 tests/playtest/play.py "tests/playtest/$scenario.py" || status=1
             echo "::endgroup::"

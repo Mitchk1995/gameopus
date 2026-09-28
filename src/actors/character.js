@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { enhance } from '../engine/detail.js';
 
 // People are assembled from Quaternius parts that share one 65-bone humanoid rig:
 // an outfit (arms, body, legs, feet, extras), a head cut from a base body, hair,
@@ -84,6 +85,8 @@ export class CharacterFactory {
       if (spec.tint && o.material?.name?.includes(spec.tintMaterial || 'Ranger')) {
         o.material = o.material.clone();
         o.material.color.multiply(new THREE.Color(spec.tint));
+        // A cloned material starts without the surface-detail shader patch.
+        enhance(o.material, 'chars/');
       }
     });
     return new Character(root, bones, this.clips);

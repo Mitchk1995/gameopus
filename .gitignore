@@ -8,6 +8,7 @@ dist-artifact
 # Headless playtest screenshots
 tests/playtest/out
 __pycache__
+release
 
 # Helper agents work in copies under here
 .claude/worktrees

@@ -148,6 +148,9 @@ export class Village {
           batch.add('Floor_WoodDark', p.x, y + STOREY - 0.02, p.z, place.rot);
           batch.add('Floor_WoodDark', p.x, y + 0.012, p.z, place.rot);
         }
+      // The camera can't climb through it: solid from the ceiling up to the roof.
+      const slab = this.world.colliders.addBox(place.x, place.z, place.w / 2 + 0.2, place.d / 2 + 0.2, place.rot, y + STOREY - 0.05, y + place.floors * STOREY + 6);
+      slab.cameraOnly = true;
     };
     const bank = this.places.bank;
     ceiling(bank);
