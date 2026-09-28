@@ -1,3 +1,4 @@
+# ci
 # Movement feel: jog for regular movement, run (sprint) while Shift is held. Measures how
 # fast speed settles on start, stop and gear change, and that the gait clip follows.
 # Prints a summary line per phase; a line starting "FAIL" means a check missed.
