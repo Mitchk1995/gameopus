@@ -1,85 +1,72 @@
-// Balance simulation: a bot plays the real game code headlessly, much faster than real time.
-//   npm run build && node scripts/balance.mjs [fresh|campaign|all] [--runs N] [--minutes M] [--profile competent]
-// fresh:    N brand-new characters on Normal, one run each (how hard is the start?)
-// campaign: one character playing run after run for M simulated minutes, keeping gear,
-//           climbing Dread tiers as they unlock (is the long-term curve right?)
-import { chromium } from 'playwright-core';
-import { readFileSync } from 'node:fs';
+// Balance table from the real combat formulas: for a player at a few stages of the
+// game (levels and the gear that goes with them), how long each monster takes to
+// kill with sword, bow and spell, and how hard it hits back. Timing skills (parries,
+// dodges, ripostes) come on top of these numbers.
+//   node scripts/balance.mjs
+import { MONSTERS, SPELLS, hitChance, maxHit, monsterMelee } from '../src/game/combat.js';
+import { ITEMS } from '../src/game/items.js';
 
-const args = process.argv.slice(2);
-const mode = args.find((a) => !a.startsWith('--')) || 'all';
-const opt = (name, def) => {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 ? args[i + 1] : def;
-};
-const RUNS = +opt('runs', 6);
-const CAMPAIGN_MIN = +opt('minutes', 120);
-const PROFILE = opt('profile', 'competent');
+const STAGES = [
+  { name: 'Fresh (1)', lvl: 1, hp: 10, weapon: 'bronze_sword', armour: [], bow: 'shortbow', arrow: 'bronze_arrow', magic: 1 },
+  { name: 'Early (10)', lvl: 10, hp: 12, weapon: 'iron_sword', armour: ['bronze_full_helm', 'bronze_chainbody', 'bronze_kiteshield'], bow: 'oak_shortbow', arrow: 'bronze_arrow', magic: 9 },
+  { name: 'Mid (20)', lvl: 20, hp: 22, weapon: 'steel_sword', armour: ['iron_full_helm', 'iron_platebody', 'iron_platelegs', 'iron_kiteshield'], bow: 'oak_longbow', arrow: 'iron_arrow', magic: 13 },
+  { name: 'Late (30)', lvl: 30, hp: 32, weapon: 'steel_scimitar', armour: ['steel_full_helm', 'steel_platebody', 'steel_platelegs', 'steel_kiteshield'], bow: 'pine_longbow', arrow: 'steel_arrow', magic: 13 },
+];
 
-const browser = await chromium.launch({
-  executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-});
-const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-const url = 'file://' + (process.env.DIST || process.cwd() + '/dist') + '/index.html';
-const bot = readFileSync(new URL('./balance-bot.js', import.meta.url), 'utf8');
+const skills = (lvl, magic) => ({ level: (s) => (s === 'magic' ? magic : lvl) });
+const bonus = (ids) => ids.reduce((b, id) => {
+  const it = ITEMS[id];
+  for (const [k, v] of Object.entries(it.bonus || {})) b[k] = (b[k] || 0) + v;
+  if (it.rangedStr) b.rangedStr = (b.rangedStr || 0) + it.rangedStr;
+  return b;
+}, { acc: 0, str: 0, def: 0, rangedAcc: 0, rangedStr: 0, magicAcc: 0 });
 
-async function fresh() {
-  await page.goto(url);
-  await page.evaluate(() => localStorage.clear());
-  await page.goto(url);
-  await page.waitForFunction(() => window.__game);
-  await page.addScriptTag({ content: bot });
-  await page.evaluate(() => {
-    const g = window.__game;
-    g.audio.play = () => {};
-    g.hud.update = () => {};
-    g.hud.placeLabel = () => {};
-    g.hud.damageNumber = () => {};
-    g.frame = () => {}; // stop rendering while simulating
-  });
+function melee(st, m) {
+  const b = bonus([st.weapon, ...st.armour]);
+  const att = (st.lvl + 8 + 3) * (b.acc + 64), def = (m.def + 9) * (m.defB + 64);
+  const max = Math.max(1, maxHit(st.lvl + 8, b.str));
+  const p = hitChance(att, def), speed = ITEMS[st.weapon].speed;
+  return { p, max, dps: (p * max / 2) / (speed * 0.45) };
 }
-
-const fmtRow = (r) =>
-  `${String(r.dread).padStart(2)} | ${r.died ? 'died ' : 'alive'} ${String(r.minutes).padStart(6)}m | depth ${String(r.depth).padStart(2)} | lvl ${String(r.level).padStart(2)} | dps ${String(r.dps).padStart(5)} | life ${String(r.life).padStart(4)} dr ${String(r.dr).padStart(2)}% | kills/min ${String(r.killsPerMin).padStart(3)} | dmg taken/min ${String(r.dmgTakenPerMin).padStart(5)} | low ${(r.lowest * 100).toFixed(0).padStart(3)}% | uniques on ${r.uniquesEquipped} | drops m${r.drops.magic} r${r.drops.rare} u${r.drops.unique + r.drops.ascendant}`;
-
-if (mode === 'fresh' || mode === 'all') {
-  console.log(`\n== FRESH characters on Normal (${RUNS} runs, profile ${PROFILE}) ==`);
-  const recs = [];
-  for (let i = 0; i < RUNS; i++) {
-    await fresh();
-    const ttk = await page.evaluate(() => ({ husk: __bot.ttk(__game, 'husk'), skitter: __bot.ttk(__game, 'skitter'), brute: __bot.ttk(__game, 'brute') }));
-    const r = await page.evaluate((p) => __bot.run(__game, { profile: p, maxMinutes: 25 }), PROFILE);
-    recs.push(r);
-    console.log(fmtRow(r), `| depth reached at ${JSON.stringify(r.depthTimes)}s`, i === 0 ? `| hits to kill at start: ${JSON.stringify(ttk)}` : '');
-    if (process.env.VERBOSE) console.log('   damage by source', JSON.stringify(r.bySource), 'last hits', r.lastHits.join(', '));
-    console.log('   per depth (life lost per minute as % of max, lowest life, potions):', Object.entries(r.perDepth).map(([d, v]) => {
-      const mins = Math.max(0.1, ((r.depthTimes[+d + 1] ?? r.minutes * 60) - (r.depthTimes[d] ?? 0)) / 60);
-      return `d${d}: ${Math.round((v.dmgPctMax / mins) * 100)}%/min low ${Math.round(v.lowest * 100)}% pots ${v.potions}`;
-    }).join(' | '));
+function ranged(st, m) {
+  const b = bonus([st.bow, st.arrow]);
+  const eff = st.lvl + 8;
+  const p = hitChance(eff * (b.rangedAcc + 64), (m.def + 9) * ((m.defR ?? m.defB) + 64));
+  const max = Math.max(1, maxHit(eff, b.rangedStr));
+  return { p, max, dps: (p * max / 2) / (ITEMS[st.bow].speed * 0.33 + 0.35) };
+}
+function magic(st, m) {
+  const spell = [...SPELLS].reverse().find((s) => s.level <= st.magic);
+  const p = hitChance((st.magic + 8) * (8 + 64), (m.def + 9) * ((m.defM ?? m.defB) + 64));
+  return { p, max: spell.max, dps: (p * spell.max / 2) / (0.45 + 0.35), spell: spell.name };
+}
+function incoming(st, m) {
+  const b = bonus(st.armour);
+  let hits = 0, dmg = 0;
+  const N = 4000;
+  const s = skills(st.lvl, st.magic);
+  for (let i = 0; i < N; i++) {
+    const a = m.attacks[i % m.attacks.length];
+    const r = monsterMelee(m, a, s, b);
+    hits += r.hit;
+    dmg += r.damage;
   }
-  const avg = (k) => (recs.reduce((a, r) => a + r[k], 0) / recs.length).toFixed(1);
-  console.log(`avg: ${avg('minutes')} min, depth ${avg('depth')}, level ${avg('level')}, dmg taken/min ${avg('dmgTakenPerMin')}, deaths ${recs.filter((r) => r.died).length}/${recs.length}`);
+  return { p: hits / N, avg: dmg / N };
 }
 
-if (mode === 'campaign' || mode === 'all') {
-  console.log(`\n== CAMPAIGN: one character, ${CAMPAIGN_MIN} simulated minutes, profile ${PROFILE} ==`);
-  await fresh();
-  let total = 0, n = 0, dread = 0, struggles = 0;
-  while (total < CAMPAIGN_MIN) {
-    const r = await page.evaluate(([p, d]) => __bot.run(__game, { profile: p, maxMinutes: 20, dread: d }), [PROFILE, dread]);
-    total += r.minutes;
-    n++;
-    console.log(`run ${String(n).padStart(2)} t=${total.toFixed(0).padStart(4)}m | ` + fmtRow(r));
-    // Push difficulty like a player would: climb when unlocked, back off after repeated early deaths.
-    if (r.died && r.depth < 2) struggles++;
-    else struggles = 0;
-    if (struggles >= 2 && dread > 0) { dread--; struggles = 0; }
-    else if (r.dreadUnlocked > dread) dread = r.dreadUnlocked;
+const pad = (s, n) => String(s).padEnd(n);
+for (const st of STAGES) {
+  console.log(`\n${st.name}: ${st.weapon}, ${st.armour.length ? st.armour.join(', ') : 'no armour'}; ${st.bow} + ${st.arrow}; magic ${st.magic}; ${st.hp} hp`);
+  console.log(pad('monster', 26), pad('sword: hit/max/ttk', 22), pad('bow: hit/max/ttk', 20), pad('spell: hit/max/ttk', 22), 'it hits you: chance/avg per swing');
+  for (const [id, m] of Object.entries(MONSTERS)) {
+    const a = melee(st, m), r = ranged(st, m), g = magic(st, m), inc = incoming(st, m);
+    const ttk = (x) => `${(m.hp / x.dps).toFixed(0)}s`;
+    console.log(
+      pad(`${m.name} (${m.level}, ${m.hp}hp)`, 26),
+      pad(`${(a.p * 100).toFixed(0)}% ${a.max} ${ttk(a)}`, 22),
+      pad(`${(r.p * 100).toFixed(0)}% ${r.max} ${ttk(r)}`, 20),
+      pad(`${(g.p * 100).toFixed(0)}% ${g.max} ${ttk(g)}`, 22),
+      `${(inc.p * 100).toFixed(0)}% ${inc.avg.toFixed(1)}`,
+    );
   }
 }
-
-if (errors.length) console.log('\nPAGE ERRORS:\n' + errors.slice(0, 10).join('\n'));
-await browser.close();

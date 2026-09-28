@@ -1,9 +1,4 @@
-import * as THREE from 'three';
-import { SKILL_ICONS } from './icons.js';
-import { xpForLevel } from '../game/player.js';
-import { RARITY } from '../content/bases.js';
-import { SKILL_BY_ID } from '../content/skills.js';
-import { dreadName } from '../content/dread.js';
+import './hud.css';
 
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -11,260 +6,112 @@ const el = (tag, cls, html) => {
   if (html !== undefined) e.innerHTML = html;
   return e;
 };
-const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'k' : Math.round(n).toLocaleString());
 
-export class HUD {
-  constructor(game) {
-    this.game = game;
-    const root = (this.root = el('div', 'hud'));
-    document.getElementById('app').appendChild(root);
+const CONTROLS = [
+  ['W A S D', 'Move'], ['Mouse', 'Look'],
+  ['Shift', 'Sprint'], ['Space', 'Roll'],
+  ['LMB', 'Attack (chain 3); hold to draw a bow or cast'], ['F', 'Heavy attack'],
+  ['RMB', 'Block, tap to parry; steady your aim'], ['Q', 'Lock on'],
+  ['E', 'Use / talk'], ['Tab', 'Pack'],
+  ['K', 'Skills'], ['J', 'Quests'],
+  ['C', 'Collection log'], ['Esc', 'Free the mouse'],
+];
 
-    this.labels = el('div', 'labels');
-    this.pendingLabels = [];
-    this.numbers = el('div', 'numbers');
-    root.append(this.labels, this.numbers);
+// The screen overlay: loading, the pause card, crosshair and the "E to ..." prompt.
+export class Hud {
+  constructor() {
+    this.root = el('div', 'hud');
+    this.cross = el('div', 'crosshair');
+    this.ring = el('div', 'aimring');
+    this.ring.hidden = true;
+    this.ammoEl = el('div', 'ammo');
+    this.ammoEl.hidden = true;
+    this.prompt = el('div', 'prompt');
+    this.toastEl = el('div', 'toast');
+    this.root.append(this.cross, this.ring, this.ammoEl, this.prompt, this.toastEl);
+    document.body.append(this.root);
 
-    const top = el('div', 'top');
-    this.zone = el('div', 'zone', '<div class="name"></div><div class="sub"></div>');
-    this.purse = el('div', 'purse', `<span class="coin"></span><span class="shard"></span>
-      <button data-a="inv">Inventory<kbd>I</kbd></button><button data-a="codex">Codex<kbd>C</kbd></button><button data-a="settings">Settings<kbd>O</kbd></button><button data-a="mute">Sound<kbd>M</kbd></button>`);
-    this.purse.addEventListener('click', (e) => {
-      const a = e.target.closest('button')?.dataset.a;
-      if (a === 'inv') game.inventory.toggle();
-      if (a === 'codex') game.inventory.toggleCodex();
-      if (a === 'mute') game.toggleMute();
-      if (a === 'settings') game.settingsUI.toggle();
-    });
-    top.append(this.zone, this.purse);
-    root.append(top);
+    this.loading = el('div', 'screen loading', `<div class="card">
+      <h1 class="title">Aldermere</h1>
+      <p class="subtitle">The valley of Ashford</p>
+      <div class="bar"><i></i></div>
+      <div class="status">Loading</div></div>`);
+    document.body.append(this.loading);
 
-    this.boss = el('div', 'bossbar', '<div class="n"></div><div class="a"></div><div class="track"><div class="fill"></div></div>');
-    this.boss.hidden = true;
-    root.append(this.boss);
-
-    this.ann = el('div', 'announce', '<div class="k"></div><div class="t"></div>');
-    root.append(this.ann);
-    this.toasts = el('div', 'toasts');
-    root.append(this.toasts);
-
-    const bottom = el('div', 'bottom');
-    this.life = el('div', 'globe life', '<div class="liquid"></div><div class="gloss"></div><div class="v"></div>');
-    this.mana = el('div', 'globe mana', '<div class="liquid"></div><div class="gloss"></div><div class="v"></div>');
-    const center = el('div', 'center');
-    this.rhythm = el('div', 'rhythm');
-    this.rhythm.hidden = true;
-    this.skills = el('div', 'skills');
-    this.skillEls = {};
-    for (const [id, key] of [['cleave', 'LMB'], ['bolt', 'RMB'], ['dash', 'SPACE'], ['nova', 'Q'], ['potion', 'R']]) {
-      const art = game.art?.skillIcon(id);
-      const ico = art ? `<img class="art" src="${art}" alt="" draggable="false">` : SKILL_ICONS[id];
-      const s = el('div', 'skill', `<span class="ico">${ico}</span><span class="key">${key}</span><div class="cd"></div><span class="req">Lv ${SKILL_BY_ID[id].level}</span>`);
-      s.title = SKILL_BY_ID[id].name;
-      this.skillEls[id] = s;
-      this.skills.append(s);
-    }
-    this.lvl = el('div', 'lvl');
-    this.xp = el('div', 'xp', '<div class="fill"></div>');
-    center.append(this.rhythm, this.skills, this.xp, this.lvl);
-    bottom.append(this.life, center, this.mana);
-    root.append(bottom);
-
-    this.fps = el('div', 'fps');
-    this.fps.hidden = true;
-    root.append(this.fps);
-
-    this.numPool = [];
-    for (let i = 0; i < 90; i++) {
-      const d = el('div', 'dmg');
-      d.style.opacity = 0;
-      this.numbers.append(d);
-      this.numPool.push({ el: d, t: 1, life: 1, x: 0, y: 0, z: 0, active: false });
-    }
-    this.numI = 0;
-    this._v = new THREE.Vector3();
-    this.annT = 0;
-    this.frames = 0;
-    this.fpsT = 0;
+    this.pause = el('div', 'screen hidden', `<div class="card">
+      <h1 class="title">Aldermere</h1>
+      <p class="subtitle">The valley of Ashford</p>
+      <button class="play">Enter the world</button>
+      <div class="controls">${CONTROLS.map(([k, v]) => `<span class="key">${k}</span><span>${v}</span>`).join('')}</div>
+      <div class="settings">
+        <label>Graphics <span class="seg" role="radiogroup">
+          <button data-q="high">High</button><button data-q="medium">Medium</button><button data-q="low">Low</button></span></label>
+        <label for="sens">Mouse <input id="sens" type="range" min="0.3" max="2.5" step="0.05"></label>
+      </div></div>`);
+    document.body.append(this.pause);
+    this.playButton = this.pause.querySelector('.play');
+    this.pause.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => this.onQuality?.(b.dataset.q)));
+    this.sens = this.pause.querySelector('#sens');
+    this.sens.addEventListener('input', () => this.onSensitivity?.(+this.sens.value));
+    this.lastPrompt = '';
   }
 
-  project(x, y, z) {
-    const v = this._v.set(x, y, z).project(this.game.camera);
-    return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight, v.z < 1];
+  showSettings({ quality, sensitivity }) {
+    this.pause.querySelectorAll('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.q === quality)));
+    this.sens.value = sensitivity;
   }
 
-  damageNumber(x, y, z, amt, crit, kind) {
-    const mode = this.game.settings.numbers;
-    if (kind !== 'player' && (mode === 'off' || (mode === 'crits' && !crit))) return;
-    const n = this.numPool[this.numI];
-    this.numI = (this.numI + 1) % this.numPool.length;
-    n.active = true;
-    n.x = x + (Math.random() - 0.5) * 0.6;
-    n.y = y;
-    n.z = z + (Math.random() - 0.5) * 0.3;
-    n.t = 0;
-    n.life = crit ? 0.9 : 0.65;
-    n.el.className = `dmg ${kind || ''}${crit ? ' crit' : ''}`;
-    n.el.textContent = crit ? `${fmt(amt)}!` : fmt(amt);
+  progress(f, text) {
+    this.loading.querySelector('.bar > i').style.width = `${Math.round(f * 100)}%`;
+    if (text) this.loading.querySelector('.status').textContent = text;
   }
 
-  createLootLabel(item, onClick) {
-    const inv = this.game.inventory;
-    const up = inv.isUpgrade(item);
-    const l = el('div', `loot-label ${item.rarity}${up ? ' up' : ''}`);
-    l.textContent = (up ? '▲ ' : '') + item.name;
-    l.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      inv.hideTip();
-      onClick();
-    });
-    l.addEventListener('pointerenter', (e) => inv.showTip(item, e.clientX, e.clientY, { hint: 'Click to walk over and pick it up' }));
-    l.addEventListener('pointerleave', () => inv.hideTip());
-    l.dropRemove = l.remove;
-    l.remove = () => {
-      inv.hideTip();
-      l.dropRemove();
-    };
-    this.labels.append(l);
-    return l;
+  ready() {
+    this.loading.classList.add('hidden');
+    setTimeout(() => this.loading.remove(), 400);
   }
 
-  placeLabel(l, x, y, z) {
-    const p = this.game.player;
-    const far = (x - p.x) ** 2 + (z - p.z) ** 2 > 26 * 26;
-    const [sx, sy, ok] = this.project(x, y, z);
-    if (!ok || far || sx < -100 || sx > innerWidth + 100 || sy < -40 || sy > innerHeight + 40) {
-      if (!l.hidden) l.hidden = true;
-      return;
+  setPaused(paused, label) {
+    this.pause.classList.toggle('hidden', !paused);
+    if (label) this.playButton.textContent = label;
+  }
+
+  // target: { verb, noun, level?, locked? } or null
+  // Aiming a bow or a staff: the ring tightens as the shot is drawn.
+  setAim(a) {
+    this.ring.hidden = this.ammoEl.hidden = !a;
+    if (!a) return;
+    const k = a.draw;
+    this.ring.style.transform = `translate(-50%, -50%) scale(${(1.9 - k * 0.9).toFixed(3)})`;
+    this.ring.classList.toggle('full', k >= 1);
+    this.ring.classList.toggle('staff', a.style === 'staff');
+    if (this.ammoEl.textContent !== a.label) this.ammoEl.textContent = a.label;
+  }
+
+  setPrompt(target) {
+    const key = target ? `${target.verb}|${target.noun}|${target.level || ''}` : '';
+    if (key === this.lastPrompt) return;
+    this.lastPrompt = key;
+    this.cross.classList.toggle('live', !!target);
+    this.prompt.classList.toggle('show', !!target);
+    if (!target) return;
+    const lvl = target.level ? ` <span class="lvl">(needs ${target.level})</span>` : '';
+    this.prompt.innerHTML = `<span class="key">E</span><span class="verb">${target.verb}</span> <span class="noun">${target.noun}</span>${lvl}`;
+  }
+
+  // A quick fade to black and back, for going underground.
+  fade(on) {
+    if (!this.fadeEl) {
+      this.fadeEl = el('div', 'fader');
+      document.body.append(this.fadeEl);
     }
-    if (l.hidden) l.hidden = false;
-    this.pendingLabels.push({ l, x: sx, y: sy });
+    this.fadeEl.classList.toggle('on', on);
   }
 
-  // Stack overlapping loot labels upward, nearest-the-bottom first, so every name stays readable.
-  layoutLabels() {
-    const ls = this.pendingLabels;
-    ls.sort((a, b) => b.y - a.y);
-    const placed = [];
-    const H = 22;
-    for (const it of ls) {
-      const w = it.l.labelW || (it.l.offsetWidth ? (it.l.labelW = it.l.offsetWidth) : 140);
-      let y = it.y;
-      for (let guard = 0; guard < 16; guard++) {
-        const hit = placed.find((q) => Math.abs(q.x - it.x) < (q.w + w) / 2 + 3 && y > q.y - H && y - H < q.y);
-        if (!hit) break;
-        y = hit.y - H - 1;
-      }
-      placed.push({ x: it.x, y, w });
-      it.l.style.transform = `translate(${it.x}px, ${y}px) translate(-50%, -100%)`;
-    }
-    ls.length = 0;
-  }
-
-  announce(title, kicker, kind) {
-    this.ann.className = `announce show ${kind}`;
-    this.ann.querySelector('.k').textContent = kicker || '';
-    this.ann.querySelector('.t').textContent = title;
-    if (kind === 'unique' || kind === 'ascendant') {
-      // The item name is the headline for loot.
-      this.ann.querySelector('.k').textContent = kind === 'ascendant' ? 'Ascendant' : 'Unique';
-      this.ann.querySelector('.t').textContent = kicker;
-    }
-    this.annT = kind === 'ascendant' ? 5 : 3.2;
-  }
-
-  clearAnnounce() {
-    this.annT = 0;
-    this.ann.classList.remove('show');
-  }
-
-  toast(text, kind = '') {
-    const t = el('div', `toast ${kind}`);
-    t.innerHTML = text;
-    this.toasts.prepend(t);
-    while (this.toasts.children.length > 6) this.toasts.lastChild.remove();
-    setTimeout(() => t.remove(), 4500);
-  }
-
-  lootToast(item, isNew) {
-    const r = RARITY[item.rarity];
-    const art = this.game.art?.icon(item);
-    const pic = art ? `<img class="tico ${item.rarity}" src="${art}" alt="">` : '';
-    this.toast(`${pic}<span style="color:${r.css}">${item.name}</span>${isNew ? ' — <b>new discovery</b>' : ''}`, isNew ? 'discover' : '');
-  }
-
-  setRhythm(count, n) {
-    if (!n) {
-      this.rhythm.hidden = true;
-      return;
-    }
-    this.rhythm.hidden = false;
-    if (this.rhythm.children.length !== n || n === 1) {
-      this.rhythm.innerHTML = '';
-      if (n === 1) return;
-      for (let i = 0; i < n; i++) this.rhythm.append(el('i', i === n - 1 ? 'last' : ''));
-    }
-    [...this.rhythm.children].forEach((c, i) => c.classList.toggle('on', i < count));
-  }
-
-  update(dt) {
-    const g = this.game, p = g.player, s = p.stats;
-
-    for (const n of this.numPool) {
-      if (!n.active) continue;
-      n.t += dt;
-      const k = n.t / n.life;
-      if (k >= 1) {
-        n.active = false;
-        n.el.style.opacity = 0;
-        continue;
-      }
-      const [sx, sy, ok] = this.project(n.x, n.y + k * 1.2, n.z);
-      const sc = n.el.classList.contains('crit') ? 1 + Math.max(0, 0.6 - k * 4) : 1;
-      n.el.style.opacity = ok ? (k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3) : 0;
-      n.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%) scale(${sc})`;
-    }
-
-    this.life.style.setProperty('--fill', Math.max(0, p.life / s.life).toFixed(3));
-    this.life.querySelector('.v').textContent = `${Math.max(0, Math.ceil(p.life))}`;
-    this.mana.style.setProperty('--fill', Math.max(0, p.mana / s.mana).toFixed(3));
-    this.mana.querySelector('.v').textContent = `${Math.floor(p.mana)}`;
-    this.xp.firstChild.style.transform = `scaleX(${p.xp / xpForLevel(p.level)})`;
-    this.lvl.textContent = `Level ${p.level}`;
-
-    const cd = (id, v, max) => this.skillEls[id].querySelector('.cd').style.setProperty('--p', `${Math.max(0, v / max) * 100}%`);
-    cd('dash', p.dashCd, 1.6 * s.cdrMult);
-    cd('nova', p.novaCd, 9 * s.cdrMult);
-    cd('potion', p.potionCd, 15);
-    this.skillEls.nova.classList.toggle('nomana', p.mana < 25);
-    this.skillEls.bolt.classList.toggle('nomana', p.mana < 8);
-    for (const id in this.skillEls) this.skillEls[id].classList.toggle('locked', !p.can(id));
-
-    const b = g.world.biome;
-    const mins = Math.floor(g.runTime / 60), secs = Math.floor(g.runTime % 60).toString().padStart(2, '0');
-    this.zone.querySelector('.name').textContent = b.name;
-    this.zone.querySelector('.sub').textContent = `Depth ${g.depth}${g.dread ? ` · ${dreadName(g.dread)}` : ''} · ${mins}:${secs} · ${g.kills} slain`;
-    this.purse.querySelector('.coin').textContent = `${fmt(g.save.gold)} gold`;
-    this.purse.querySelector('.shard').textContent = `${fmt(g.save.shards)} shards`;
-
-    const boss = g.enemies.boss;
-    this.boss.hidden = !boss;
-    if (boss) {
-      this.boss.querySelector('.n').textContent = boss.name;
-      this.boss.querySelector('.a').textContent = boss.affix || '';
-      this.boss.querySelector('.fill').style.transform = `scaleX(${Math.max(0, boss.hp / boss.maxHp)})`;
-    }
-
-    if (this.annT > 0) {
-      this.annT -= dt;
-      if (this.annT <= 0) this.ann.classList.remove('show');
-    }
-
-    this.frames++;
-    this.fpsT += dt;
-    if (this.fpsT > 0.5) {
-      this.fps.textContent = `${Math.round(this.frames / this.fpsT)} fps · ${g.enemies.list.length} foes · ${g.particles.n} particles`;
-      this.frames = 0;
-      this.fpsT = 0;
-    }
+  toast(title, sub = '', ms = 2600) {
+    this.toastEl.innerHTML = `${title}${sub ? `<small>${sub}</small>` : ''}`;
+    this.toastEl.classList.add('show');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.toastEl.classList.remove('show'), ms);
   }
 }

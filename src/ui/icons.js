@@ -1,19 +1,36 @@
-const wrap = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+// Skill and interface glyphs as small inline SVGs on a 24-unit grid, drawn as solid
+// silhouettes so they read at 16-24 px.
 
-export const SLOT_ICONS = {
-  weapon: wrap('<path d="M20 3v3L9 17l-3-3L17 3z"/><path d="M5 13l6 6"/><path d="M3 21l3-3"/>'),
-  helm: wrap('<path d="M5 14a7 7 0 0 1 14 0v5h-4v-4H9v4H5z"/><path d="M12 7v8"/>'),
-  chest: wrap('<path d="M8 4l4 2 4-2 4 3-2 4v9H6v-9L4 7z"/><path d="M12 6v14"/>'),
-  gloves: wrap('<path d="M7 21v-7l-2-3 1.5-1 2.5 2V6a1 1 0 0 1 2 0v5V5a1 1 0 0 1 2 0v6V6a1 1 0 0 1 2 0v6V8a1 1 0 0 1 2 0v7l-2 6z"/>'),
-  boots: wrap('<path d="M8 3h5v11l6 3v4H6l1-4z"/><path d="M7 17h12"/>'),
-  amulet: wrap('<path d="M5 3c0 6 3.5 9 7 10 3.5-1 7-4 7-10"/><path d="M12 13l-3 4 3 4 3-4z"/>'),
-  ring: wrap('<circle cx="12" cy="15" r="6"/><path d="M10 7l2-3 2 3-2 2z"/>'),
+const P = {
+  attack: 'M19.5 2.5 22 2l-.5 2.5-9.8 9.8-2-2zM9.2 12.7l2.1 2.1-1.4 1.4 1.8 1.8-1.4 1.4-1.8-1.8-3.2 3.2-2.1-2.1 3.2-3.2-1.8-1.8 1.4-1.4 1.8 1.8z',
+  strength: 'M6 20c-2-2.5-2.3-6-.6-8.8L8.3 6.5c.8-1.3 2.4-1.8 3.8-1.1l1.1.6-.9 2.6-1.4-.4-1.6 3.3c1.8-1.2 4.2-1.5 6.2-.5 1.6.8 2.6 2.1 3 3.6l1 3.7c.3 1.2-.6 2.3-1.8 2.3H8.1c-.8 0-1.6-.3-2.1-.9z',
+  defence: 'M12 2 20 5v6.5c0 5-3.4 8.8-8 10.5-4.6-1.7-8-5.5-8-10.5V5zm0 2.2L6 6.4v5.1c0 3.8 2.4 6.8 6 8.3z',
+  ranged: 'M5 2c5.5 2.5 9 7.4 9 13.5 0 2.3-.5 4.5-1.4 6.5l-1.8-.8c.8-1.8 1.2-3.7 1.2-5.7C12 10.3 9 6.1 4.2 3.8zM5.6 3.6l.9.3-.1 16.4-1-.1zM11 11.6 20.6 2l1.4 1.4-9.6 9.6 1.6.4-2 2-1.2-2.3-2.3-1.2 2-2z',
+  magic: 'M12 2l2.4 6.2 6.6.5-5.1 4.2 1.6 6.5L12 15.9l-5.5 3.5 1.6-6.5L3 8.7l6.6-.5z',
+  hitpoints: 'M12 21s-7.5-4.6-9.2-9.4C1.6 8.3 3.6 4.5 7.2 4.5c2 0 3.6 1.1 4.8 2.8 1.2-1.7 2.8-2.8 4.8-2.8 3.6 0 5.6 3.8 4.4 7.1C19.5 16.4 12 21 12 21z',
+  woodcutting: 'M14.3 3.2c2.9-.9 5.6.4 6.6 2.4-2.3-.5-4 .2-5 1.2l1.3 1.3-2.1 2.1-3.4-3.4zM10.5 9.6l2.1 2.1-8.1 8.1c-.6.6-1.5.6-2.1 0s-.6-1.5 0-2.1z',
+  mining: 'M3 7.5C6.8 3.7 12.4 2.3 17.3 3.9L16 6.1c-3.5-.9-7.3 0-10.1 2.4zM16.5 3.2l1.9-.5 2.9 2.9-.5 1.9-2.1 1.2c1.2 4-.1 8.6-3.3 11.5l-1.6-1.6c2.3-2.2 3.3-5.4 2.8-8.4zM13.3 8.9l1.8 1.8-9.7 9.7c-.5.5-1.3.5-1.8 0s-.5-1.3 0-1.8z',
+  fishing: 'M2.5 12c2.6-3.5 6.4-5.5 10.5-5.5 3.3 0 6.2 1.4 8.5 3.8L23 8.5v7l-1.5-1.8c-2.3 2.4-5.2 3.8-8.5 3.8-4.1 0-7.9-2-10.5-5.5zm13.2-1.7a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z',
+  smithing: 'M2 7h13.5c1.1 0 2 .9 2 2 2.6 0 4.5.9 4.5 2-1.5 0-3.3.6-4.6 1.6-.9.7-1.9 1-3 1H12l1 3h2v2.4H6.5V16.6h2l1-3.1C5.5 13.5 2 10.8 2 7z',
+  cooking: 'M4 11h16v1.5c0 3.9-3.1 7-7 7h-2c-3.9 0-7-3.1-7-7zM2 11h2v1.5H2zm18 0h2v1.5h-2zM8.3 3.5c1 1-.9 2 0 3.2l-1 .8c-1.4-1.6.6-2.8 0-3.2zm4 0c1 1-.9 2 0 3.2l-1 .8c-1.4-1.6.6-2.8 0-3.2zm4 0c1 1-.9 2 0 3.2l-1 .8c-1.4-1.6.6-2.8 0-3.2z',
+  crafting: 'M19.3 2.7c.9.9.9 2.4 0 3.3L7.2 18.1l-4.1 1.8 1.8-4.1L17 3.7c.6-.6 1.6-1 2.3-1zm-1.4 1.6-.8.8 1.6 1.6.8-.8c.4-.4.4-1.2 0-1.6zM14 20.5c2 0 3.5-1 5.2-1.6l.6 1.3c-1.7.8-3.6 1.8-5.8 1.8-1.4 0-2.6-.4-3.6-.9l.6-1.3c.9.4 1.9.7 3 .7z',
+  fletching: 'M20.6 2 22 3.4 9.5 15.9l1.1 3.7-1.8 1.8-1.4-3.2-3.2-1.4 1.8-1.8 3.7 1.1zM17 3l4 4 1-5zM4.5 17.4l-2.2 2.2 2.1 2.1 2.2-2.2z',
+  bag: 'M8.5 6.5V6a3.5 3.5 0 0 1 7 0v.5H19l1.5 14.5h-17L5 6.5zm2 0h3V6a1.5 1.5 0 0 0-3 0z',
+  worn: 'M12 2c3.6 0 6.5 2.9 6.5 6.5V13h-2.2v-2.2h-2.1V20h-4.4v-9.2H7.7V13H5.5V8.5C5.5 4.9 8.4 2 12 2z',
+  stats: 'M3 20V11h4v9zm7 0V4h4v16zm7 0v-6h4v6z',
+  log: 'M5 3h10.5A3.5 3.5 0 0 1 19 6.5V21H6.5A2.5 2.5 0 0 1 4 18.5V4a1 1 0 0 1 1-1zm1 2v11.05c.16-.03.33-.05.5-.05H17V6.5c0-.83-.67-1.5-1.5-1.5zm.5 13a.5.5 0 0 0 0 1H17v-1zM8 7h7v2H8z',
+  quest: 'M6.5 2h11A2.5 2.5 0 0 1 20 4.5V6h-2.5v13.5A2.5 2.5 0 0 1 15 22H5a2.5 2.5 0 0 1-2.5-2.5V18H4V4.5A2.5 2.5 0 0 1 6.5 2zm0 2a.5.5 0 0 0-.5.5V18h8v1.5a.5.5 0 0 0 1 0V4H6.5zM8 7h5v1.6H8zm0 3.2h5v1.6H8zm0 3.2h3.5V15H8z',
+  close: 'M5.6 4.2 12 10.6l6.4-6.4 1.4 1.4-6.4 6.4 6.4 6.4-1.4 1.4-6.4-6.4-6.4 6.4-1.4-1.4 6.4-6.4-6.4-6.4z',
 };
 
-export const SKILL_ICONS = {
-  cleave: wrap('<path d="M4 16c3-8 10-11 16-11"/><path d="M4 20c5-6 11-8 16-8"/><path d="M16 3l4 2-2 4"/>'),
-  bolt: wrap('<circle cx="15" cy="9" r="4"/><path d="M3 21l8-8"/><path d="M5 15l-2 2M9 19l-2 2"/>'),
-  dash: wrap('<path d="M13 5l7 7-7 7"/><path d="M4 8h6M3 12h9M4 16h6"/>'),
-  nova: wrap('<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3"/>'),
-  potion: wrap('<path d="M10 3h4M10 3v5l-4 6a5 5 0 0 0 4 7h4a5 5 0 0 0 4-7l-4-6V3"/><path d="M7 14h10"/>'),
+export function icon(name, size = 20, cls = '') {
+  const d = P[name];
+  if (!d) return '';
+  return `<svg class="glyph ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="currentColor"/></svg>`;
+}
+
+// Per-skill colour so icons and bars are told apart at a glance.
+export const SKILL_COLOR = {
+  attack: '#e0685a', strength: '#6fbf6a', defence: '#7aa7e0', ranged: '#9bbf4a', magic: '#8fa0ff', hitpoints: '#e05a78',
+  woodcutting: '#a7c46a', mining: '#b9a58f', fishing: '#6fb7d9', smithing: '#c9a27a', cooking: '#e89a4a', crafting: '#d4b060', fletching: '#7fcfa6',
 };
