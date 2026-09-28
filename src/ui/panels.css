@@ -26,7 +26,7 @@
 }
 .tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   border-bottom: 1px solid var(--panel-edge);
 }
 .tabs button {
@@ -337,3 +337,9 @@
 @media (prefers-reduced-motion: reduce) {
   .drop { animation-duration: 0.01s; }
 }
+
+/* Collection log */
+.clog { max-height: 360px; overflow: auto; display: grid; gap: 6px; }
+.clog-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; font: 700 13px/1.2 var(--serif); letter-spacing: .04em; color: #f4e4bf; }
+.clog-head small { font: 500 12px/1 var(--sans); color: var(--ink-dim); letter-spacing: 0; }
+.clog-kc { font-size: 12.5px; color: var(--ink-dim); margin-top: -3px; }

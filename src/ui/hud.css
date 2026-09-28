@@ -219,3 +219,6 @@ html, body {
 .seg button + button { border-left: 1px solid rgba(216, 179, 106, 0.25); }
 .seg button[aria-pressed='true'] { background: rgba(216, 179, 106, 0.28); color: #fff3d2; }
 .settings input[type='range'] { width: 170px; accent-color: #d8b36a; }
+
+.fader { position: fixed; inset: 0; z-index: 9; background: #000; opacity: 0; pointer-events: none; transition: opacity .35s; }
+.fader.on { opacity: 1; }

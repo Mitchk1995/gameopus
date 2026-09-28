@@ -277,7 +277,7 @@ export class Enemy {
     this.attack = a;
     this.struck = false;
     this.setState('windup');
-    const w = windup ?? a.windup;
+    const w = (windup ?? a.windup) * (this.enraged ? 0.75 : 1);
     // Creep to 40% of the way to the hit during the wind-up, so the pose reads.
     this.action = this.play(a.clip, { loop: false, restart: true, fade: 0.12, speed: (a.hit * 0.4) / w });
     this.attack = { ...a, windup: w };

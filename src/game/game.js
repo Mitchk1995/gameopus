@@ -8,6 +8,8 @@ import { Menus, Talk } from '../ui/menus.js';
 import { Minimap } from '../ui/minimap.js';
 import { Fight } from './fight.js';
 import { Audio } from '../engine/audio.js';
+import { Dungeon } from '../dungeon/dungeon.js';
+import { Pets } from './pets.js';
 import { icon } from '../ui/icons.js';
 import { IconStudio, buildItem, setBarkTextures } from '../ui/itemart.js';
 import { Resources } from '../world/resources.js';
@@ -29,6 +31,7 @@ export class Game {
     this.activity = null;
     this.time = 0;
     this.timeScale = 1;
+    this.realm = 'world';
     this.audio = new Audio();
     this.saveTimer = 0;
     this.target = null;
@@ -54,6 +57,7 @@ export class Game {
         unequip: (slot) => this.unequip(slot),
         useOn: (a, b) => this.#useOn(a, b),
         guide: (skill) => this.#guide(skill),
+        pet: (id) => this.pets.toggle(id),
         nextUnlock: (skill, lvl) => this.unlockList.find((u) => u.skill === skill && u.level > lvl),
         unlocksAt: (skill, lvl) => this.unlockList.filter((u) => u.skill === skill && u.level === lvl).map((u) => u.label.toLowerCase()),
       },
@@ -67,6 +71,8 @@ export class Game {
     this.#vitals();
     this.fight = new Fight(this);
     await this.fight.init();
+    this.pets = new Pets(this);
+    await this.pets.init();
     this.state.skills.listeners.add(({ after, before }) => after > before && this.audio.play('levelup'));
     this.#hand();
     this.#showHeld();
@@ -140,6 +146,7 @@ export class Game {
     if (input.hit('Tab') || input.hit('KeyI')) this.togglePack('inv');
     if (input.hit('KeyK')) this.togglePack('skills');
     if (input.hit('KeyL')) this.togglePack('worn');
+    if (input.hit('KeyC')) this.togglePack('log');
     if (input.hit('Escape') && this.uiOpen) this.closeAll();
 
     // What's under the crosshair.
@@ -155,9 +162,12 @@ export class Game {
         this.activity.tick();
       }
     }
-    for (const n of this.npcs) n.update(dt, this.player);
-    this.resources.update(dt);
+    if (this.realm === 'world') {
+      for (const n of this.npcs) n.update(dt, this.player);
+      this.resources.update(dt);
+    }
     this.fight.update(dt);
+    this.pets.update(dt, this.player);
     this.minimap.update(this.player, this.rig.yaw);
     this.audio.setListener(this.player.pos.x, this.player.pos.z, this.rig.yaw);
     this.#updateFalling(dt);
@@ -172,6 +182,10 @@ export class Game {
   // ------------------------------------------------------------ targeting
   #candidates() {
     const P = this.player.pos, out = [];
+    if (this.realm === 'dungeon') {
+      out.push(...this.dungeon.near(P.x, P.z, 6), ...this.fight.groundTargets(P.x, P.z, 4));
+      return out;
+    }
     for (const t of this.world.forest.near(P.x, P.z, 6)) {
       const kind = SPECIES_TREE[t.variant.species];
       if (!kind) continue;
@@ -357,11 +371,21 @@ export class Game {
     }, 450);
   }
 
-  // Adds an item and experience, with a message.
+  // Adds an item and experience, with a message, and a small chance of a pet.
   #gain(id, n, skill, xp, text) {
     this.state.inv.add(id, n);
     if (text) this.panels.message(text);
     this.state.skills.add(skill, xp);
+    this.pets.roll(skill);
+  }
+
+  // Records a unique in the collection log.
+  logUnique(id) {
+    const log = (this.state.collection.log ??= {});
+    const first = !log[id];
+    log[id] = (log[id] || 0) + 1;
+    if (first) this.panels.message(`New item added to your collection log: ${ITEMS[id].name}.`, 'good');
+    this.panels.renderLog?.();
   }
 
   // ------------------------------------------------------------ felled trees
@@ -469,7 +493,98 @@ export class Game {
       }
       case 'bank':
         return this.openBank();
+      case 'cave':
+        return this.enterDungeon();
+      case 'rope':
+        return this.exitDungeon();
+      case 'chest':
+        return this.#openChest(s);
     }
+  }
+
+  // ------------------------------------------------------------ the Old Warren
+  get activeScene() {
+    return this.realm === 'dungeon' ? this.dungeon.scene : this.scene;
+  }
+
+  get activeWorld() {
+    return this.realm === 'dungeon' ? this.dungeon : this.world;
+  }
+
+  async enterDungeon() {
+    if (this.entering) return;
+    this.entering = true;
+    this.stop();
+    this.closeAll();
+    this.fight.ui.setDead(false);
+    this.hud.fade?.(true);
+    const seed = (Date.now() ^ (Math.random() * 1e9)) & 0x7fffffff;
+    this.dungeon = new Dungeon({ kit: this.world.village.kit, assets: this.assets }).build(seed);
+    this.realm = 'dungeon';
+    this.dungeon.scene.add(this.hero.root);
+    // three.js refreshes each skeleton once per frame number, and the world's shadow
+    // pass has already stamped the hero's with the coming one. With no shadow pass down
+    // here to refresh it, the first frame would draw the body where it stood up top.
+    this.renderer.info.render.frame++;
+    this.player.world = this.dungeon;
+    this.rig.world = this.dungeon;
+    const s = this.dungeon.startPos;
+    this.player.spawn(s.x, s.z, 0);
+    this.rig.yaw = Math.PI;
+    this.rig.snap();
+    await this.fight.spawnDungeon(this.dungeon);
+    this.pets.moveTo(this.dungeon.scene, this.player.pos);
+    this.minimap.setDungeon(this.dungeon);
+    this.audio.indoors = true;
+    this.entering = false;
+    this.hud.fade?.(false);
+    this.panels.message('You climb down into the Old Warren. It stinks of goblin, and somewhere below, something big is snoring.');
+  }
+
+  exitDungeon(dead = false) {
+    if (this.realm !== 'dungeon') return;
+    this.stop();
+    this.fight.clearDungeon();
+    this.scene.add(this.hero.root);
+    this.player.world = this.world;
+    this.rig.world = this.world;
+    this.realm = 'world';
+    this.dungeon.scene.traverse((o) => {
+      if (o.isMesh || o.isPoints) {
+        o.geometry?.dispose();
+      }
+    });
+    this.dungeon = null;
+    const e = this.resources.caveExit;
+    if (!dead) {
+      this.player.spawn(e.x, e.z, e.facing);
+      this.rig.yaw = e.facing + Math.PI;
+      // Look down a little, so the camera clears the slope up to the cave mouth.
+      this.rig.pitch = Math.min(this.rig.pitch, -0.42);
+      this.rig.snap();
+    }
+    this.pets.moveTo(this.scene, this.player.pos);
+    this.minimap.setDungeon(null);
+    this.audio.indoors = false;
+  }
+
+  #openChest(c) {
+    if (c.opened) return;
+    c.opened = c.hidden = true;
+    this.player.faceTowards(c.x, c.z);
+    this.player.perform('Chest_Open', { speed: 1.2 });
+    this.audio.play('click', c);
+    const rich = c.depth > 50;
+    const loot = [['coins', 15 + Math.floor(Math.random() * (rich ? 120 : 50))]];
+    const extra = rich ? ['iron_bar', 'steel_bar', 'iron_full_helm', 'salmon', 'coal', 'iron_arrow'] : ['bronze_bar', 'iron_ore', 'trout', 'bronze_arrow', 'iron_dagger', 'feather'];
+    const pick = extra[Math.floor(Math.random() * extra.length)];
+    loot.push([pick, ITEMS[pick].stack ? 8 + Math.floor(Math.random() * 12) : 1]);
+    const fx = Math.sin(c.rot), fz = Math.cos(c.rot);
+    const spill = () => loot.forEach(([id, n], i) => {
+      const side = (i - (loot.length - 1) / 2) * 0.7;
+      this.fight.drop(id, n, c.x + fx * 0.95 + fz * side, c.z + fz * 0.95 - fx * side);
+    });
+    setTimeout(() => this.dungeon?.chests.includes(c) && spill(), 500);
   }
 
   #makeMenu(s, title, sub, recipes, how) {

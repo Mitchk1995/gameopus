@@ -49,6 +49,8 @@ const SLASH_B = { clip: 'Sword_Regular_B', hit: 0.23, range: 2.3, arc: 70, windu
 const OVERHEAD = { clip: 'Sword_Attack', hit: 0.37, range: 2.6, arc: 45, windup: 0.9, dmg: 1.6, unblockable: true };
 const LUNGE = { clip: 'Sword_Dash', hit: 0.31, range: 3.4, arc: 35, windup: 0.8, dmg: 1.4, lunge: 2.4 };
 
+const SLAM = { clip: 'OverhandThrow', hit: 0.36, range: 3.6, arc: 180, windup: 1.0, dmg: 2.0, unblockable: true, aoe: 3.4 };
+
 export const MONSTERS = {
   goblin: {
     name: 'Goblin', model: 'puglin', skin: 1, scale: 1.0, level: 3, hp: 6, att: 3, str: 3, def: 1, acc: 0, strB: 0, defB: 0,
@@ -70,6 +72,16 @@ export const MONSTERS = {
   },
 };
 
+Object.assign(MONSTERS, {
+  warren_goblin: { ...MONSTERS.goblin, name: 'Warren goblin', skin: 3, level: 8, hp: 12, att: 7, str: 7, def: 5, acc: 4, strB: 3, defB: 4, aggro: 12, leash: 60, drops: 'warren_goblin', respawn: 1e9 },
+  warren_brute: { ...MONSTERS.goblin_brute, name: 'Warren brute', level: 16, hp: 28, att: 13, str: 16, def: 12, aggro: 12, leash: 60, drops: 'warren_brute', respawn: 1e9 },
+  grubnak: {
+    name: 'Grubnak, the Warren King', model: 'puglin', skin: 2, scale: 2.1, level: 26, hp: 90, att: 20, str: 22, def: 17, acc: 14, strB: 16, defB: 20,
+    speed: 3.6, aggro: 16, leash: 80, poise: 6, boss: true, drops: 'grubnak', respawn: 1e9,
+    attacks: [{ ...SCRATCH, range: 3.2, dmg: 1.3 }, { ...HOOK, range: 3.0, combo: { ...HOOK, range: 3.0, windup: 0.3 } }, SLAM],
+  },
+});
+
 // Drop tables: always-drops, then one roll on the weighted table (null = nothing),
 // then an independent roll for each rare (1 in n).
 export const DROPS = {
@@ -88,10 +100,25 @@ export const DROPS = {
     table: [[34, 'coins', [20, 80]], [8, 'iron_sword'], [6, 'iron_med_helm'], [5, 'iron_chainbody'], [8, 'iron_arrow', [5, 20]], [8, 'trout'], [6, 'iron_bar'], [25, null]],
     rare: [],
   },
+  warren_goblin: {
+    always: [['bones', 1]],
+    table: [[32, 'coins', [8, 30]], [8, 'iron_dagger'], [8, 'bronze_full_helm'], [10, 'iron_ore'], [8, 'coal'], [8, 'bronze_arrowtips', [8, 20]], [26, null]],
+    rare: [],
+  },
+  warren_brute: {
+    always: [['bones', 1]],
+    table: [[30, 'coins', [25, 70]], [8, 'iron_sword'], [7, 'iron_full_helm'], [6, 'iron_kiteshield'], [8, 'iron_bar', [1, 3]], [8, 'coal', [2, 4]], [8, 'trout', [1, 2]], [25, null]],
+    rare: [],
+  },
+  grubnak: {
+    always: [['bones', 1], ['coins', [150, 400]]],
+    table: [[18, 'steel_bar', [2, 5]], [16, 'iron_platebody'], [14, 'steel_med_helm'], [14, 'iron_platelegs'], [18, 'salmon', [2, 5]], [20, 'coal', [8, 16]]],
+    rare: [[16, 'warren_crown'], [32, 'kings_cleaver'], [80, 'pet_grubling']],
+  },
   bandit_captain: {
     always: [['bones', 1], ['coins', [120, 300]]],
     table: [[20, 'steel_scimitar'], [15, 'steel_full_helm'], [15, 'steel_kiteshield'], [12, 'steel_bar', [2, 4]], [20, 'salmon', [2, 4]], [18, 'iron_platebody']],
-    rare: [],
+    rare: [[24, 'captains_cutlass'], [60, 'pet_magpie']],
   },
 };
 

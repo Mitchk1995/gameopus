@@ -39,6 +39,7 @@ async function start() {
   window.__game = Object.assign(game, { ready: true });
 
   if (TEST) {
+    window.__THREE = THREE;
     input.locked = true;
     input.lock = input.unlock = () => {};
   }
@@ -84,12 +85,17 @@ async function start() {
     } else game.minimap.update(player, rig.yaw);
     rig.update(dt, input, player.pos, { sprinting: player.gait === 'Sprint_Loop' });
     hero.update(sdt);
-    hero.root.visible = rig.cur > 0.75;
+    hero.root.visible = rig.cur > 1.0;
     input.endFrame();
   };
   game.draw = (dt) => {
-    world.update(dt, camera, player.pos);
-    renderer.render(scene, camera);
+    if (game.realm === 'dungeon' && game.dungeon) {
+      game.dungeon.update(dt, camera, player.pos);
+      renderer.render(game.dungeon.scene, camera);
+    } else {
+      world.update(dt, camera, player.pos);
+      renderer.render(scene, camera);
+    }
   };
   game.frame = (dt) => {
     game.tick(dt);
@@ -105,7 +111,7 @@ async function start() {
     const n = Math.round(seconds * 60);
     for (let i = 0; i < n; i++) {
       game.tick(1 / 60);
-      world.forest.update(1 / 60, camera);
+      if (game.realm === 'world') world.forest.update(1 / 60, camera);
     }
     game.draw(1 / 60);
     return { x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2), state: player.state, gait: player.gait };

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batcher } from './kit.js';
 import { buildHouse, rng } from './buildings.js';
 import { Fire, fishingRings } from './effects.js';
@@ -31,6 +31,7 @@ export class Resources {
     const rockTex = await this.assets.texture('ground/cliff_a.webp');
     this.rockMat = new THREE.MeshStandardMaterial({ map: rockTex, color: 0x9a948c, roughness: 0.92 });
     this.#mine();
+    this.#caveMouth();
     this.#fishing();
     const batch = new Batcher(this.kit);
     this.#smithy(batch);
@@ -124,6 +125,57 @@ export class Resources {
     this.world.colliders.addCircle(x, z, 0.85 * s, y - 1, y + 1.2 * s);
     const rock = this.add({ kind: 'rock', rock: kind, def, x, y: y + 0.6 * s, z, r: 1.0 * s, h: 1.4 * s, reach: 2.2 + s, group: g, veins: merged, depleted: false });
     this.rocks.push(rock);
+  }
+
+  // A timbered mine shaft into the hill: the way down to the Old Warren.
+  #caveMouth() {
+    const T = this.world.terrain;
+    const { x, z, facing } = MINE_ENTRANCE;
+    const fx = Math.sin(facing), fz = Math.cos(facing), rx = Math.cos(facing), rz = -Math.sin(facing);
+    const y = T.heightAt(x, z);
+    const rnd = rng(77);
+    const g = new THREE.Group();
+    // Rocks piled in an arch.
+    const rocks = [];
+    for (let k = 0; k <= 10; k++) {
+      const t = Math.PI * (k / 10);
+      const px = Math.cos(t) * 2.6, py = Math.sin(t) * 3.0;
+      const b = new THREE.Mesh(boulder(0.8 + rnd() * 0.5, rnd), this.rockMat);
+      b.position.set(x + rx * px - fx * 0.3, y + py - 0.6, z + rz * px - fz * 0.3);
+      b.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+      rocks.push(b);
+    }
+    for (const b of rocks) {
+      b.castShadow = b.receiveShadow = true;
+      g.add(b);
+    }
+    // Timber frame and the dark inside.
+    const wood = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.9 });
+    for (const s of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.0, 0.25), wood);
+      post.position.set(x + rx * s * 1.45, y + 1.5, z + rz * s * 1.45);
+      post.rotation.y = facing;
+      post.castShadow = true;
+      g.add(post);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.28, 0.3), wood);
+    lintel.position.set(x, y + 3.0, z);
+    lintel.rotation.y = facing;
+    lintel.castShadow = true;
+    g.add(lintel);
+    const dark = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 3.0), new THREE.MeshBasicMaterial({ color: 0x020202 }));
+    dark.position.set(x - fx * 0.35, y + 1.5, z - fz * 0.35);
+    dark.rotation.y = facing;
+    g.add(dark);
+    this.scene.add(g);
+    // Lantern on the post.
+    const lamp = new THREE.PointLight(0xffb060, 3, 7, 1.6);
+    lamp.position.set(x + rx * 1.45 + fx * 0.3, y + 2.3, z + rz * 1.45 + fz * 0.3);
+    this.scene.add(lamp);
+    for (const s of [-1, 1]) this.world.colliders.addCircle(x + rx * s * 2.3, z + rz * s * 2.3, 0.9, y - 1, y + 4);
+    this.world.colliders.addBox(x - fx * 0.8, z - fz * 0.8, 1.4, 0.4, facing, y - 1, y + 4);
+    this.cave = this.add({ kind: 'station', station: 'cave', name: 'Old Warren', verb: 'Enter the', x: x - fx * 0.3, y: y + 1.5, z: z - fz * 0.3, r: 1.3, h: 3, reach: 2.6 });
+    this.caveExit = { x: x + fx * 4.2, z: z + fz * 4.2, facing };
   }
 
   setRock(r, depleted, respawn = 5) {
@@ -387,7 +439,9 @@ export class Resources {
     // Walkable deck (a thin box the player can stand on).
     const len = 14;
     const cx = sx + dir.x * (len / 2), cz = sz + dir.y * (len / 2);
-    this.world.colliders.addBox(cx, cz, 1.0, len / 2, rot, deck - 0.3, deck).noCamera = true;
+    const deckBox = this.world.colliders.addBox(cx, cz, 1.0, len / 2, rot, deck - 0.3, deck);
+    deckBox.noCamera = true;
+    deckBox.floor = true;
     this.jettyEnd = { x: sx + dir.x * len, z: sz + dir.y * len };
   }
 
@@ -461,7 +515,8 @@ function mergeAll(geos) {
 
 // A boulder: a squashed, lumpy icosphere.
 export function boulder(size, rnd) {
-  const g = new THREE.IcosahedronGeometry(size, 3);
+  // Welded, so the displaced surface shades smoothly instead of in facets.
+  const g = mergeVertices(new THREE.IcosahedronGeometry(size, 3).deleteAttribute('normal').deleteAttribute('uv'));
   const p = g.attributes.position, v = new THREE.Vector3();
   const k = [rnd() * 10, rnd() * 10, rnd() * 10];
   for (let i = 0; i < p.count; i++) {

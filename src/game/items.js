@@ -116,6 +116,16 @@ for (const [metal, m] of Object.entries(METALS)) {
   }
 }
 
+// ---------------------------------------------------------------- uniques (collection log)
+add('warren_crown', { name: 'Warren crown', value: 900, equip: 'head', req: { defence: 20 }, bonus: { def: 9, str: 2 }, unique: 'Grubnak', examine: "The Warren King's crown. Dented, greasy, magnificent.", art: { kind: 'crown', color: 0xc9a13a } });
+add('kings_cleaver', { name: "King's cleaver", value: 1400, equip: 'weapon', style: 'slash', speed: 1.7, req: { attack: 20 }, bonus: { acc: 16, str: 19 }, unique: 'Grubnak', examine: "Grubnak's cleaver. Heavy enough to split a door.", art: { kind: 'cleaver', color: 0x9aa3ab } });
+add('captains_cutlass', { name: "Captain's cutlass", value: 1200, equip: 'weapon', style: 'slash', speed: 1.4, req: { attack: 25 }, bonus: { acc: 22, str: 17 }, unique: 'Bandit captain', examine: 'Light, quick and very sharp.', art: { kind: 'scimitar', color: 0xc9d2da } });
+add('pet_grubling', { name: 'Grubling', value: 0, pet: 'grubling', unique: 'Grubnak', examine: 'A very small warren king. It follows you now.', art: { kind: 'petgob' } });
+add('pet_magpie', { name: 'Magpie', value: 0, pet: 'magpie', unique: 'Bandit captain', examine: 'It stole a coin from the captain and decided it liked you better.', art: { kind: 'petbird' } });
+add('pet_golem', { name: 'Rock golem', value: 0, pet: 'golem', unique: 'Mining', examine: 'A pebble that wanted to see the world.', art: { kind: 'petgolem' } });
+add('pet_sapling', { name: 'Sapling', value: 0, pet: 'sapling', unique: 'Woodcutting', examine: 'A stump with ideas.', art: { kind: 'petsapling' } });
+add('pet_frogling', { name: 'Frogling', value: 0, pet: 'frogling', unique: 'Fishing', examine: 'It was in your net. Now it is in your life.', art: { kind: 'petfrog' } });
+
 // ---------------------------------------------------------------- odds and ends
 add('bones', { name: 'Bones', value: 1, examine: 'Bones are for burying.', art: { kind: 'bones' } });
 

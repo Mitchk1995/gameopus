@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ITEMS } from '../game/items.js';
 
 // Small 3D models for items, built from primitives with PBR materials. The same
@@ -48,7 +48,7 @@ function mesh(geo, material, { x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = 
 
 // Seeded noise-ish displacement for lumps.
 function lumpy(radius, detail, amount, seed, squash = [1, 1, 1]) {
-  const g = new THREE.IcosahedronGeometry(radius, detail);
+  const g = mergeVertices(new THREE.IcosahedronGeometry(radius, detail).deleteAttribute('normal').deleteAttribute('uv'));
   const p = g.attributes.position, v = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) {
     v.fromBufferAttribute(p, i);
@@ -519,6 +519,125 @@ const BUILD = {
     return g;
   },
 
+  crown(a) {
+    const g = new THREE.Group();
+    const gold = metal(a.color);
+    g.add(mesh(new THREE.CylinderGeometry(0.11, 0.115, 0.07, 32, 1, true), gold, { y: 0.035 }));
+    g.children[0].material = gold.clone();
+    g.children[0].material.side = THREE.DoubleSide;
+    for (let i = 0; i < 8; i++) {
+      const t = (i / 8) * Math.PI * 2;
+      g.add(mesh(new THREE.ConeGeometry(0.022, 0.07, 6), gold, { x: Math.cos(t) * 0.11, y: 0.1, z: Math.sin(t) * 0.11 }));
+      g.add(mesh(new THREE.SphereGeometry(0.012, 8, 6), plain([0xc2302a, 0x2a7ac2, 0x2ac25a][i % 3], 0.2, 0), { x: Math.cos(t) * 0.116, y: 0.035, z: Math.sin(t) * 0.116 }));
+    }
+    return g;
+  },
+
+  cleaver(a) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.2, 8), leather(), { y: 0.0 }));
+    g.add(mesh(new THREE.BoxGeometry(0.06, 0.025, 0.04), metal(0x4a4a4a), { y: 0.1 }));
+    const s = new THREE.Shape();
+    s.moveTo(-0.02, 0);
+    s.lineTo(0.13, 0);
+    s.lineTo(0.15, 0.5);
+    s.quadraticCurveTo(0.08, 0.56, -0.03, 0.52);
+    s.closePath();
+    const geo = new THREE.ExtrudeGeometry(s, { depth: 0.01, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.006, bevelSegments: 1 });
+    geo.translate(-0.04, 0, -0.005);
+    g.add(mesh(geo, metal(a.color), { y: 0.11 }));
+    g.add(mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.012, 10), metal(0x2a2a2a), { x: 0.02, y: 0.55, z: 0.0, rx: Math.PI / 2 }));
+    return g;
+  },
+
+  petgob() {
+    const g = new THREE.Group();
+    const skin = plain(0xa8443a, 0.7);
+    g.add(mesh(new THREE.SphereGeometry(0.1, 20, 14), skin, { y: 0.1, s: 1 }));
+    g.add(mesh(new THREE.SphereGeometry(0.09, 20, 14), skin, { y: 0.22 }));
+    for (const s of [-1, 1]) {
+      g.add(mesh(new THREE.ConeGeometry(0.04, 0.12, 8), skin, { x: s * 0.1, y: 0.26, rz: -s * 1.2 }));
+      g.add(mesh(new THREE.SphereGeometry(0.018, 10, 8), plain(0xfff4c0, 0.3), { x: s * 0.035, y: 0.24, z: 0.075 }));
+      g.add(mesh(new THREE.SphereGeometry(0.009, 8, 6), plain(0x111111, 0.2), { x: s * 0.035, y: 0.24, z: 0.09 }));
+    }
+    const crown = BUILD.crown({ color: 0xc9a13a });
+    crown.scale.setScalar(0.55);
+    crown.position.y = 0.29;
+    g.add(crown);
+    return g;
+  },
+
+  petbird() {
+    // A magpie: black head, breast and back, white flanks and wing patches, and a
+    // long blue-green tail.
+    const g = new THREE.Group();
+    const black = plain(0x14161c, 0.45, 0.2), white = plain(0xf2f2ee, 0.6), sheen = plain(0x1d4452, 0.3, 0.5);
+    const body = mesh(new THREE.SphereGeometry(0.08, 20, 14), black, { y: 0.1 });
+    body.scale.set(0.8, 0.8, 1.3);
+    g.add(body);
+    const belly = mesh(new THREE.SphereGeometry(0.06, 18, 12), white, { y: 0.083, z: -0.012 });
+    belly.scale.set(1.12, 0.82, 1.08);
+    g.add(belly);
+    for (const s of [-1, 1]) {
+      const wing = mesh(new THREE.SphereGeometry(0.06, 14, 10), black, { x: s * 0.052, y: 0.118, z: -0.03, ry: s * 0.12 });
+      wing.scale.set(0.36, 0.62, 1.35);
+      g.add(wing);
+      const patch = mesh(new THREE.SphereGeometry(0.026, 12, 8), white, { x: s * 0.062, y: 0.132, z: 0.012 });
+      patch.scale.set(0.5, 0.62, 1.25);
+      g.add(patch);
+      const tip = mesh(new THREE.SphereGeometry(0.03, 10, 8), sheen, { x: s * 0.05, y: 0.125, z: -0.1 });
+      tip.scale.set(0.35, 0.4, 1.3);
+      g.add(tip);
+    }
+    g.add(mesh(new THREE.SphereGeometry(0.05, 16, 12), black, { y: 0.172, z: 0.082 }));
+    g.add(mesh(new THREE.ConeGeometry(0.015, 0.055, 8), black, { y: 0.166, z: 0.148, rx: Math.PI / 2 }));
+    const tail = mesh(new THREE.ConeGeometry(0.036, 0.24, 4), sheen, { y: 0.13, z: -0.21, rx: Math.PI / 2 + 0.25 });
+    tail.scale.set(1, 1, 0.22);
+    g.add(tail);
+    for (const s of [-1, 1]) {
+      g.add(mesh(new THREE.SphereGeometry(0.01, 8, 6), plain(0x050505, 0.05), { x: s * 0.032, y: 0.186, z: 0.112 }));
+      g.add(mesh(new THREE.SphereGeometry(0.0035, 6, 4), plain(0xffffff, 0.2), { x: s * 0.035, y: 0.19, z: 0.121 }));
+      g.add(mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.06, 4), plain(0x222222, 0.6), { x: s * 0.025, y: 0.03 }));
+    }
+    return g;
+  },
+
+  petgolem() {
+    const g = new THREE.Group();
+    g.add(mesh(lumpy(0.12, 2, 0.15, 11, [1.1, 0.9, 1]), plain(0x8a857c, 0.9), { y: 0.12 }));
+    const glow = new THREE.MeshStandardMaterial({ color: 0x8ff0ff, emissive: 0x4ad8ff, emissiveIntensity: 2 });
+    for (const s of [-1, 1]) g.add(mesh(new THREE.SphereGeometry(0.018, 8, 6), glow, { x: s * 0.045, y: 0.15, z: 0.11 }));
+    for (const s of [-1, 1]) g.add(mesh(lumpy(0.04, 1, 0.2, 3 + s, [1, 1, 1]), plain(0x7a756c, 0.9), { x: s * 0.13, y: 0.08 }));
+    return g;
+  },
+
+  petsapling() {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.07, 0.085, 0.14, 12), plain(0x5a3d26, 0.9), { y: 0.07 }));
+    g.add(mesh(new THREE.CircleGeometry(0.068, 12), plain(0xc9a476, 0.8), { y: 0.141, rx: -Math.PI / 2 }));
+    g.add(mesh(lumpy(0.09, 2, 0.2, 5, [1, 0.9, 1]), plain(0x4f8a2a, 0.8), { y: 0.24 }));
+    for (const s of [-1, 1]) {
+      g.add(mesh(new THREE.SphereGeometry(0.016, 8, 6), plain(0xfff4c0, 0.3), { x: s * 0.03, y: 0.09, z: 0.075 }));
+      g.add(mesh(new THREE.SphereGeometry(0.008, 8, 6), plain(0x111111, 0.2), { x: s * 0.03, y: 0.09, z: 0.089 }));
+    }
+    return g;
+  },
+
+  petfrog() {
+    const g = new THREE.Group();
+    const skin = plain(0x5aa33a, 0.45);
+    const body = mesh(new THREE.SphereGeometry(0.09, 20, 14), skin, { y: 0.07 });
+    body.scale.set(1.15, 0.75, 1);
+    g.add(body);
+    for (const s of [-1, 1]) {
+      g.add(mesh(new THREE.SphereGeometry(0.03, 12, 8), skin, { x: s * 0.05, y: 0.13, z: 0.04 }));
+      g.add(mesh(new THREE.SphereGeometry(0.018, 10, 8), plain(0x111111, 0.1), { x: s * 0.052, y: 0.14, z: 0.064 }));
+      g.add(mesh(new THREE.SphereGeometry(0.035, 10, 8), skin, { x: s * 0.085, y: 0.03, z: -0.02, s: 1 }));
+    }
+    g.add(mesh(new THREE.SphereGeometry(0.06, 14, 10), plain(0xd8e8a0, 0.5), { y: 0.05, z: 0.035, s: 1 }));
+    return g;
+  },
+
   bones() {
     const g = new THREE.Group();
     const bone = plain(0xe7dfc8, 0.7);
@@ -672,6 +791,13 @@ const POSE = {
   med_helm: { ry: 0.6, rx: 0.15 },
   full_helm: { ry: 0.6, rx: 0.15 },
   chainbody: { ry: 0.3 },
+  cleaver: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
+  crown: { rx: 0.35 },
+  petgob: { ry: 0.5 },
+  petbird: { ry: 0.9 },
+  petgolem: { ry: 0.5 },
+  petsapling: { ry: 0.5 },
+  petfrog: { ry: 0.5 },
   platebody: { ry: 0.3 },
   platelegs: { ry: 0.3 },
 };

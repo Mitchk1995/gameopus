@@ -27,6 +27,12 @@ export class CameraRig {
     this.sensitivity = 1;
   }
 
+  // After a teleport: start from the usual distance and height rather than easing there.
+  snap() {
+    this.cur = this.dist;
+    this.smoothY = null;
+  }
+
   // Direction the camera looks (and the crosshair points).
   forward(out = this.fwd) {
     const cp = Math.cos(this.pitch);

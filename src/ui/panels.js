@@ -11,6 +11,13 @@ const el = (tag, cls, html) => {
   return e;
 };
 const fmt = (n) => n.toLocaleString('en-US');
+
+// What the collection log tracks, section by section.
+const COLLECTION = [
+  { name: 'Grubnak, the Warren King', kill: 'Grubnak, the Warren King', items: ['warren_crown', 'kings_cleaver', 'pet_grubling'] },
+  { name: 'Bandit captain', kill: 'Bandit captain', items: ['captains_cutlass', 'pet_magpie'] },
+  { name: 'Skilling pets', items: ['pet_sapling', 'pet_golem', 'pet_frogling'] },
+];
 export function qtyLabel(n) {
   if (n >= 10_000_000) return [`${Math.floor(n / 1_000_000)}M`, 'm'];
   if (n >= 100_000) return [`${Math.floor(n / 1000)}K`, 'k'];
@@ -40,11 +47,13 @@ export class Panels {
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="inv" aria-selected="true" title="Inventory (Tab)">${icon('bag', 20)}</button>
         <button role="tab" data-tab="worn" aria-selected="false" title="Worn equipment">${icon('worn', 20)}</button>
-        <button role="tab" data-tab="skills" aria-selected="false" title="Skills">${icon('stats', 20)}</button>
+        <button role="tab" data-tab="skills" aria-selected="false" title="Skills (K)">${icon('stats', 20)}</button>
+        <button role="tab" data-tab="log" aria-selected="false" title="Collection log (C)">${icon('log', 20)}</button>
       </div>
       <div class="pane" data-pane="inv"><div class="grid"></div></div>
       <div class="pane" data-pane="worn" hidden><div class="worn"></div><div class="bonuses"></div></div>
-      <div class="pane" data-pane="skills" hidden><div class="skills"></div><div class="totals"></div></div>`;
+      <div class="pane" data-pane="skills" hidden><div class="skills"></div><div class="totals"></div></div>
+      <div class="pane" data-pane="log" hidden><div class="clog"></div></div>`;
     document.body.append(this.side);
     this.side.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.tab)));
     this.side.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -124,6 +133,32 @@ export class Panels {
     this.side.querySelectorAll('.pane').forEach((p) => (p.hidden = p.dataset.pane !== tab));
     if (tab === 'worn') this.renderWorn();
     if (tab === 'skills') this.renderSkills();
+    if (tab === 'log') this.renderLog();
+  }
+
+  // ------------------------------------------------------------ collection log
+  renderLog() {
+    const box = this.side.querySelector('.clog');
+    if (!box || this.tab !== 'log') return;
+    const log = this.state.collection.log || {}, kills = this.state.collection.kills || {};
+    box.innerHTML = '';
+    for (const sec of COLLECTION) {
+      const got = sec.items.filter((id) => log[id]).length;
+      const head = el('div', 'clog-head', `<span>${sec.name}</span><small>${got}/${sec.items.length}</small>`);
+      box.append(head);
+      if (sec.kill) box.append(el('div', 'clog-kc', `Kills: ${(kills[sec.kill] || 0).toLocaleString('en-US')}`));
+      const grid = el('div', 'grid');
+      for (const id of sec.items) {
+        const cell = el('div', `slot${log[id] ? ' full' : ''}`);
+        cell.innerHTML = `<img alt="" src="${this.studio.icon(id)}" style="${log[id] ? '' : 'filter:grayscale(1) brightness(0.35)'}">${log[id] > 1 ? `<span class="qty">${log[id]}</span>` : ''}`;
+        cell.addEventListener('mouseenter', (e) => this.#tipItem(id, e, log[id] ? (ITEMS[id].pet ? 'Summon or dismiss' : '') : 'Not yet found:'));
+        cell.addEventListener('mousemove', (e) => this.#placeTip(e));
+        cell.addEventListener('mouseleave', () => this.hideTip());
+        if (ITEMS[id].pet && log[id]) cell.addEventListener('click', () => this.actions.pet?.(id));
+        grid.append(cell);
+      }
+      box.append(grid);
+    }
   }
 
   // ------------------------------------------------------------ inventory
@@ -266,6 +301,7 @@ export class Panels {
     const d = el('div', 'drop', `${icon(id, 16)}<span>+${fmt(Math.round(amount))}</span>`);
     d.querySelector('svg').style.color = SKILL_COLOR[id];
     this.dropsEl.append(d);
+    while (this.dropsEl.children.length > 8) this.dropsEl.firstChild.remove();
     setTimeout(() => d.remove(), 2000);
     this.track(id);
     if (this.tab === 'skills') this.renderSkills();
@@ -282,7 +318,7 @@ export class Panels {
     this.goalEl.innerHTML = `
       <div class="head">${icon(id, 18)}<span>${SKILL[id].name}</span><span class="lv">${lvl}</span></div>
       <div class="track"><i style="width:${Math.round(sk.progress(id) * 100)}%;background:${SKILL_COLOR[id]}"></i></div>
-      <div class="next">${next ? `<b>${fmt(next - xp)}</b> xp to level ${lvl + 1}` : 'Mastered'}${unlock ? `<br>Next: <b>${unlock.label}</b> at ${unlock.level}` : ''}</div>`;
+      <div class="next">${next ? `<b>${fmt(Math.ceil(next - xp))}</b> xp to level ${lvl + 1}` : 'Mastered'}${unlock ? `<br>Next: <b>${unlock.label}</b> at ${unlock.level}` : ''}</div>`;
     this.goalEl.querySelector('svg').style.color = SKILL_COLOR[id];
     this.goalEl.classList.add('show');
     clearTimeout(this.goalTimer);

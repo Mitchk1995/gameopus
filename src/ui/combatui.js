@@ -33,6 +33,12 @@ const css = `
 .tframe .nm small { font: 500 13px/1 var(--sans); color: var(--ink-dim); letter-spacing: 0; }
 .tframe .hp { margin-top: 6px; height: 7px; border-radius: 4px; background: #5a1414; overflow: hidden; }
 .tframe .hp i { display: block; height: 100%; background: linear-gradient(#e0473c, #a11d18); transition: width .2s; }
+.tframe.boss { width: min(520px, calc(100vw - 460px)); min-width: 300px; }
+.tframe.boss .nm { font-size: 17px; }
+.tframe.boss .hp { height: 12px; }
+/* The skill tracker steps aside where the target frame would run into it. */
+@media (max-width: 1400px) { .bossfight .goal.show { opacity: 0; } }
+@media (max-width: 1140px) { .targeting .goal.show { opacity: 0; } }
 .hurtfx { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0;
   box-shadow: inset 0 0 120px 40px rgba(170, 20, 10, 0.55); transition: opacity .5s; }
 .hurtfx.on { opacity: 1; transition: none; }
@@ -86,6 +92,17 @@ export class CombatUI {
     this.deadEl.classList.toggle('on', on);
   }
 
+  // Drops the health bar of an enemy that is gone for good.
+  forget(e) {
+    this.bars.get(e)?.remove();
+    this.bars.delete(e);
+  }
+
+  clearSplats() {
+    for (const s of this.splats) s.el.remove();
+    this.splats = [];
+  }
+
   update(dt, enemies, lock, focus) {
     // Splats rise and fade over a second.
     for (const s of this.splats) {
@@ -101,7 +118,8 @@ export class CombatUI {
     }
     this.splats = this.splats.filter((s) => !s.done);
 
-    // Health bars over enemies that are fighting or hurt.
+    // Health bars over enemies that are fighting or hurt (and none for ones elsewhere).
+    for (const [e, bar] of this.bars) if (!enemies.includes(e)) bar.hidden = true;
     for (const e of enemies) {
       let bar = this.bars.get(e);
       const show = e.alive && (e.engaged || e.hp < e.def.hp) && e.pos.distanceTo(focus) < 26;
@@ -128,8 +146,15 @@ export class CombatUI {
     if (p) this.lockEl.style.transform = `translate(${p[0]}px, ${p[1]}px) rotate(45deg)`;
     // The last enemy you hit stays in the frame for a while, while it's near.
     if (this.recent && (!this.recent.alive || this.recent.pos.distanceTo(focus) > 24)) this.recent = null;
-    const shown = t || this.recent;
+    const shown = this.boss || t || this.recent;
+    this.frame.classList.toggle('boss', !!this.boss && shown === this.boss);
     this.frame.hidden = !shown || !shown.alive;
+    const mode = this.frame.hidden ? '' : this.frame.classList.contains('boss') ? 'bossfight' : 'targeting';
+    if (mode !== this.mode) {
+      document.body.classList.remove('bossfight', 'targeting');
+      if (mode) document.body.classList.add(mode);
+      this.mode = mode;
+    }
     if (shown && shown.alive) {
       this.frame.querySelector('.nm span').textContent = shown.def.name;
       this.frame.querySelector('.nm small').textContent = `Level ${shown.def.level}`;

@@ -104,6 +104,34 @@ export class Minimap {
     return c;
   }
 
+  #updateDungeon(player, yaw) {
+    this.#revealDungeon(player);
+    const g = this.ctx, S = VIEW * this.dpr, d = this.dungeon;
+    const ppm = S / 70;
+    g.save();
+    g.clearRect(0, 0, S, S);
+    g.beginPath();
+    g.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2);
+    g.clip();
+    g.fillStyle = '#15120e';
+    g.fillRect(0, 0, S, S);
+    g.translate(S / 2, S / 2);
+    g.rotate(yaw);
+    const k = this.dpx / 2; // map pixels per metre
+    g.drawImage(this.dmap, (-(player.pos.x + d.half)) * ppm, (-(player.pos.z + d.half)) * ppm, (this.dmap.width / k) * ppm, (this.dmap.height / k) * ppm);
+    for (const m of this.markers()) {
+      if (!m.dot) continue;
+      const dx = (m.x - player.pos.x) * ppm, dz = (m.z - player.pos.z) * ppm;
+      g.fillStyle = m.dot;
+      g.beginPath();
+      g.arc(dx, dz, 2.6 * this.dpr, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+    this.drawArrow(g, S, yaw, player);
+    this.#north(yaw);
+  }
+
   #coverPixels() {
     const img = this.world.terrain.groundTex.image;
     const c = document.createElement('canvas');
@@ -114,7 +142,34 @@ export class Minimap {
     return { data: g.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height };
   }
 
+  // In the warren the map is drawn as you explore it.
+  setDungeon(d) {
+    this.dungeon = d;
+    if (!d) return;
+    const L = d.layout, px = 8;
+    const c = document.createElement('canvas');
+    c.width = c.height = L.size * px;
+    this.dmap = c;
+    this.dseen = new Uint8Array(L.size * L.size);
+    this.dpx = px;
+  }
+
+  #revealDungeon(player) {
+    const d = this.dungeon, L = d.layout, px = this.dpx, g = this.dmap.getContext('2d');
+    const ci = Math.floor((player.pos.x + d.half) / 2), cj = Math.floor((player.pos.z + d.half) / 2);
+    for (let j = cj - 6; j <= cj + 6; j++)
+      for (let i = ci - 6; i <= ci + 6; i++) {
+        if (i < 0 || j < 0 || i >= L.size || j >= L.size || Math.hypot(i - ci, j - cj) > 6) continue;
+        const k = j * L.size + i;
+        if (this.dseen[k]) continue;
+        this.dseen[k] = 1;
+        g.fillStyle = L.grid[k] ? '#8a7f6e' : '#2b2620';
+        g.fillRect(i * px, j * px, px, px);
+      }
+  }
+
   update(player, yaw) {
+    if (this.dungeon) return this.#updateDungeon(player, yaw);
     const g = this.ctx, S = VIEW * this.dpr;
     const ppm = S / METRES; // canvas pixels per metre
     g.save();
@@ -181,10 +236,32 @@ export class Minimap {
     g.fill();
     g.restore();
     // North marker orbits the rim.
+    this.#north(yaw);
+  }
+
+  #north(yaw) {
     const r = VIEW / 2 - 9;
     this.north.style.transform = `translate(${Math.sin(yaw) * r}px, ${-Math.cos(yaw) * r}px)`;
   }
 }
+
+Minimap.prototype.drawArrow = function (g, S, yaw, player) {
+  g.save();
+  g.translate(S / 2, S / 2);
+  g.rotate(yaw - player.yaw + Math.PI);
+  g.fillStyle = '#fff';
+  g.strokeStyle = '#000';
+  g.lineWidth = 1.5 * this.dpr;
+  g.beginPath();
+  g.moveTo(0, -6 * this.dpr);
+  g.lineTo(4.5 * this.dpr, 5 * this.dpr);
+  g.lineTo(0, 2.5 * this.dpr);
+  g.lineTo(-4.5 * this.dpr, 5 * this.dpr);
+  g.closePath();
+  g.stroke();
+  g.fill();
+  g.restore();
+};
 
 function mix(a, b, t) {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];

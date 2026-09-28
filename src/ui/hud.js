@@ -83,6 +83,15 @@ export class Hud {
     this.prompt.innerHTML = `<span class="key">E</span><span class="verb">${target.verb}</span> <span class="noun">${target.noun}</span>${lvl}`;
   }
 
+  // A quick fade to black and back, for going underground.
+  fade(on) {
+    if (!this.fadeEl) {
+      this.fadeEl = el('div', 'fader');
+      document.body.append(this.fadeEl);
+    }
+    this.fadeEl.classList.toggle('on', on);
+  }
+
   toast(title, sub = '', ms = 2600) {
     this.toastEl.innerHTML = `${title}${sub ? `<small>${sub}</small>` : ''}`;
     this.toastEl.classList.add('show');

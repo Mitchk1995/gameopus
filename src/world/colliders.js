@@ -65,11 +65,12 @@ export class Colliders {
     return [dx * sh.c - dz * sh.s, dx * sh.s + dz * sh.c];
   }
 
-  // Highest shape top under (x, z) that feet at height y can step onto.
+  // Highest walkable shape top (decks, platforms: shapes marked .floor) under (x, z)
+  // that feet at height y can step onto.
   groundAt(x, z, y, step, base) {
     let g = base;
     for (const sh of this.query(x, z, 0.01, this.tmp || (this.tmp = []))) {
-      if (sh.y1 > y + step || sh.y1 <= g || sh.noFloor) continue;
+      if (!sh.floor || sh.y1 > y + step || sh.y1 <= g) continue;
       if (sh.kind === 'c') {
         if ((x - sh.x) ** 2 + (z - sh.z) ** 2 < sh.r * sh.r) g = sh.y1;
       } else {

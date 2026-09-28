@@ -50,11 +50,45 @@ export class Fight {
         const home = { x: camp.x + Math.cos(a) * r, z: camp.z + Math.sin(a) * r };
         const char = await this.factory.create(def);
         g.scene.add(char.root);
-        this.enemies.push(new Enemy(def, char, g.world, home, id++));
+        const e = new Enemy(def, char, g.world, home, id++);
+        e.realm = 'world';
+        this.enemies.push(e);
       }
     }
     this.#staminaBar();
     g.player.canRoll = () => this.#spend(COST.roll);
+  }
+
+  // ---------------------------------------------------------------- the warren
+  async spawnDungeon(d) {
+    let id = 1000;
+    const make = async (kind, pos) => {
+      const def = MONSTERS[kind];
+      const char = await this.factory.create(def);
+      d.scene.add(char.root);
+      const e = new Enemy(def, char, d, { x: pos.x, z: pos.z }, id++);
+      e.realm = 'dungeon';
+      this.enemies.push(e);
+      return e;
+    };
+    for (const sp of d.spawns) await make(sp.kind, sp.pos);
+    this.boss = await make('grubnak', d.bossPos);
+    this.boss.phase = 1;
+  }
+
+  clearDungeon() {
+    for (const e of this.enemies) if (e.realm === 'dungeon') {
+      e.char.root.parent?.remove(e.char.root);
+      this.tokens.delete(e);
+      this.ui.forget(e);
+    }
+    this.ui.clearSplats();
+    this.enemies = this.enemies.filter((e) => e.realm !== 'dungeon');
+    for (const it of this.ground) if (it.realm === 'dungeon') this.#removeGround(it);
+    this.ground = this.ground.filter((it) => !it.gone);
+    this.lock = null;
+    this.boss = null;
+    this.ui.recent = null;
   }
 
   // Tents, a fire and some crates, so a camp reads as a camp.
@@ -120,8 +154,9 @@ export class Fight {
     }
 
     if (alive && !busy) this.#input(dt);
+    const here = this.enemies.filter((e) => e.realm === g.realm);
     const ctx = {
-      player: P, alive, enemies: this.enemies,
+      player: P, alive, enemies: here,
       playerAttacking: P.state === 'attack' && !P.hitDone,
       takeToken: (e) => (this.tokens.has(e) || this.tokens.size < 2 ? (this.tokens.add(e), true) : false),
       hasToken: (e) => this.tokens.has(e),
@@ -129,8 +164,9 @@ export class Fight {
       strike: (e, a) => this.#enemyStrike(e, a),
       tell: (e, a) => this.#tell(e, a),
       onAggro: () => {},
+      onPhase: (e) => this.#phase(e),
     };
-    for (const e of this.enemies) {
+    for (const e of here) {
       if (!e.alive) this.tokens.delete(e);
       if (e.pos.distanceTo(P.pos) < 90 || e.engaged) e.update(dt, ctx);
     }
@@ -138,7 +174,9 @@ export class Fight {
     g.rig.lockTarget = this.lock ? this.lock.pos.clone().setY(this.lock.pos.y + this.lock.height * 0.55) : null;
     this.#updateGround(dt);
     this.#updateTells(dt);
-    this.ui.update(dt, this.enemies, this.lock, P.pos);
+    this.ui.boss = this.boss && this.boss.engaged && this.boss.alive ? this.boss : null;
+    this.ui.update(dt, here, this.lock, P.pos);
+    this.#updateRings(dt);
     this.#drawStamina();
   }
 
@@ -184,7 +222,8 @@ export class Fight {
     if (!weapon) Object.assign(move, kind === 'heavy' ? { clip: 'Punch_Cross', hit: 0.19, speed: 1, range: 1.6, end: 0.7 } : { clip: 'Punch_Jab', hit: 0.16, speed: 1.1, range: 1.5, end: 0.55, recover: null });
     if (this.time < this.riposteUntil && kind === 'light') move.kind = 'riposte';
     if (!this.#spend(move.stamina)) {
-      g.panels.message('You are too tired to swing.', 'bad');
+      if (this.time - (this.tiredAt ?? -9) > 2.5) g.panels.message('You are too tired to swing.', 'bad');
+      this.tiredAt = this.time;
       return;
     }
     if (kind === 'heavy') this.combo = 0;
@@ -203,6 +242,7 @@ export class Fight {
       const fwd = new THREE.Vector3(-Math.sin(g.rig.yaw), 0, -Math.cos(g.rig.yaw));
       let best = 3.4;
       for (const e of this.enemies) {
+        if (e.realm !== g.realm) continue;
         if (!e.alive) continue;
         const d = Math.hypot(e.pos.x - P.pos.x, e.pos.z - P.pos.z);
         const dir = new THREE.Vector3(e.pos.x - P.pos.x, 0, e.pos.z - P.pos.z).normalize();
@@ -222,7 +262,7 @@ export class Fight {
     const right = new THREE.Vector3(Math.cos(g.rig.yaw), 0, -Math.sin(g.rig.yaw));
     let best = null, bestScore = Infinity;
     for (const e of this.enemies) {
-      if (!e.alive || e === this.lock) continue;
+      if (!e.alive || e === this.lock || e.realm !== g.realm) continue;
       const to = new THREE.Vector3(e.pos.x - cam.position.x, e.pos.y + 1 - cam.position.y, e.pos.z - cam.position.z);
       const d = to.length();
       if (d > 26) continue;
@@ -252,7 +292,7 @@ export class Fight {
     const fwd = new THREE.Vector3(Math.sin(P.yaw), 0, Math.cos(P.yaw));
     let landed = 0;
     for (const e of this.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || e.realm !== g.realm) continue;
       const to = new THREE.Vector3(e.pos.x - P.pos.x, 0, e.pos.z - P.pos.z);
       const d = to.length() - e.radius;
       if (d > move.range) continue;
@@ -280,6 +320,7 @@ export class Fight {
         this.ui.splat(at, '0', 'zero');
       }
       if (outcome === 'dead') this.#killed(e);
+      else if (e.def.boss && e.phase === 1 && e.hp < e.def.hp * 0.5) this.#phase(e);
       if (outcome === 'stagger' && kind === 'riposte') this.riposteUntil = 0;
     }
     if (!landed) g.audio.play('miss', P.pos, 0.6);
@@ -292,7 +333,13 @@ export class Fight {
     const d = to.length() - 0.35;
     const fwd = new THREE.Vector3(Math.sin(e.yaw), 0, Math.cos(e.yaw));
     const at = P.pos.clone().setY(P.pos.y + 1.4);
-    if (d > a.range || to.normalize().dot(fwd) < Math.cos((a.arc * Math.PI) / 180)) {
+    if (a.aoe) {
+      // A slam hits everything around the point in front of the enemy.
+      const cx = e.pos.x + fwd.x * 1.6, cz = e.pos.z + fwd.z * 1.6;
+      this.game.rig.shake = 1.2;
+      this.game.audio.play('crit', e.pos);
+      if (Math.hypot(P.pos.x - cx, P.pos.z - cz) > a.aoe) return;
+    } else if (d > a.range || to.normalize().dot(fwd) < Math.cos((a.arc * Math.PI) / 180)) {
       g.audio.play('swing', e.pos, 0.7);
       return;
     }
@@ -364,8 +411,11 @@ export class Fight {
       if (e.alive) e.setState('return');
     }
     setTimeout(() => {
+      if (g.realm === 'dungeon') g.exitDungeon(true);
       P.spawn(SPAWN.x, SPAWN.z, SPAWN.facing);
       g.rig.yaw = SPAWN.facing + Math.PI;
+      g.rig.snap();
+      this.ui.clearSplats();
       g.state.hp = g.state.maxHp;
       g.state.changed('hp');
       P.revive();
@@ -381,6 +431,11 @@ export class Fight {
     this.tokens.delete(e);
     g.state.collection.kills ??= {};
     g.state.collection.kills[e.def.name] = (g.state.collection.kills[e.def.name] || 0) + 1;
+    if (e.def.boss) {
+      g.panels.message(`${e.def.name} falls. Your ${e.def.name.split(',')[0]} kill count is ${g.state.collection.kills[e.def.name]}.`, 'good');
+      g.audio.play('levelup');
+      this.boss = null;
+    }
     const drops = rollDrops(e.def.drops);
     drops.forEach(([id, n, rare], i) => {
       const a = (i / Math.max(1, drops.length)) * Math.PI * 2;
@@ -405,8 +460,9 @@ export class Fight {
     s.renderOrder = 10;
     const hand = e.char.bones.hand_r || e.char.bones.Head;
     this.tells ??= [];
-    this.tells.push({ s, hand, t: 0, dur: Math.max(0.35, a.windup * 0.8) });
-    g.scene.add(s);
+    this.tells.push({ s, hand, t: 0, dur: Math.max(0.35, a.windup * 0.8), scene: g.activeScene });
+    g.activeScene.add(s);
+    if (a.aoe) this.#ring(e, a);
     g.audio.play('tell', e.pos, a.unblockable ? 1.4 : 0.8);
   }
 
@@ -420,27 +476,84 @@ export class Fight {
       t.s.scale.setScalar(size);
       t.s.material.rotation = t.t * 3;
       if (k >= 1) {
-        this.game.scene.remove(t.s);
+        t.scene.remove(t.s);
         t.done = true;
       }
     }
     this.tells = this.tells.filter((t) => !t.done);
   }
 
+  // Grubnak at half health: a roar, two goblins from the dark, and faster swings.
+  async #phase(e) {
+    if (e.phase !== 1) return;
+    e.phase = 2;
+    e.enraged = true;
+    e.stagger('Hit_Knockback', 1.0);
+    this.ui.splat(e.pos.clone().setY(e.pos.y + e.height), 'Enraged', 'word');
+    this.game.audio.play('death', e.pos);
+    this.game.rig.shake = 1.5;
+    const d = this.game.dungeon;
+    if (!d) return;
+    for (let k = 0; k < 2; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const def = MONSTERS.warren_goblin;
+      const char = await this.factory.create(def);
+      if (this.game.dungeon !== d) return;
+      d.scene.add(char.root);
+      const add = new Enemy(def, char, d, { x: e.pos.x + Math.cos(a) * 4, z: e.pos.z + Math.sin(a) * 4 }, 2000 + k + Math.floor(Math.random() * 1000));
+      add.realm = 'dungeon';
+      add.engaged = true;
+      add.setState('chase');
+      this.enemies.push(add);
+    }
+  }
+
+  // A red ring on the floor fills in as a slam winds up.
+  #ring(e, a) {
+    const fwd = new THREE.Vector3(Math.sin(e.yaw), 0, Math.cos(e.yaw));
+    const geo = new THREE.RingGeometry(a.aoe - 0.12, a.aoe, 48);
+    geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.7, depthWrite: false });
+    const ring = new THREE.Mesh(geo, mat);
+    const fill = new THREE.Mesh(new THREE.CircleGeometry(a.aoe, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.18, depthWrite: false }));
+    const g = new THREE.Group();
+    g.add(ring, fill);
+    const w = this.game.activeWorld;
+    const cx = e.pos.x + fwd.x * 1.6, cz = e.pos.z + fwd.z * 1.6;
+    g.position.set(cx, w.groundAt(cx, cz, e.pos.y + 1) + 0.05, cz);
+    this.game.activeScene.add(g);
+    (this.rings ??= []).push({ g, fill, t: 0, dur: a.windup + a.hit * 0.6, e, scene: this.game.activeScene });
+  }
+
+  #updateRings(dt) {
+    if (!this.rings) return;
+    for (const r of this.rings) {
+      r.t += dt;
+      const k = Math.min(1, r.t / r.dur);
+      r.fill.scale.setScalar(Math.max(0.01, k));
+      if (r.t > r.dur + 0.15 || !r.e.alive || (r.e.state !== 'windup' && r.e.state !== 'attack')) {
+        r.scene.remove(r.g);
+        r.done = true;
+      }
+    }
+    this.rings = this.rings.filter((r) => !r.done);
+  }
+
   // ---------------------------------------------------------------- loot on the ground
   drop(id, n, x, z, rare = false) {
-    const g = this.game, w = g.world;
+    const g = this.game, w = g.activeWorld;
     const y = w.groundAt(x, z, 1e4);
     const model = buildItem(id, g.assets);
     model.scale.setScalar(ITEMS[id].art?.kind === 'bow' ? 1.2 : 1.6);
     model.rotation.y = Math.random() * Math.PI * 2;
     model.position.set(x, y + 0.02, z);
-    g.scene.add(model);
-    const item = { id, n, x, y, z, model, t: 0, rare };
+    const scene = g.activeScene;
+    scene.add(model);
+    const item = { id, n, x, y, z, model, t: 0, rare, realm: g.realm, scene };
     if (rare) {
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.4, 12, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
       beam.position.set(x, y + 6, z);
-      g.scene.add(beam);
+      scene.add(beam);
       item.beam = beam;
       g.audio.play('levelup', { x, z });
       g.panels.message(`A rare drop: ${ITEMS[id].name}!`, 'good');
@@ -459,19 +572,25 @@ export class Fight {
   }
 
   #removeGround(it) {
-    this.game.scene.remove(it.model);
-    if (it.beam) this.game.scene.remove(it.beam);
+    it.scene.remove(it.model);
+    if (it.beam) it.scene.remove(it.beam);
     it.gone = true;
   }
 
   groundTargets(x, z, r) {
-    return this.ground.filter((it) => !it.gone && Math.hypot(it.x - x, it.z - z) < r).map((it) => ({ kind: 'item', item: it, x: it.x, y: it.y + 0.2, z: it.z, r: 0.45, h: 0.8, reach: 2.2 }));
+    return this.ground.filter((it) => !it.gone && it.realm === this.game.realm && Math.hypot(it.x - x, it.z - z) < r).map((it) => ({ kind: 'item', item: it, x: it.x, y: it.y + 0.2, z: it.z, r: 0.45, h: 0.8, reach: 2.2 }));
   }
 
   take(it) {
     const g = this.game;
+    if (ITEMS[it.id].pet) {
+      this.#removeGround(it);
+      this.ground = this.ground.filter((x) => !x.gone);
+      return g.pets.unlock(it.id);
+    }
     if (!g.state.inv.room(it.id)) return g.panels.message('Your pack is too full to pick that up.', 'bad');
     g.state.inv.add(it.id, it.n);
+    if (ITEMS[it.id].unique) g.logUnique(it.id);
     g.audio.play(it.id === 'coins' ? 'coins' : 'pickup', it);
     this.#removeGround(it);
     this.ground = this.ground.filter((x) => !x.gone);
