@@ -6,7 +6,12 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
 
 ## Run and test
 
-- `npm run dev` for live editing; `npm run build` for `dist/`.
+- `npm run dev` for live editing; `npm run build` for `dist/`. `npm run app` opens the built
+  game as a desktop window (`desktop/main.cjs`, Electron); `npm run package` makes
+  `release/win-unpacked/Aldermere.exe`. npm 11 skips Electron's download step: if
+  `npx electron` says it failed to install, unzip the cached zip in
+  `%LOCALAPPDATA%\electron\Cache` into `node_modules/electron/dist` and write `electron.exe` to
+  `node_modules/electron/path.txt`.
 - `npm run artifact` packs `dist-artifact/` for the claude.ai artifact (published at
   https://claude.ai/artifact/6UupW43rUU5LKTJBJUoyh5 with the `sample` capability, which
   powers typed chat). Republish only the page unless files in `public/assets` changed.

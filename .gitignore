@@ -8,3 +8,4 @@ dist-artifact
 # Headless playtest screenshots
 tests/playtest/out
 __pycache__
+release
