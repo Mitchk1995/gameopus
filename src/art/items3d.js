@@ -719,9 +719,9 @@ function gloves(k, s) {
   g.add(M(new THREE.CylinderGeometry(0.085, 0.1, 0.1, 16), main, { p: [0, -0.08, 0] }));
   g.add(M(new THREE.CapsuleGeometry(0.075, 0.07, 4, 14), main, { p: [0, 0.02, 0], s: [1.35, 1, 0.62] }));
   if (plate) {
-    const bp = new THREE.Shape();
-    bp.moveTo(-0.09, -0.06); bp.lineTo(0.09, -0.06); bp.quadraticCurveTo(0.1, 0.02, 0.09, 0.08); bp.lineTo(-0.09, 0.08); bp.quadraticCurveTo(-0.1, 0.02, -0.09, -0.06);
-    g.add(M(extrude(bp, 0.01, 0.012, 2), plate, { p: [0, 0.02, 0.05] }));
+    // curved plates hugging the back of the hand: a main plate and a wrist lame
+    g.add(M(latheFront([[0.094, -0.035], [0.104, 0.0], [0.106, 0.05], [0.098, 0.088]], 1.9, 24), plate, { s: [1.24, 1, 0.54] }));
+    g.add(M(latheFront([[0.1, -0.1], [0.108, -0.075], [0.104, -0.045]], 2.1, 24), plate, { s: [1.1, 1, 1.0] }));
   }
   for (let i = 0; i < 4; i++) {
     const x = -0.075 + i * 0.05, len = [0.07, 0.085, 0.08, 0.06][i];
@@ -734,8 +734,9 @@ function gloves(k, s) {
     tip.rotation.x = 0.45;
     tip.add(M(new THREE.CapsuleGeometry(0.02, len * 0.8, 3, 10), main, { p: [0, len * 0.4, 0] }));
     if (plate) {
-      f.add(M(new THREE.BoxGeometry(0.046, len * 0.8, 0.03), plate, { p: [0, len / 2, 0.012] }));
-      tip.add(M(new THREE.BoxGeometry(0.042, len * 0.6, 0.028), plate, { p: [0, len * 0.35, 0.01] }));
+      f.add(M(new THREE.CylinderGeometry(0.029, 0.027, len * 0.85, 10, 1, true, -1.25, 2.5), plate, { p: [0, len / 2, 0.002] }));
+      tip.add(M(new THREE.CylinderGeometry(0.027, 0.024, len * 0.7, 10, 1, true, -1.25, 2.5), plate, { p: [0, len * 0.35, 0.002] }));
+      tip.add(M(new THREE.SphereGeometry(0.025, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), plate, { p: [0, len * 0.7, 0.0], s: [1, 0.8, 1] }));
     }
     if (t === 5) tip.add(M(new THREE.ConeGeometry(0.016, 0.1, 6), k.metal('void'), { p: [0, len * 0.8 + 0.05, 0.01], r: [0.3, 0, 0] }));
     f.add(tip);
@@ -745,10 +746,10 @@ function gloves(k, s) {
   thumb.position.set(0.1, 0.0, 0.02);
   thumb.rotation.set(0.3, 0, -0.9);
   thumb.add(M(new THREE.CapsuleGeometry(0.024, 0.07, 3, 10), main, { p: [0, 0.04, 0] }));
-  if (plate) thumb.add(M(new THREE.BoxGeometry(0.046, 0.06, 0.03), plate, { p: [0, 0.04, 0.012] }));
+  if (plate) thumb.add(M(new THREE.CylinderGeometry(0.03, 0.028, 0.07, 10, 1, true, -1.25, 2.5), plate, { p: [0, 0.04, 0.002] }));
   g.add(thumb);
   if (t === 0) for (let i = 0; i < 4; i++) g.add(M(new THREE.TorusGeometry(0.1, 0.01, 4, 20), k.cloth(0x6a5a40), { p: [0, -0.06 + i * 0.045, 0], r: [Math.PI / 2 + 0.2, 0, 0.3], s: [1.1, 0.62, 1] }));
-  if (t === 3) g.add(M(new THREE.BoxGeometry(0.2, 0.04, 0.05), k.metal('steel'), { p: [0, 0.09, 0.035] }));
+  if (t === 3) for (let i = 0; i < 4; i++) g.add(M(new THREE.SphereGeometry(0.03, 12, 8), k.metal('steel'), { p: [-0.075 + i * 0.05, 0.095, 0.045], s: [0.9, 0.8, 0.75] }));
   if (t === 4) for (let i = 0; i < 4; i++) g.add(M(new THREE.CylinderGeometry(0.018, 0.022, 0.03, 8), k.bone(), { p: [-0.075 + i * 0.05, 0.095, 0.05], r: [Math.PI / 2, 0, 0] }));
   if (t === 5) g.add(M(gemGeo(0.03), k.gem(0xb070ff, 1.1), { p: [0, 0.03, 0.065], r: [Math.PI / 2, 0, 0] }));
   if (u === 'metronome') {
