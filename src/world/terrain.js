@@ -3,14 +3,16 @@ import { WORLD } from './map.js';
 import { assetURL } from '../engine/assets.js';
 
 // Terrain: a baked 1 m heightmap drawn as 64 m patches that are displaced on the GPU,
-// with coarser patches farther away. The surface blends six photoscanned materials:
-// grass (base), forest floor, path and cobble (painted, baked into ground.png),
-// sand (near water) and rock (steep slopes and high ground).
+// with coarser patches farther away. Lighting normals come from the heightmap per
+// pixel, so far hills keep their shape even on coarse patches. The surface blends
+// eight photoscanned materials: grass (base), forest floor, path and cobble (painted,
+// baked into ground.png), sand (near water), stony ground (hillsides), cliff (steep
+// faces, projected from three sides) and snow (high peaks).
 
 const N = WORLD.size + 1;
 const CHUNK = 64;
-const LAYERS = ['grass', 'forest', 'rock', 'path', 'cobble', 'sand'];
-const TILE = [3.2, 3.6, 7.0, 3.2, 2.6, 4.0];
+const LAYERS = ['grass', 'forest', 'rock', 'path', 'cobble', 'sand', 'cliff', 'snow'];
+const TILE = [3.2, 3.6, 5.0, 3.2, 2.6, 4.0, 11.0, 24.0];
 
 export class Terrain {
   constructor({ scene, assets, renderer }) {
@@ -39,7 +41,10 @@ export class Terrain {
     heightTex.needsUpdate = true;
     this.heightTex = heightTex;
 
+    // The bake writes row 0 at the north edge (z = -half), which is v = 0 here.
+    ground.flipY = false;
     ground.generateMipmaps = true;
+    this.groundTex = ground;
     this.material = this.#material(heightTex, ground, arrayTexture(albedo, true), arrayTexture(nr, false));
     this.#buildChunks();
     return this;
@@ -136,7 +141,9 @@ export class Terrain {
           uniform sampler2D uGround;
           uniform highp sampler2DArray uAlb;
           uniform highp sampler2DArray uNrm;
-          uniform float uHalf, uTile[6];
+          uniform float uHalf, uN, uTile[8];
+          uniform sampler2D uHeight;
+          float tH(vec2 p) { return texture2D(uHeight, (p + uHalf + 0.5) / uN).r; }
           varying vec3 vWPos;
           varying vec3 vWNrm;
           float tHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -163,51 +170,81 @@ export class Terrain {
         .replace('#include <map_fragment>', `
           vec3 tp = vWPos;
           vec3 tdx = dFdx(tp), tdy = dFdy(tp);
-          vec3 tn = normalize(vWNrm);
+          // Per-pixel normal from the heightmap, sampled wider when far to avoid shimmer.
+          float tE = clamp(max(length(tdx), length(tdy)) * 1.5, 1.0, 6.0);
+          vec3 tn = normalize(vec3(tH(tp.xz - vec2(tE, 0.0)) - tH(tp.xz + vec2(tE, 0.0)), 2.0 * tE,
+                                   tH(tp.xz - vec2(0.0, tE)) - tH(tp.xz + vec2(0.0, tE))));
           vec3 cover = texture2D(uGround, tp.xz / (uHalf * 2.0) + 0.5).rgb;
           float macro = tNoise(tp.xz * 0.018) * 0.65 + tNoise(tp.xz * 0.07) * 0.35;
           float mixK = clamp(0.5 + (tNoise(tp.xz * 0.05 + 7.0) - 0.5) * 1.4, 0.0, 1.0);
           float slope = 1.0 - tn.y;
-          float wRock = max(smoothstep(0.24, 0.4, slope + (macro - 0.5) * 0.14), smoothstep(22.0, 44.0, tp.y + (macro - 0.5) * 16.0) * smoothstep(0.08, 0.2, slope + 0.05));
-          float wSand = smoothstep(1.35, 0.45, tp.y + (macro - 0.5) * 0.9);
-          float w[6];
-          w[0] = 1.0; w[1] = 0.0; w[2] = 0.0; w[3] = 0.0; w[4] = 0.0; w[5] = 0.0;
-          float layerT[6];
-          layerT[1] = smoothstep(0.1, 0.7, cover.g + (macro - 0.5) * 0.3);
+          float wobble = (macro - 0.5);
+          float wRock = max(smoothstep(0.12, 0.24, slope + wobble * 0.1), smoothstep(20.0, 40.0, tp.y + wobble * 16.0) * smoothstep(0.05, 0.15, slope + 0.04));
+          float wCliff = smoothstep(0.3, 0.46, slope + wobble * 0.12);
+          float wSnow = smoothstep(74.0, 96.0, tp.y + wobble * 34.0) * smoothstep(0.66, 0.4, slope + wobble * 0.1);
+          float wSand = smoothstep(1.35, 0.45, tp.y + wobble * 0.9);
+          float w[8];
+          for (int m = 0; m < 8; m++) w[m] = 0.0;
+          w[0] = 1.0;
+          float layerT[8];
+          layerT[1] = smoothstep(0.1, 0.7, cover.g + wobble * 0.3);
           layerT[5] = wSand;
           layerT[3] = smoothstep(0.2, 0.75, cover.r);
           layerT[4] = smoothstep(0.2, 0.7, cover.b);
-          layerT[2] = wRock;
-          int order[5] = int[5](1, 5, 3, 4, 2);
-          for (int k = 0; k < 5; k++) {
+          layerT[2] = wRock * (1.0 - layerT[4]);
+          layerT[6] = wCliff;
+          layerT[7] = wSnow;
+          int order[7] = int[7](1, 5, 3, 4, 2, 6, 7);
+          for (int k = 0; k < 7; k++) {
             int L = order[k];
             float t = layerT[L];
-            for (int m = 0; m < 6; m++) w[m] *= 1.0 - t;
+            for (int m = 0; m < 8; m++) w[m] *= 1.0 - t;
             w[L] += t;
           }
           vec3 tAlb = vec3(0.0), tNr = vec3(0.0);
-          for (int L = 0; L < 6; L++) {
-            if (L == 2) continue;
-            tSample(L, tp.xz, tdx.xz, tdy.xz, mixK, tAlb, tNr, w[L]);
-          }
+          for (int L = 1; L < 6; L++) if (L != 2) tSample(L, tp.xz, tdx.xz, tdy.xz, mixK, tAlb, tNr, w[L]);
           if (w[2] > 0.004) {
-            // Rock is projected from the sides as well, so cliffs don't smear.
+            // Stony ground loses its grass higher up.
+            vec3 sa = vec3(0.0), sn = vec3(0.0);
+            tSample(2, tp.xz, tdx.xz, tdy.xz, mixK, sa, sn, 1.0);
+            float sl = dot(sa, vec3(0.3, 0.55, 0.15));
+            sa = mix(sa, vec3(sl) * vec3(1.05, 0.98, 0.9), smoothstep(26.0, 60.0, tp.y) * 0.7);
+            tAlb += sa * w[2];
+            tNr += sn * w[2];
+          }
+          if (w[0] > 0.004) {
+            // Grass: deep green with drier, yellower meadows here and there.
+            vec3 ga = vec3(0.0), gn = vec3(0.0);
+            tSample(0, tp.xz, tdx.xz, tdy.xz, mixK, ga, gn, 1.0);
+            float lum = dot(ga, vec3(0.3, 0.55, 0.15));
+            float dry = smoothstep(0.38, 0.78, tNoise(tp.xz * 0.011 + 3.0) * 0.7 + tNoise(tp.xz * 0.045) * 0.3);
+            vec3 lush = mix(vec3(0.065, 0.14, 0.028), vec3(0.15, 0.16, 0.055), dry) * (0.55 + lum * 2.2);
+            tAlb += mix(ga, lush, 0.62) * w[0];
+            tNr += gn * w[0];
+          }
+          if (w[6] > 0.004) {
+            // Cliffs are projected from the sides as well, so steep faces don't smear.
             vec3 bw = pow(abs(tn), vec3(4.0));
             bw /= bw.x + bw.y + bw.z;
             vec3 ra = vec3(0.0), rn = vec3(0.0);
-            tSample(2, tp.xz, tdx.xz, tdy.xz, mixK, ra, rn, bw.y);
-            tSample(2, tp.zy, tdx.zy, tdy.zy, mixK, ra, rn, bw.x);
-            tSample(2, tp.xy, tdx.xy, tdy.xy, mixK, ra, rn, bw.z);
-            tAlb += ra * w[2];
-            tNr += rn * w[2];
+            tSample(6, tp.xz, tdx.xz, tdy.xz, mixK, ra, rn, bw.y);
+            tSample(6, tp.zy, tdx.zy, tdy.zy, mixK, ra, rn, bw.x);
+            tSample(6, tp.xy, tdx.xy, tdy.xy, mixK, ra, rn, bw.z);
+            // Grey granite rather than the scan's sandstone.
+            float rl = dot(ra, vec3(0.3, 0.55, 0.15));
+            ra = mix(vec3(rl), ra, 0.3) * vec3(0.95, 0.97, 1.02);
+            ra = pow(ra, vec3(1.15)) * 0.95;
+            tAlb += ra * w[6];
+            tNr += rn * w[6];
           }
-          // Broad colour variation, lush grass, and snow on the high peaks.
-          float lum = dot(tAlb, vec3(0.3, 0.55, 0.15));
-          vec3 lush = mix(vec3(0.075, 0.15, 0.03), vec3(0.12, 0.17, 0.045), macro) * (0.55 + lum * 2.2);
-          tAlb = mix(tAlb, lush, w[0] * 0.75);
-          tAlb *= 0.8 + macro * 0.4;
-          float snow = smoothstep(78.0, 100.0, tp.y + (macro - 0.5) * 30.0) * smoothstep(0.75, 0.35, slope);
-          tAlb = mix(tAlb, vec3(0.9, 0.92, 0.96), snow);
+          if (w[7] > 0.004) {
+            // Snow stays mostly white; the scan only adds a little texture.
+            vec3 sa = vec3(0.0), sn = vec3(0.0);
+            tSample(7, tp.xz, tdx.xz, tdy.xz, mixK, sa, sn, 1.0);
+            tAlb += mix(vec3(0.8, 0.84, 0.9), sa * 1.25, 0.3) * w[7];
+            tNr += sn * w[7];
+          }
+          tAlb *= 0.84 + macro * 0.32;
           diffuseColor.rgb *= tAlb;
           float tRough = tNr.b;`)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = clamp(tRough, 0.35, 1.0);')

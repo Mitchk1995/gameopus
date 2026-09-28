@@ -162,6 +162,8 @@ const GROUND = {
   path: 'grass_path_2',
   cobble: 'cobblestone_floor_04',
   sand: 'coast_sand_01',
+  cliff: 'rock_face_03',
+  snow: 'snow_field_aerial',
 };
 
 async function cached(url, name) {

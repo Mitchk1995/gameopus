@@ -139,6 +139,13 @@ export function roadDistance(x, z) {
   return [best, width];
 }
 
+// How far out toward the mountains a point is: a rounded square warped by noise, so
+// the rim of the valley doesn't follow a straight line or a circle.
+export function rimDistance(x, z) {
+  const ax = Math.abs(x) / 400, az = Math.abs(z) / 400;
+  return Math.pow(ax ** 4 + az ** 4, 0.25) * 400 + (fbm(x * 0.006 + 11, z * 0.006 - 4) - 0.5) * 110;
+}
+
 // ------------------------------------------------------------------ height
 export function heightAt(x, z) {
   // Gently rolling land with some broad swells.
@@ -152,10 +159,12 @@ export function heightAt(x, z) {
   const dr = Math.hypot(x - 230, z + 250) / 120;
   h += 18 * Math.exp(-dr * dr * 2.5) * fbm(x * 0.015 + 5, z * 0.015);
 
-  // Mountains ring the region: ridged peaks rising from foothills.
-  const edge = Math.max(Math.abs(x), Math.abs(z)) + (fbm(x * 0.01, z * 0.01) - 0.5) * 70;
-  const foot = smooth(270, 330, edge), peak = smooth(310, 395, edge);
-  h += foot * 14 * fbm(x * 0.02 + 4, z * 0.02) + peak * (40 + ridged(x * 0.009, z * 0.009) * 105);
+  // Mountains ring the region: forested foothills rising into ridged peaks, with a
+  // concave profile (gentle at the base, steep near the top).
+  const edge = rimDistance(x, z);
+  const hills = smooth(215, 330, edge), mtn = smooth(290, 405, edge);
+  h += hills * (6 + 26 * fbm(x * 0.012 + 4, z * 0.012));
+  h += Math.pow(mtn, 1.6) * (34 + ridged(x * 0.008, z * 0.008) * 125);
 
   // Roads flatten their surroundings a little.
   const [rd, rw] = roadDistance(x, z);
@@ -210,7 +219,10 @@ export function groundAt(x, z) {
 }
 
 export function forestDensity(x, z) {
-  let d = 0, kinds = null;
+  // Woods climb the foothills and thin out where the slopes turn to rock.
+  const e = rimDistance(x, z);
+  const band = smooth(205, 250, e) * smooth(330, 290, e) * smooth(0.35, 0.6, fbm(x * 0.02 + 2, z * 0.02 + 8));
+  let d = band * 0.75, kinds = band > 0 ? (fbm(x * 0.004, z * 0.004) > 0.5 ? ['pine', 'pine', 'ash'] : ['pine', 'oak', 'ash']) : null;
   for (const f of FORESTS) {
     const k = smooth(1.0, 0.55, Math.hypot(x - f.x, z - f.z) / f.r) * f.density;
     if (k > d) {
