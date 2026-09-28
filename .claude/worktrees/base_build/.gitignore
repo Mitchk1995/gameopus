@@ -1,0 +1,10 @@
+node_modules
+dist
+*.log
+.asset-cache
+.scratch
+dist-artifact
+
+# Headless playtest screenshots
+tests/playtest/out
+__pycache__

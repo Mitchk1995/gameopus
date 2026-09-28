@@ -42,7 +42,8 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   It never force-pushes; a conflict stops it and it says why.
 - Work on a branch and open a PR for anything bigger than a tweak; CI (`.github/workflows/ci.yml`)
   builds, checks `scripts/balance.mjs`, and plays `movement`, `combat_flow`, `melee` and `gathering` headless.
-  Merge when it's green.
+  Merges are automatic: `.github/workflows/automerge.yml` merges any of the owner's PRs into
+  `main` once `build` and `playtest` pass (label a PR `hold` to stop it). Keep PRs based on `main`.
 - `npm run playtest -- tests/playtest/<name>.py` runs one scenario (`CHANNEL=chrome` locally).
   Scenarios exit non-zero on a `FAIL` line or page error, so CI catches regressions. Add a
   scenario to the CI loop when you add a mechanic.
