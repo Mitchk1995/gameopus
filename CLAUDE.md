@@ -44,6 +44,8 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   builds, checks `scripts/balance.mjs`, and plays `movement`, `combat_flow`, `melee` and `gathering` headless.
   Merges are automatic: `.github/workflows/automerge.yml` merges any of the owner's PRs into
   `main` once `build` and `playtest` pass (label a PR `hold` to stop it). Keep PRs based on `main`.
+- After opening any PR, turn on Auto-fix for it (the CI monitor switch) so red CI wakes the session;
+  the owner wants this on every PR, without asking.
 - `npm run playtest -- tests/playtest/<name>.py` runs one scenario (`CHANNEL=chrome` locally).
   Scenarios exit non-zero on a `FAIL` line or page error, so CI catches regressions. Add a
   scenario to the CI loop when you add a mechanic.
