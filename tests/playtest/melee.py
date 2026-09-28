@@ -1,3 +1,4 @@
+# ci
 # Melee against the first goblin (locked on), its loot, then walking up to the bandit camp.
 STEPS = [
   {'eval': """(() => { const g = __game; const e = g.fight.enemies[0]; g.player.spawn(e.pos.x + 2.2, e.pos.z, -Math.PI/2); g.rig.yaw = Math.PI/2; g.rig.pitch = -0.25;

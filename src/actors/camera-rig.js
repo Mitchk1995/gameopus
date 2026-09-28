@@ -7,6 +7,9 @@ import * as THREE from 'three';
 const SENS = 0.0021;
 const PITCH = [-1.25, 0.95];
 const ZOOM = [1.4, 9];
+// How far the camera keeps from walls, ceilings and trunks. The lens (near-plane corners) reaches
+// about 0.12 m around the camera point, so this keeps it clear, yet still fits doorways.
+const PAD = 0.2;
 
 export class CameraRig {
   constructor(camera, world) {
@@ -20,6 +23,7 @@ export class CameraRig {
     this.height = 1.58;
     this.pivot = new THREE.Vector3();
     this.smoothY = null;
+    this.sideK = 1;
     this.fov = camera.fov;
     this.fwd = new THREE.Vector3();
     this.right = new THREE.Vector3();
@@ -32,6 +36,7 @@ export class CameraRig {
   snap() {
     this.cur = this.dist;
     this.smoothY = null;
+    this.sideK = 1;
   }
 
   // Direction the camera looks (and the crosshair points).
@@ -68,18 +73,43 @@ export class CameraRig {
     this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     // The shoulder offset shrinks as the camera comes in, so close up it's centred.
     const k = Math.min(1, Math.max(0, (this.cur - 0.8) / 2.2));
-    const shoulder = this.tmpA || (this.tmpA = new THREE.Vector3());
-    shoulder.copy(head).addScaledVector(this.right, (this.shoulder + this.aimK * 0.14) * k);
-    const side = this.world.lineOfSight(head, shoulder, 0.25);
-    shoulder.lerpVectors(head, shoulder, side);
-
-    const want = this.tmpB || (this.tmpB = new THREE.Vector3());
+    const off = (this.shoulder + this.aimK * 0.14) * k;
     const dist = this.dist + (Math.min(this.dist, 2.6) - this.dist) * this.aimK;
-    want.copy(shoulder).addScaledVector(this.fwd, -dist);
-    const clear = this.world.lineOfSight(shoulder, want, 0.28);
-    const reach = Math.max(0.35, dist * clear - 0.1);
-    // Snap in immediately when blocked, ease back out.
-    this.cur = reach < this.cur ? reach : this.cur + (reach - this.cur) * (1 - Math.exp(-3 * dt));
+    const shoulder = this.tmpA || (this.tmpA = new THREE.Vector3());
+    const want = this.tmpB || (this.tmpB = new THREE.Vector3());
+    // How far a ball the camera's size gets back from the shoulder point s of the way
+    // out to the side (0 = over the head): it stops at the first wall, ceiling, roof or trunk.
+    const boom = (s) => {
+      shoulder.copy(head).addScaledVector(this.right, off * s);
+      want.copy(shoulder).addScaledVector(this.fwd, -dist);
+      return dist * this.world.lineOfSight(shoulder, want, PAD, true);
+    };
+    // The shoulder only helps while it costs nothing: when stepping to the side would
+    // hit a wall or shorten the view (a door jamb, a corner), slide back toward centre.
+    let sMax = 1;
+    if (off > 0.001) {
+      const base = boom(0), tmp = this.tmpC || (this.tmpC = new THREE.Vector3());
+      const ok = (s) => {
+        tmp.copy(head).addScaledVector(this.right, off * s);
+        return this.world.lineOfSight(head, tmp, PAD, true) > 0.999 && boom(s) >= base - 0.05;
+      };
+      if (!ok(1)) {
+        let lo = 0, hi = 1;
+        for (let i = 0; i < 6; i++) {
+          const mid = (lo + hi) / 2;
+          if (ok(mid)) lo = mid;
+          else hi = mid;
+        }
+        sMax = lo;
+      }
+    }
+    // Pull to the limit at once, ease back out after it clears.
+    const eased = this.sideK + (1 - this.sideK) * (1 - Math.exp(-dt * 6));
+    this.sideK = Math.min(sMax, eased);
+    // Sweep the ball back; it can come all the way in to the head if it has to.
+    const reach = Math.max(0, boom(this.sideK) - 0.04);
+    // Snap in immediately when blocked (so it never shows the inside of a wall), ease back out.
+    this.cur = reach < this.cur ? reach : this.cur + (reach - this.cur) * (1 - Math.exp(-4 * dt));
 
     const cam = this.camera;
     cam.position.copy(shoulder).addScaledVector(this.fwd, -this.cur);

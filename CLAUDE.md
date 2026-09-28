@@ -6,7 +6,12 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
 
 ## Run and test
 
-- `npm run dev` for live editing; `npm run build` for `dist/`.
+- `npm run dev` for live editing; `npm run build` for `dist/`. `npm run app` opens the built
+  game as a desktop window (`desktop/main.cjs`, Electron); `npm run package` makes
+  `release/win-unpacked/Aldermere.exe`. npm 11 skips Electron's download step: if
+  `npx electron` says it failed to install, unzip the cached zip in
+  `%LOCALAPPDATA%\electron\Cache` into `node_modules/electron/dist` and write `electron.exe` to
+  `node_modules/electron/path.txt`.
 - `npm run artifact` packs `dist-artifact/` for the claude.ai artifact (published at
   https://claude.ai/artifact/6UupW43rUU5LKTJBJUoyh5 with the `sample` capability, which
   powers typed chat). Republish only the page unless files in `public/assets` changed.
@@ -41,7 +46,8 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   End it with `npm run sync -- "what changed"` (commits everything, pulls, pushes).
   It never force-pushes; a conflict stops it and it says why.
 - Work on a branch and open a PR for anything bigger than a tweak; CI (`.github/workflows/ci.yml`)
-  builds, checks `scripts/balance.mjs`, and plays the headless scenarios listed in the workflow file.
+  builds, checks `scripts/balance.mjs`, and plays every headless scenario whose first line is the comment `# ci`
+  (add that line to a new scenario; no need to edit the workflow).
   Merges are automatic: `.github/workflows/automerge.yml` merges any of the owner's PRs into
   `main` once `build` and `playtest` pass (label a PR `hold` to stop it). Keep PRs based on `main`.
 - After opening any PR, turn on Auto-fix for it (the CI monitor switch) so red CI wakes the session;
@@ -71,6 +77,21 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
    but interiors have no ceiling colliders (the dungeon adds a `noFloor` box under its
    vault for this), so the camera rises through ceilings; also check door jambs and
    corners against the 0.28 m camera padding and the 0.08 m near plane.
+- Camera clipping (done): the rig sweeps a camera-sized ball (`Colliders.sweep`, fully 3D, 0.2 m
+  pad, may squeeze to 0.14 m) instead of a thin ray, so ceilings, roofs and door lintels
+  (`cameraOnly` shapes, added in `buildings.js` and `village.js`) hold it in; the shoulder
+  offset backs off to centre when it would shorten the view (door jambs, corners); pull-in is
+  instant, ease-out is smooth. `tests/playtest/camera.py` checks it numerically. Known gap: with a
+  wall right behind the player the camera comes all the way in to the head and the hero hides.
+
+## Open feedback from the player (do these next)
+
+1. **Characters and buildings look textureless.** Every character and village material
+   does have base colour, normal and roughness/ORM maps (1024 px), so nothing fails to
+   load; they read flat. Try: anisotropic filtering on GLB-embedded textures (only
+   `assets.texture()` sets it today), stronger `normalScale`, detail maps (triplanar on
+   buildings), checking exposure and the environment light for washed-out contrast, and
+   judging on a real GPU at High quality.
 
 After these, the player picks from: more skills (Prayer, Firemaking, Thieving), a new
 region, day/night and weather, more quests.

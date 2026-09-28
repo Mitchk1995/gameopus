@@ -8,7 +8,9 @@
     "preview": "vite preview",
     "balance": "node scripts/balance.mjs",
     "sync": "node scripts/sync.mjs",
-    "playtest": "python tests/playtest/play.py"
+    "playtest": "python tests/playtest/play.py",
+    "app": "vite build && electron .",
+    "package": "vite build && electron-builder --win dir"
   },
   "repository": {
     "type": "git",
@@ -30,8 +32,27 @@
     "playwright-core": "^1.63.0",
     "sharp": "^0.35.5",
     "vite": "^8.3.1",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "com.mitchk1995.aldermere",
+    "productName": "Aldermere",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**",
+      "dist/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "dir",
+      "signAndEditExecutable": false
+    }
+  }
 }

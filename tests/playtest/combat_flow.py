@@ -1,3 +1,4 @@
+# ci
 # Fluid combat: keep moving while swinging, jump, and cut a swing short with a dodge or a
 # jump. Prints a summary per check; a line starting "FAIL" means a check missed.
 STEPS = [
