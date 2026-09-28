@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { STEP } from '../world/world.js';
 import { WORLD } from '../world/map.js';
 import rootMotion from './rootmotion.json';
+import { UPPER } from './aim.js';
 
 // The player's body: walking, running, rolling and standing on things. Movement is
 // relative to the camera; the character turns to face where it's going. Clips play in
@@ -12,6 +13,8 @@ const RADIUS = 0.32, HEIGHT = 1.8, GRAVITY = 24;
 export const SPEED = { walk: 1.3, jog: 5.0, sprint: 7.4, aim: 1.7 };
 // Natural ground speed of each locomotion clip (from the root-motion versions).
 const CLIP_SPEED = { Walk_Loop: 0.97, Jog_Fwd_Loop: 5.36, Sprint_Loop: 8.25 };
+const JUMP_SPEED = 7.2;       // about a metre of height
+const SWING_MOVE = 0.7;       // share of jog speed you keep while swinging
 const ROLL = { clip: 'Roll', rate: 1.2, scale: 0.8, control: 0.95, iframes: [0.04, 0.55] };
 
 export class Player {
@@ -31,6 +34,13 @@ export class Player {
     this.gait = 'Idle_Loop';
     this.invulnerable = false;
     this.moved = 0;
+    this.swingMode = 'full';
+    this.swingW = 0;
+    this.swingIn = 0;
+    this.airT = 0;
+    this.wasAir = false;
+    this.landT = 0;
+    this.swingTracks = new Map();
   }
 
   spawn(x, z, facing = 0) {
@@ -92,9 +102,53 @@ export class Player {
     this.onHit = onHit;
     this.hitDone = false;
     this.lungeDone = 0;
-    this.vel.set(0, 0, 0);
-    const a = this.char.play(move.clip, { loop: false, speed: move.speed, fade: 0.08, restart: true });
-    this.clipLength = a.getClip().duration;
+    this.clipLength = this.char.clips.get(move.clip).duration;
+    // Swinging while on the move: the legs keep jogging and the swing plays on the upper
+    // body. Standing still, the whole body swings and steps in as before.
+    if (this._moving || !this.grounded) {
+      this.swingMode = 'layered';
+      this.swingIn = 0;
+    } else {
+      this.swingMode = 'full';
+      this.vel.set(0, 0, 0);
+      this.char.play(move.clip, { loop: false, speed: move.speed, fade: 0.08, restart: true });
+    }
+  }
+
+  // Starts moving mid-swing (or jumps): the legs take over, the swing carries on above.
+  #toLayered() {
+    this.swingMode = 'layered';
+    this.swingIn = 1;
+    this.gait = null;
+  }
+
+  // Runs after the animation each frame: lays the swing over the upper body while the
+  // legs do their own thing, and eases it out at the end or when a dodge cuts it off.
+  applySwing(dt) {
+    const m = this.move;
+    if (this.state === 'attack' && this.swingMode === 'layered') {
+      this.swingT = this.stateTime * m.speed;
+      this.swingIn = Math.min(1, this.swingIn + dt / 0.07);
+      const end = m.end ?? this.clipLength * 0.92;
+      this.swingW = Math.min(this.swingIn, Math.max(0, (end - this.swingT) / (0.1 * m.speed)));
+      this.swingClip = m.clip;
+    } else this.swingW = Math.max(0, this.swingW - dt / 0.1);
+    if (this.swingW < 0.01 || !this.swingClip) return;
+    const clip = this.char.clips.get(this.swingClip);
+    let tracks = this.swingTracks.get(this.swingClip);
+    if (!tracks) {
+      tracks = [];
+      for (const track of clip.tracks) {
+        const [name, prop] = track.name.split('.');
+        if (prop === 'quaternion' && UPPER.includes(name) && this.char.bones[name]) tracks.push({ bone: this.char.bones[name], interp: track.createInterpolant() });
+      }
+      this.swingTracks.set(this.swingClip, tracks);
+    }
+    const t = Math.min(this.swingT, clip.duration), q = this._q || (this._q = new THREE.Quaternion());
+    for (const { bone, interp } of tracks) {
+      const r = interp.evaluate(t);
+      bone.quaternion.slerp(q.set(r[0], r[1], r[2], r[3]).normalize(), this.swingW);
+    }
   }
 
   get attackPhase() {
@@ -185,13 +239,19 @@ export class Player {
       } else if (moving && !a.locked) this.stopAction();
     }
 
-    // Rolling is allowed from moving, blocking, and the tail end of a swing.
-    const canRoll = this.state === 'move' || this.state === 'block' || (this.state === 'attack' && this.hitDone && this.stateTime * this.move.speed > this.move.hit + 0.08);
-    if (canRoll && input.hit('Space') && this.grounded && (this.canRoll?.() ?? true)) this.#startRoll(moving ? wish : null);
-    if (this.state === 'attack' && moving && this.hitDone && this.stateTime * this.move.speed > this.move.hit + 0.28) {
-      this.state = 'move';
+    this._moving = moving;
+    // Dodge (tap Shift) and jump (Space) can cut in at any time: moving, guarding or mid-swing.
+    const free = this.state === 'move' || this.state === 'block' || this.state === 'attack';
+    const dodge = input.tapped.has('ShiftLeft') || input.tapped.has('ShiftRight');
+    if (free && dodge && this.grounded && (this.canRoll?.() ?? true)) this.#startRoll(moving ? wish : null);
+    else if ((this.state === 'move' || this.state === 'attack') && input.hit('Space') && this.grounded) {
+      this.vy = JUMP_SPEED;
+      this.grounded = false;
       this.gait = null;
+      if (this.state === 'attack' && this.swingMode === 'full') this.#toLayered();
     }
+    // Start walking mid-swing and the legs pick up the jog.
+    if (this.state === 'attack' && this.swingMode === 'full' && moving && this.stateTime * this.move.speed > 0.05) this.#toLayered();
     if (this.state === 'hurt' && this.stateTime >= this.hurtFor) {
       this.state = 'move';
       this.gait = null;
@@ -201,7 +261,11 @@ export class Player {
     prev.copy(this.pos);
     let target = 0;
     if (this.state === 'roll') this.#rollStep(dt);
-    else if (this.state === 'attack') this.#attackStep(dt);
+    else if (this.state === 'attack') {
+      this.#attackStep(dt);
+      // Swinging on the move: keep going at a reduced pace, body still facing the swing.
+      if (this.swingMode === 'layered') target = this.#steer(dt, wish, moving, SPEED.jog * SWING_MOVE, false);
+    }
     else if (this.state === 'block') {
       // Shuffle while guarding, facing stays put.
       const k = 1 - Math.exp(-14 * dt);
@@ -217,26 +281,13 @@ export class Player {
       this.knock.left -= step;
       if (this.knock.left <= 0) this.knock = null;
     } else if (this.state === 'move') {
-      target = moving ? (this.walking ? SPEED.walk : input.down('ShiftLeft') || input.down('ShiftRight') ? SPEED.sprint : SPEED.jog) : 0;
-      // Shallow water slows you down.
-      const depth = this.world.waterDepth(this.pos.x, this.pos.z);
-      if (depth > 0.15) target *= 1 - Math.min(0.55, depth * 0.6);
-      if (this.aimYaw != null) target = Math.min(target, SPEED.aim);
-      // Snappy: starts and stops take a few frames, and the jog-to-sprint change is a
-      // touch softer so it reads as a gear change. The time constants are in seconds.
-      const tau = !moving ? 0.035 : target > SPEED.jog + 0.1 && this.vel.length() < target ? 0.09 : 0.05;
-      const k = 1 - Math.exp(-dt / tau);
-      this.vel.x += (wish.x * target - this.vel.x) * k;
-      this.vel.z += (wish.z * target - this.vel.z) * k;
-      // Aiming: face the crosshair and walk, strafing as needed.
-      if (this.aimYaw != null) this.#turnTowards(this.aimYaw, dt, 16);
-      else if (moving) this.#turnTowards(Math.atan2(wish.x, wish.z), dt, target > SPEED.jog + 0.1 ? 15 : 22);
+      target = this.#steer(dt, wish, moving, Infinity, true);
     } else {
       this.vel.x *= Math.exp(-20 * dt);
       this.vel.z *= Math.exp(-20 * dt);
     }
 
-    if (this.state === 'move' || this.state === 'block' || this.state === 'act') {
+    if (this.state === 'move' || this.state === 'block' || this.state === 'act' || this.state === 'attack') {
       this.pos.x += this.vel.x * dt;
       this.pos.z += this.vel.z * dt;
     }
@@ -244,8 +295,30 @@ export class Player {
     this.#fall(dt);
     const d = Math.hypot(this.pos.x - prev.x, this.pos.z - prev.z);
     this.moved += d;
-    if (this.state === 'move') this.#animate(d / Math.max(dt, 1e-4), target);
+    if (this.state === 'move' || (this.state === 'attack' && this.swingMode === 'layered')) this.#animate(dt, d / Math.max(dt, 1e-4), target);
     this.#sync();
+  }
+
+  // Accelerates toward the wanted direction; returns the speed being aimed for. Starts and
+  // stops take a few frames, and the jog-to-run change is a touch softer so it reads as a
+  // gear change (the numbers are time constants, in seconds). In the air you steer less.
+  #steer(dt, wish, moving, cap, turn) {
+    const input = this.input;
+    let target = moving ? (this.walking ? SPEED.walk : input.down('ShiftLeft') || input.down('ShiftRight') ? SPEED.sprint : SPEED.jog) : 0;
+    // Shallow water slows you down.
+    const depth = this.world.waterDepth(this.pos.x, this.pos.z);
+    if (depth > 0.15) target *= 1 - Math.min(0.55, depth * 0.6);
+    target = Math.min(target, cap);
+    if (this.aimYaw != null) target = Math.min(target, SPEED.aim);
+    let tau = !moving ? 0.035 : target > SPEED.jog + 0.1 && this.vel.length() < target ? 0.09 : 0.05;
+    if (!this.grounded) tau = Math.max(tau, 0.3);
+    const k = 1 - Math.exp(-dt / tau);
+    this.vel.x += (wish.x * target - this.vel.x) * k;
+    this.vel.z += (wish.z * target - this.vel.z) * k;
+    // Aiming: face the crosshair and walk, strafing as needed.
+    if (this.aimYaw != null && turn) this.#turnTowards(this.aimYaw, dt, 16);
+    else if (moving && turn) this.#turnTowards(Math.atan2(wish.x, wish.z), dt, target > SPEED.jog + 0.1 ? 15 : 22);
+    return target;
   }
 
   #startRoll(dir) {
@@ -329,19 +402,49 @@ export class Player {
   }
 
   // Idle, walk, jog (regular) or run (sprint, Shift) by what the player asked for, with
-  // each clip's rate matched to the real ground speed so the feet don't skate.
-  #animate(speed, target) {
-    let gait;
-    if (target === 0) gait = speed < 1.5 ? 'Idle_Loop' : this.gait || 'Idle_Loop';
+  // each clip's rate matched to the real ground speed so the feet don't skate. Off the
+  // ground it's the jump clips; swinging on the move, the legs read your direction
+  // relative to where the body is facing (backing away plays the jog in reverse).
+  #animate(dt, speed, target) {
+    if (!this.grounded) {
+      this.airT = this.wasAir ? this.airT + dt : 0;
+      this.wasAir = true;
+      const gait = this.airT > 0.65 ? 'Jump_Loop' : 'Jump_Start';
+      if (gait !== this.gait) {
+        this.char.play(gait, { fade: 0.08, loop: gait === 'Jump_Loop', speed: gait === 'Jump_Loop' ? 1 : 2.2 });
+        this.gait = gait;
+      }
+      return;
+    }
+    if (this.wasAir) {
+      this.wasAir = false;
+      this.gait = null;
+      if (speed < 1.5 && target === 0 && this.state === 'move') {
+        this.char.play('Jump_Land', { fade: 0.05, loop: false, speed: 3.2, restart: true });
+        this.gait = 'Jump_Land';
+        this.landT = 0.16;
+        return;
+      }
+    }
+    if (this.gait === 'Jump_Land' && this.landT > 0 && target === 0) {
+      this.landT -= dt;
+      return;
+    }
+    let gait, dir = 1;
+    if (this.state === 'attack') {
+      const sp = Math.hypot(this.vel.x, this.vel.z);
+      gait = sp < 1.5 ? 'Idle_Loop' : 'Jog_Fwd_Loop';
+      if (sp >= 1.5 && (this.vel.x * Math.sin(this.yaw) + this.vel.z * Math.cos(this.yaw)) / sp < -0.35) dir = -1;
+    } else if (target === 0) gait = speed < 1.5 ? 'Idle_Loop' : this.gait || 'Idle_Loop';
     else if (target <= SPEED.walk + 0.01 || this.aimYaw != null) gait = 'Walk_Loop';
     else if (target > SPEED.jog + 0.1 && speed > SPEED.jog - 0.3) gait = 'Sprint_Loop';
     else gait = 'Jog_Fwd_Loop';
     if (!(gait in CLIP_SPEED || gait === 'Idle_Loop')) gait = 'Idle_Loop';
-    const rate = gait === 'Idle_Loop' ? 1 : Math.min(1.25, Math.max(0.75, speed / CLIP_SPEED[gait]));
+    const rate = gait === 'Idle_Loop' ? 1 : Math.min(1.25, Math.max(0.5, speed / CLIP_SPEED[gait]));
     if (gait !== this.gait) {
-      this.char.play(gait, { fade: gait === 'Idle_Loop' ? 0.15 : 0.1, speed: rate });
+      this.char.play(gait, { fade: gait === 'Idle_Loop' ? 0.15 : 0.1, speed: dir * rate });
       this.gait = gait;
-    } else if (gait !== 'Idle_Loop') this.char.current.timeScale = rate;
+    } else if (gait !== 'Idle_Loop') this.char.current.timeScale = dir * rate;
   }
 
   #sync() {

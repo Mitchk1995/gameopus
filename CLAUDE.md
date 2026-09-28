@@ -41,7 +41,7 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   End it with `npm run sync -- "what changed"` (commits everything, pulls, pushes).
   It never force-pushes; a conflict stops it and it says why.
 - Work on a branch and open a PR for anything bigger than a tweak; CI (`.github/workflows/ci.yml`)
-  builds, checks `scripts/balance.mjs`, and plays `movement`, `melee` and `gathering` headless.
+  builds, checks `scripts/balance.mjs`, and plays `movement`, `combat_flow`, `melee` and `gathering` headless.
   Merge when it's green.
 - `npm run playtest -- tests/playtest/<name>.py` runs one scenario (`CHANNEL=chrome` locally).
   Scenarios exit non-zero on a `FAIL` line or page error, so CI catches regressions. Add a
@@ -49,24 +49,21 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
 - Movement (done): plain movement is a jog (5 m/s), holding Shift runs (7.4 m/s), Z/CapsLock
   toggles walk, and aiming walks. Starts and stops settle in about 0.15 s, the gait clip is
   picked by intent and its rate follows real speed. `tests/playtest/movement.py` measures it.
+- Fluid combat (done): Space jumps, tapping Shift dodge-rolls, holding Shift runs. Swinging while
+  moving keeps you going at 70% jog speed with the swing layered over the upper body (legs keep
+  jogging; standing swings stay full-body). A dodge or jump cuts a swing off at any time.
+  `tests/playtest/combat_flow.py` checks all of it. Known gap: no strafe clips, so side-steps
+  during a swing play the forward jog.
 
 ## Open feedback from the player (do these next)
 
-1. **Combat must be fluid: move, jump, attack and dodge freely.** Attacks put the player
-   in the `attack` state, which drives a root-motion lunge and ignores movement until
-   after the hit; rolls are only allowed late in a swing. Plan: play attack clips on the
-   upper body only over the legs' locomotion (the approach in `aim.js`: sample the clip's
-   bone rotations and slerp the upper-body bones), keep moving (about 70% speed) while
-   swinging with a small lunge, let dodges and jumps cancel attacks at any time, and add a
-   jump (clips `Jump_Start`, `Jump_Loop`, `Jump_Land` are loaded; the controller already
-   has gravity). Proposed keys: Space jumps, tap Shift (or C) dodges, hold Shift sprints.
-2. **Characters and buildings look textureless.** Every character and village material
+1. **Characters and buildings look textureless.** Every character and village material
    does have base colour, normal and roughness/ORM maps (1024 px), so nothing fails to
    load; they read flat. Try: anisotropic filtering on GLB-embedded textures (only
    `assets.texture()` sets it today), stronger `normalScale`, detail maps (triplanar on
    buildings), checking exposure and the environment light for washed-out contrast, and
    judging on a real GPU at High quality.
-3. **The camera clips into buildings.** The rig's line-of-sight test sees wall colliders
+2. **The camera clips into buildings.** The rig's line-of-sight test sees wall colliders
    but interiors have no ceiling colliders (the dungeon adds a `noFloor` box under its
    vault for this), so the camera rises through ceilings; also check door jambs and
    corners against the 0.28 m camera padding and the 0.08 m near plane.

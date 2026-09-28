@@ -6,6 +6,8 @@ export class Input {
     this.pressed = new Set();
     this.buttons = new Set();
     this.clicked = new Set();
+    this.tapped = new Set();
+    this.downAt = new Map();
     this.dx = 0;
     this.dy = 0;
     this.wheel = 0;
@@ -18,9 +20,14 @@ export class Input {
       if (e.repeat || (typing && e.code !== 'Escape')) return;
       this.keys.add(e.code);
       this.pressed.add(e.code);
+      this.downAt.set(e.code, performance.now());
       if (this.locked && ['Space', 'Tab', 'KeyQ', 'KeyE', 'KeyF', 'ShiftLeft', 'ControlLeft'].includes(e.code)) e.preventDefault();
     });
-    addEventListener('keyup', (e) => this.keys.delete(e.code));
+    addEventListener('keyup', (e) => {
+      // Let go within a fifth of a second and it counts as a tap.
+      if (this.keys.has(e.code) && performance.now() - (this.downAt.get(e.code) ?? 0) < 220) this.tapped.add(e.code);
+      this.keys.delete(e.code);
+    });
     addEventListener('blur', () => {
       this.keys.clear();
       this.buttons.clear();
@@ -70,6 +77,7 @@ export class Input {
   endFrame() {
     this.pressed.clear();
     this.clicked.clear();
+    this.tapped.clear();
     this.dx = this.dy = 0;
     this.wheel = 0;
   }

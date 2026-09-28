@@ -9,7 +9,7 @@ const el = (tag, cls, html) => {
 
 const CONTROLS = [
   ['W A S D', 'Move (jog)'], ['Mouse', 'Look'],
-  ['Shift', 'Hold to run'], ['Space', 'Roll'],
+  ['Shift', 'Hold to run, tap to dodge roll'], ['Space', 'Jump'],
   ['LMB', 'Attack (chain 3); hold to draw a bow or cast'], ['F', 'Heavy attack'],
   ['RMB', 'Block, tap to parry; steady your aim'], ['Q', 'Lock on'],
   ['E', 'Use / talk'], ['Tab', 'Pack'],
