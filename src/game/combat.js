@@ -89,7 +89,8 @@ export const MONSTERS = {
   },
   goblin_brute: {
     name: 'Goblin brute', model: 'puglin', skin: 2, scale: 1.3, level: 13, hp: 22, att: 10, str: 13, def: 9, acc: 5, strB: 6, defB: 8,
-    speed: 3.1, aggro: 11, leash: 26, poise: 3, attacks: [SCRATCH, { ...HOOK, dmg: 1.2 }, { ...SCRATCH, windup: 0.95, dmg: 1.8, unblockable: true }], drops: 'goblin_brute', respawn: 40,
+    // Slow to rouse, so a new fighter can pick off the goblins at the edge of camp.
+    speed: 3.1, aggro: 7, leash: 26, poise: 3, attacks: [SCRATCH, { ...HOOK, dmg: 1.2 }, { ...SCRATCH, windup: 0.95, dmg: 1.8, unblockable: true }], drops: 'goblin_brute', respawn: 40,
   },
   bandit: {
     name: 'Bandit', model: 'human', look: { outfit: 'male_peasant', body: 'male', hair: 'hair_buzzed', eyebrows: 'eyebrows_regular', tint: 0x8a3a30, tintMaterial: 'Peasant' }, weapon: 'iron_sword',
