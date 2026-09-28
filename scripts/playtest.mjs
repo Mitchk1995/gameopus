@@ -1,8 +1,10 @@
 // Headless playtest: serves dist/ over HTTP, opens it in Chromium and runs scripted steps.
 //   STEPS='[{"eval":"..."},{"wait":500,"shot":"name"}]' SP=out_dir node scripts/playtest.mjs
+// (tests/playtest/play.py runs a scenario file through this.)
 // Step keys: key (hold), up (release), press, mouse [x,y], down/mup (button), eval (JS), wait (ms), shot (png name).
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 
@@ -25,7 +27,17 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+// A cloud container brings its own Chromium and no GPU (software GL). Elsewhere use
+// Playwright's Chromium (npx playwright install chromium), or CHANNEL=chrome for
+// the installed Chrome, on the real GPU unless SOFTWARE_GL=1.
+const BUNDLED = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const executablePath = process.env.CHROME || (existsSync(BUNDLED) ? BUNDLED : undefined);
+const software = process.env.SOFTWARE_GL ? process.env.SOFTWARE_GL !== '0' : !!executablePath && executablePath === BUNDLED;
+const browser = await chromium.launch({
+  executablePath,
+  channel: executablePath ? undefined : process.env.CHANNEL,
+  args: software ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--ignore-gpu-blocklist'],
+});
 const page = await browser.newPage({ viewport: { width: +(process.env.W || 1280), height: +(process.env.H || 720) } });
 const errs = [];
 page.on('console', (m) => {
