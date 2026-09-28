@@ -3,7 +3,7 @@ import { enhance } from './enhance.js';
 
 // Shared, cached materials for item models and character gear.
 // One kit per WebGL context (each needs its own environment map).
-export function createKit(env, { envScale = 1, roughAdd = 0 } = {}) {
+export function createKit(env, { envScale = 1, roughAdd = 0, metalTint = 1 } = {}) {
   const cache = new Map();
   const get = (key, make) => {
     if (!cache.has(key)) cache.set(key, make());
@@ -18,8 +18,8 @@ export function createKit(env, { envScale = 1, roughAdd = 0 } = {}) {
     iron: { tex: 'iron', color: [0.9, 0.9, 0.95], metal: 0.85, rough: 1 },
     rust: { tex: 'iron', color: [1.25, 1.0, 0.85], metal: 0.6, rough: 1.1 },
     gold: { tex: 'gold', color: [1, 1, 1], metal: 1, rough: 0.9 },
-    bronze: { tex: 'gold', color: [0.62, 0.44, 0.32], metal: 1, rough: 1.1 },
-    copper: { tex: 'gold', color: [0.78, 0.42, 0.3], metal: 1, rough: 1.1 },
+    bronze: { tex: 'gold', color: [0.6, 0.62, 0.95], metal: 1, rough: 1.1 },
+    copper: { tex: 'steel', color: [1.0, 0.62, 0.48], metal: 1, rough: 0.7 },
     void: { tex: 'iron', color: [0.22, 0.18, 0.3], metal: 0.9, rough: 0.55 },
     ice: { tex: 'steel', color: [0.7, 0.9, 1.1], metal: 0.4, rough: 0.35 },
   };
@@ -29,7 +29,7 @@ export function createKit(env, { envScale = 1, roughAdd = 0 } = {}) {
     metal(kind = 'steel') {
       return get(`metal:${kind}`, () => {
         const m = METALS[kind];
-        return enhance(new THREE.MeshStandardMaterial({ color: new THREE.Color(...m.color), metalness: m.metal, roughness: Math.min(1, m.rough + roughAdd), envMap: env, envMapIntensity: 1.1 * envScale }),
+        return enhance(new THREE.MeshStandardMaterial({ color: new THREE.Color(...m.color).multiplyScalar(metalTint), metalness: m.metal, roughness: Math.min(1, m.rough + roughAdd), envMap: env, envMapIntensity: 1.1 * envScale }),
           { tex: m.tex, scale: m.scale ?? (m.tex === 'gold' ? 4 : 3), bump: m.bump ?? (m.tex === 'gold' ? 0.35 : 0.7), rim: 0.35 });
       });
     },

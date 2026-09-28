@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { studioEnv } from './envs.js';
 import { createKit } from './kit.js';
-import { buildItemModel, artKey, disposeModel } from './items3d.js';
+import { buildItemModel, artKey, disposeModel, cowl } from './items3d.js';
 import { UNIQUE_BY_ID } from '../content/uniques.js';
 import { BASES } from '../content/bases.js';
 
@@ -118,18 +118,29 @@ export class ArtStudio {
       g.add(tail);
       bg = ['#2c0f45', '#07030c']; glow = '#c890ff';
     } else if (id === 'dash') {
-      const figure = (mat, x, sc = 1) => {
-        const f = new THREE.Group();
-        f.add(new THREE.Mesh(new THREE.ConeGeometry(0.32, 1.0, 16), mat).translateY(-0.1));
-        f.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), mat).translateY(0.48));
-        f.add(new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.34, 12), mat).translateY(0.64));
-        f.position.x = x;
-        f.rotation.z = -0.35;
-        f.scale.setScalar(sc);
-        return f;
+      // A hooded, cloaked figure lunging right, trailing fading afterimages.
+      const figure = (mat, x, ghost) => {
+        const lean = new THREE.Group();
+        const body = new THREE.Group();
+        const cloak = new THREE.LatheGeometry([[0.001, -0.66], [0.38, -0.62], [0.3, -0.22], [0.22, 0.14], [0.15, 0.32], [0.001, 0.36]].map(([a, b]) => new THREE.Vector2(a, b)), 24);
+        const pos = cloak.attributes.position;
+        for (let i = 0; i < pos.count; i++) if (pos.getY(i) < 0) pos.setZ(i, pos.getZ(i) + pos.getY(i) * 0.3);
+        cloak.computeVertexNormals();
+        body.add(new THREE.Mesh(cloak, mat));
+        const hood = cowl(k, mat, ghost ? mat : k.cloth(0x1a0806));
+        hood.scale.setScalar(0.6);
+        hood.position.set(0, 0.55, 0.04);
+        body.add(hood);
+        if (ghost) body.traverse((o) => { if (o.isMesh) o.material = mat; });
+        else for (const sx of [-1, 1]) body.add(new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 6), glowMat(0x9ff0ff, 3.5)).translateX(sx * 0.05).translateY(0.53).translateZ(0.14));
+        body.rotation.y = Math.PI / 2;
+        lean.add(body);
+        lean.rotation.z = -0.22;
+        lean.position.x = x;
+        return lean;
       };
-      g.add(figure(k.cloth(0x3a1418), 0.35));
-      [0.25, 0.16, 0.09].forEach((o, i) => g.add(figure(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 1.0, 1.8), transparent: true, opacity: o }), -0.2 - i * 0.42, 0.98)));
+      g.add(figure(k.cloth(0x5a1612), 0.38, false));
+      [0.3, 0.17, 0.08].forEach((o, i) => g.add(figure(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 1.0, 1.8), transparent: true, opacity: o, depthWrite: false }), -0.2 - i * 0.5, true)));
       for (let i = 0; i < 5; i++) g.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.025, 0.02), glowMat(0x8fe8ff, 2)).translateX(-0.5).translateY(-0.4 + i * 0.2));
       bg = ['#0c2f3a', '#020709']; glow = '#7fe0ff';
     } else if (id === 'nova') {

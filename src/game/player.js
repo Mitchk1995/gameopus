@@ -16,7 +16,7 @@ function buildModel(kit) {
     armor: kit.metal('steel'),
     dark: kit.metal('iron'),
     trim: kit.metal('bronze'),
-    cloth: kit.cloth(0x5a1612),
+    cloth: kit.cloth(0x44120e),
     leather: kit.leather(0x4a2c1a),
   };
   const eyeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 3.5, 4.5) });
@@ -111,7 +111,7 @@ function buildModel(kit) {
 export class Player {
   constructor(game) {
     this.game = game;
-    this.kit = createKit(game.gfx.env, { roughAdd: 0.2 });
+    this.kit = createKit(game.gfx.env, { roughAdd: 0.2, metalTint: 0.62 });
     this.model = buildModel(this.kit);
     game.scene.add(this.model.root);
     this.radius = 0.45;
@@ -171,11 +171,13 @@ export class Player {
     w.position.y = 0.17; // grip in the fist
     w.scale.setScalar(1.0);
     m.weaponMount.add(w);
-    m.hood.visible = !eq.helm;
+    // A crown is worn over the hood; every other helm replaces it.
+    const crown = eq.helm?.base === 'Crown of Thorns' && !eq.helm.uniqueId;
+    m.hood.visible = !eq.helm || crown;
     if (eq.helm) {
       const h = bake(buildItemModel(eq.helm, this.kit));
-      h.scale.setScalar(0.74);
-      h.position.set(0, -0.03, 0.01);
+      h.scale.setScalar(crown ? 0.84 : 0.74);
+      h.position.set(0, crown ? 0.15 : -0.03, crown ? -0.02 : 0.01);
       m.helmMount.add(h);
     }
     const k = this.kit;
@@ -532,7 +534,7 @@ export class Player {
     m.body.visible = !flick;
 
     const torch = g.world.torch;
-    torch.position.set(this.x, 3.4, this.z + 0.6);
-    torch.intensity = 48 + Math.sin(t * 11) * 3 + Math.sin(t * 17.3) * 2;
+    torch.position.set(this.x, 4.6, this.z + 0.9);
+    torch.intensity = 80 + Math.sin(t * 11) * 5 + Math.sin(t * 17.3) * 3.5;
   }
 }

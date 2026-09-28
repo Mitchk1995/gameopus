@@ -43,7 +43,7 @@ export class Loot {
     this.game = game;
     this.items = [];
     this.pickups = [];
-    this.kit = createKit(game.gfx.env, { roughAdd: 0.2 });
+    this.kit = createKit(game.gfx.env, { roughAdd: 0.2, metalTint: 0.62 });
     // A soft rarity-colored glint under every drop so it reads on the dark floor.
     this.glintGeo = new THREE.CircleGeometry(0.7, 24);
     this.glintGeo.rotateX(-Math.PI / 2);
