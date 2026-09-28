@@ -61,7 +61,8 @@ export class MonsterFactory {
     return new Character(root, bones, this.#clipsFor(def.model, bones));
   }
 
-  // The humans' clips with hip height rescaled to this creature's legs.
+  // The humans' clips with hip height rescaled to this creature's legs, and without
+  // the tracks for bones it doesn't have (fingers, toes).
   #clipsFor(model, bones) {
     if (this.retargeted.has(model)) return this.retargeted.get(model);
     const human = this.people.restPelvis;
@@ -69,6 +70,7 @@ export class MonsterFactory {
     const clips = new Map();
     for (const [name, clip] of this.people.clips) {
       const c = clip.clone();
+      c.tracks = c.tracks.filter((t) => bones[t.name.slice(0, t.name.lastIndexOf('.'))]);
       for (const t of c.tracks) if (t.name === 'pelvis.position' || t.name === 'root.position') for (let i = 0; i < t.values.length; i++) t.values[i] *= k;
       clips.set(name, c);
     }

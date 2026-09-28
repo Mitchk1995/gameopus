@@ -33,6 +33,9 @@ page.on('console', (m) => {
   else if (process.env.LOG) console.log('console:', m.text());
 });
 page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message + '\n' + e.stack));
+page.on('response', (r) => {
+  if (r.status() >= 400) errs.push(`HTTP ${r.status()} ${r.url()}`);
+});
 await page.goto(`http://localhost:${port}/${process.env.HASH || ''}`);
 await page.waitForFunction(() => window.__game?.ready || window.__game, null, { timeout: +(process.env.READY_TIMEOUT || 120000) }).catch(() => errs.push('timeout waiting for game'));
 await page.waitForTimeout(+(process.env.SETTLE || 1500));
@@ -48,6 +51,6 @@ for (const s of steps) {
   if (s.wait) await page.waitForTimeout(s.wait);
   if (s.shot) await page.screenshot({ path: `${SP}/${s.shot}.png`, timeout: 120000 });
 }
-console.log(errs.filter((e) => !e.includes('ERR_CERT') && !e.includes('fonts.g')).slice(0, 30).join('\n') || 'no errors');
+console.log(errs.filter((e) => !e.includes('ERR_CERT') && (process.env.ALLERR || !e.includes('fonts.g'))).slice(0, 30).join('\n') || 'no errors');
 await browser.close();
 server.close();
