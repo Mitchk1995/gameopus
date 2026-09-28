@@ -63,7 +63,7 @@ export class Dungeon {
     this.mesh = batch.build();
     this.scene.add(this.mesh);
     // The camera stays under the vault.
-    this.colliders.addBox(0, 0, this.half + 4, this.half + 4, 0, WALL_H * 2 - 0.1, WALL_H * 2 + 3).noFloor = true;
+    this.colliders.addBox(0, 0, this.half + 4, this.half + 4, 0, WALL_H * 2 - 0.1, WALL_H * 2 + 3).cameraOnly = true;
 
     // Light: a cool faint ambient, a lantern glow around the player, torch lights.
     this.scene.add(new THREE.HemisphereLight(0x8090a8, 0x2a1d12, 0.55));
@@ -266,8 +266,13 @@ export class Dungeon {
     return -99;
   }
 
-  lineOfSight(a, b, pad = 0.2) {
-    return this.colliders.raycast(a.x, a.y, a.z, b.x - a.x, b.y - a.y, b.z - a.z, pad);
+  lineOfSight(a, b, pad = 0.2, camera = false) {
+    const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+    if (!camera) return this.colliders.raycast(a.x, a.y, a.z, dx, dy, dz, pad);
+    let t = this.colliders.sweep(a.x, a.y, a.z, dx, dy, dz, pad);
+    // The stone floor holds the camera up too.
+    if (b.y < pad && a.y > pad) t = Math.min(t, (a.y - pad) / (a.y - b.y));
+    return t;
   }
 
   near(x, z, r) {

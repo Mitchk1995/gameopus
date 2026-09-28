@@ -3,6 +3,9 @@
 // vertical span, so a low step or a floor can be walked onto while a wall blocks.
 //   circle: { x, z, r, y0, y1 }
 //   box:    { x, z, hx, hz, rot, y0, y1 }  (rot turns the box like object.rotation.y)
+// Flags: `floor` (walkable top), `noCamera` (the camera sees through it), `cameraOnly`
+// (only the camera collides with it: ceilings, roofs and lintels that the player can't
+// reach or would only snag on).
 
 const CELL = 8;
 
@@ -87,7 +90,7 @@ export class Colliders {
     let hit = false;
     for (let pass = 0; pass < 2; pass++)
       for (const sh of this.query(p.x, p.z, r + 1, this.tmp2 || (this.tmp2 = []))) {
-        if (sh.y1 <= p.y + step || sh.y0 >= p.y + h) continue;
+        if (sh.cameraOnly || sh.y1 <= p.y + step || sh.y0 >= p.y + h) continue;
         if (sh.kind === 'c') {
           const dx = p.x - sh.x, dz = p.z - sh.z, d = Math.hypot(dx, dz), min = r + sh.r;
           if (d >= min) continue;
@@ -128,7 +131,7 @@ export class Colliders {
     const mx = ox + dx / 2, mz = oz + dz / 2;
     let best = 1;
     for (const sh of this.query(mx, mz, len / 2 + 1, this.tmp3 || (this.tmp3 = []))) {
-      if (sh.noCamera) continue;
+      if (sh.noCamera || sh.cameraOnly) continue;
       let t;
       if (sh.kind === 'c') t = rayCylinder(ox - sh.x, oz - sh.z, dx, dz, sh.r + pad);
       else {
@@ -144,6 +147,65 @@ export class Colliders {
     }
     return best;
   }
+
+  // How far a camera-sized ball can travel along o -> o + d before it would touch a solid,
+  // as a fraction in [0, 1] (1 = clear). Unlike raycast this is fully 3D (a ceiling above
+  // the start blocks a ray that climbs to it), honours ceilings and roofs (cameraOnly),
+  // and a start that is already closer to a solid than `pad` may still press on down to
+  // `tight` from it (but no nearer), so hugging a wall or brushing a door jamb doesn't
+  // collapse the view.
+  sweep(ox, oy, oz, dx, dy, dz, pad, tight = 0.14) {
+    const len = Math.hypot(dx, dz);
+    let best = 1;
+    for (const sh of this.query(ox + dx / 2, oz + dz / 2, len / 2 + 1, this.tmp3 || (this.tmp3 = []))) {
+      if (sh.noCamera) continue;
+      // Clearance from the start to the solid: the biggest gap on any axis.
+      const gy = Math.max(sh.y0 - oy, oy - sh.y1);
+      let gap, lx = 0, lz = 0, ldx = 0, ldz = 0;
+      if (sh.kind === 'c') gap = Math.max(Math.hypot(ox - sh.x, oz - sh.z) - sh.r, gy);
+      else {
+        [lx, lz] = Colliders.local(sh, ox, oz);
+        ldx = dx * sh.c - dz * sh.s;
+        ldz = dx * sh.s + dz * sh.c;
+        gap = Math.max(Math.abs(lx) - sh.hx, Math.abs(lz) - sh.hz, gy);
+      }
+      if (gap <= 1e-4) return 0;
+      const e = gap >= pad ? pad : gap > tight + 1e-3 ? tight : gap - 1e-4;
+      // Time span inside the solid grown by e, on each axis.
+      let a = 0, b = Math.min(1, best);
+      const y = slab(oy, dy, sh.y0 - e, sh.y1 + e);
+      if (!y) continue;
+      a = Math.max(a, y[0]);
+      b = Math.min(b, y[1]);
+      if (a >= b) continue;
+      if (sh.kind === 'c') {
+        const r = sh.r + e, ex = ox - sh.x, ez = oz - sh.z, qa = dx * dx + dz * dz;
+        if (qa < 1e-9) {
+          if (ex * ex + ez * ez >= r * r) continue;
+        } else {
+          const qb = ex * dx + ez * dz, disc = qb * qb - qa * (ex * ex + ez * ez - r * r);
+          if (disc <= 0) continue;
+          const sq = Math.sqrt(disc);
+          a = Math.max(a, (-qb - sq) / qa);
+          b = Math.min(b, (-qb + sq) / qa);
+        }
+      } else {
+        const sx = slab(lx, ldx, -sh.hx - e, sh.hx + e), sz = slab(lz, ldz, -sh.hz - e, sh.hz + e);
+        if (!sx || !sz) continue;
+        a = Math.max(a, sx[0], sz[0]);
+        b = Math.min(b, sx[1], sz[1]);
+      }
+      if (a < b && a < best) best = a;
+    }
+    return best;
+  }
+}
+
+// Span of t in which o + t d lies within [lo, hi], or null if never.
+function slab(o, d, lo, hi) {
+  if (Math.abs(d) < 1e-9) return o > lo && o < hi ? [-Infinity, Infinity] : null;
+  const a = (lo - o) / d, b = (hi - o) / d;
+  return a < b ? [a, b] : [b, a];
 }
 
 // Entry fraction of a 2D ray into a circle at the origin, or null.

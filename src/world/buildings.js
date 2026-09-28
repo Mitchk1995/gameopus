@@ -10,6 +10,7 @@ import * as THREE from 'three';
 
 export const STOREY = 3.0;
 const WALL_T = 0.41, WALL_Z = -0.105; // thickness, and where the wall's middle sits
+const DOOR_H = 2.25; // how high the doorway opening goes
 
 const STYLES = {
   plaster: {
@@ -123,9 +124,17 @@ export function buildHouse(kit, batch, colliders, spec, groundY) {
             const ox = horiz ? cx + s * 0.78 : cx, oz = horiz ? cz : cz + s * 0.78;
             add(ox, oz, horiz ? 0.24 : WALL_T / 2, horiz ? WALL_T / 2 : 0.24);
           }
+          // The wall above the door: solid to the camera, but the player passes under it.
+          const v = new THREE.Vector3(cx, 0, cz).applyMatrix4(world);
+          const lintel = colliders.addBox(v.x, v.z, horiz ? 0.6 : WALL_T / 2, horiz ? WALL_T / 2 : 0.6, spec.rot || 0, groundY + DOOR_H, groundY + h);
+          lintel.cameraOnly = true;
         }
       }
     }
+    // The roof: from the top of the walls up, over the whole footprint, so the camera
+    // can't climb through the ceiling or roof from inside (or drop through it from above).
+    const roofSlab = colliders.addBox(spec.x, spec.z, hw + 0.2, hd + 0.2, spec.rot || 0, groundY + floors * STOREY - 0.05, groundY + floors * STOREY + 6);
+    roofSlab.cameraOnly = true;
   }
   return { world, top, openings };
 }

@@ -50,9 +50,11 @@ export class World {
   }
 
   // Fraction of the segment from a to b that is clear of terrain and solid shapes.
-  lineOfSight(a, b, pad = 0.2) {
+  // `camera` sweeps a camera-sized ball instead of a thin ray: fully 3D, and blocked by
+  // ceilings and roofs too.
+  lineOfSight(a, b, pad = 0.2, camera = false) {
     const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
-    let t = this.colliders.raycast(a.x, a.y, a.z, dx, dy, dz, pad);
+    let t = camera ? this.colliders.sweep(a.x, a.y, a.z, dx, dy, dz, pad) : this.colliders.raycast(a.x, a.y, a.z, dx, dy, dz, pad);
     // March the terrain in half-metre steps.
     const n = Math.ceil(Math.hypot(dx, dz) / 0.5);
     for (let i = 1; i <= n; i++) {

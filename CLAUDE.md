@@ -41,7 +41,7 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   End it with `npm run sync -- "what changed"` (commits everything, pulls, pushes).
   It never force-pushes; a conflict stops it and it says why.
 - Work on a branch and open a PR for anything bigger than a tweak; CI (`.github/workflows/ci.yml`)
-  builds, checks `scripts/balance.mjs`, and plays `movement`, `combat_flow`, `melee` and `gathering` headless.
+  builds, checks `scripts/balance.mjs`, and plays `movement`, `combat_flow`, `melee`, `gathering` and `camera` headless.
   Merge when it's green.
 - `npm run playtest -- tests/playtest/<name>.py` runs one scenario (`CHANNEL=chrome` locally).
   Scenarios exit non-zero on a `FAIL` line or page error, so CI catches regressions. Add a
@@ -54,6 +54,12 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   jogging; standing swings stay full-body). A dodge or jump cuts a swing off at any time.
   `tests/playtest/combat_flow.py` checks all of it. Known gap: no strafe clips, so side-steps
   during a swing play the forward jog.
+- Camera clipping (done): the rig sweeps a camera-sized ball (`Colliders.sweep`, fully 3D, 0.2 m
+  pad, may squeeze to 0.14 m) instead of a thin ray, so ceilings, roofs and door lintels
+  (`cameraOnly` shapes, added in `buildings.js` and `village.js`) hold it in; the shoulder
+  offset backs off to centre when it would shorten the view (door jambs, corners); pull-in is
+  instant, ease-out is smooth. `tests/playtest/camera.py` checks it numerically. Known gap: with a
+  wall right behind the player the camera comes all the way in to the head and the hero hides.
 
 ## Open feedback from the player (do these next)
 
@@ -63,10 +69,6 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
    `assets.texture()` sets it today), stronger `normalScale`, detail maps (triplanar on
    buildings), checking exposure and the environment light for washed-out contrast, and
    judging on a real GPU at High quality.
-2. **The camera clips into buildings.** The rig's line-of-sight test sees wall colliders
-   but interiors have no ceiling colliders (the dungeon adds a `noFloor` box under its
-   vault for this), so the camera rises through ceilings; also check door jambs and
-   corners against the 0.28 m camera padding and the 0.08 m near plane.
 
 After these, the player picks from: more skills (Prayer, Firemaking, Thieving), a new
 region, day/night and weather, more quests.
