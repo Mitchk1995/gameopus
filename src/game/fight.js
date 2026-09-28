@@ -436,7 +436,7 @@ export class Fight {
       g.audio.play('levelup');
       this.boss = null;
     }
-    const drops = rollDrops(e.def.drops);
+    const drops = [...rollDrops(e.def.drops), ...g.quests.drops(e.def.drops)];
     drops.forEach(([id, n, rare], i) => {
       const a = (i / Math.max(1, drops.length)) * Math.PI * 2;
       this.drop(id, n, e.pos.x + Math.cos(a) * 0.5, e.pos.z + Math.sin(a) * 0.5, rare);

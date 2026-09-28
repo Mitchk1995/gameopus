@@ -13,7 +13,9 @@ export class Input {
     this.onLockChange = null;
 
     addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      // Typing in a text box (talking to someone) doesn't move you; Esc still works.
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      if (e.repeat || (typing && e.code !== 'Escape')) return;
       this.keys.add(e.code);
       this.pressed.add(e.code);
       if (this.locked && ['Space', 'Tab', 'KeyQ', 'KeyE', 'KeyF', 'ShiftLeft', 'ControlLeft'].includes(e.code)) e.preventDefault();

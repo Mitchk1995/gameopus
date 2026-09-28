@@ -17,6 +17,8 @@ const ICONS = {
   mine: { color: '#d7b48a', glyph: '⛏' },
   craft: { color: '#e7c38a', glyph: '✂' },
   inn: { color: '#e9a0a0', glyph: '♥' },
+  quest: { color: '#6fb8ff', glyph: '★' },
+  goal: { color: '#8ec5ff', glyph: '✦' },
 };
 
 export class Minimap {
@@ -197,8 +199,13 @@ export class Minimap {
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     for (const m of this.markers()) {
-      const dx = (m.x - player.pos.x) * ppm, dz = (m.z - player.pos.z) * ppm;
-      if (Math.hypot(dx, dz) > S * 0.75) continue;
+      let dx = (m.x - player.pos.x) * ppm, dz = (m.z - player.pos.z) * ppm;
+      const far = Math.hypot(dx, dz), rim = S * 0.43;
+      if (m.edge && far > rim) {
+        // Pinned to the rim, pointing the way.
+        dx *= rim / far;
+        dz *= rim / far;
+      } else if (far > S * 0.75) continue;
       if (m.dot) {
         g.fillStyle = m.dot;
         g.beginPath();

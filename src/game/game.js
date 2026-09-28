@@ -15,6 +15,12 @@ import { IconStudio, buildItem, setBarkTextures } from '../ui/itemart.js';
 import { Resources } from '../world/resources.js';
 import { Npc } from '../actors/npcs.js';
 import { VILLAGE, SPAWN } from '../world/map.js';
+import { PEOPLE } from '../content/people.js';
+import { SHOPS } from '../content/shops.js';
+import { Quests } from './quests.js';
+import { Dialogue } from './dialogue.js';
+import { Chat } from './chat.js';
+import { QuestUI } from '../ui/questui.js';
 
 // The game on top of the world: what you're looking at and can use, skilling loops
 // that run on 0.6 s ticks, the inventory and bank, shops, villagers and saving.
@@ -58,15 +64,22 @@ export class Game {
         useOn: (a, b) => this.#useOn(a, b),
         guide: (skill) => this.#guide(skill),
         pet: (id) => this.pets.toggle(id),
+        quests: (pane) => this.questUI.render(pane),
         nextUnlock: (skill, lvl) => this.unlockList.find((u) => u.skill === skill && u.level > lvl),
         unlocksAt: (skill, lvl) => this.unlockList.filter((u) => u.skill === skill && u.level === lvl).map((u) => u.label.toLowerCase()),
       },
     });
     this.menus = new Menus({ state: this.state, studio: this.studio, onClose: (kind) => this.#afterClose(kind) });
     this.talk = new Talk();
+    this.chat = new Chat(this);
+    this.chat.connect();
+    this.dialogue = new Dialogue(this);
     this.resources = await new Resources({ scene: this.scene, assets, world, kit: world.village.kit }).load();
     await this.#villagers();
     this.#stations();
+    this.quests = new Quests(this);
+    this.questUI = new QuestUI({ quests: this.quests, studio: this.studio });
+    this.quests.init(this.questUI);
     this.minimap = new Minimap({ world, markers: () => this.#markers() });
     this.#vitals();
     this.fight = new Fight(this);
@@ -109,7 +122,7 @@ export class Game {
   }
 
   // Windows free the mouse; closing the last one takes it back.
-  #freeMouse() {
+  freeMouse() {
     this.input.unlock();
   }
 
@@ -123,12 +136,12 @@ export class Game {
       this.#takeMouse();
     } else {
       this.panels.open(tab);
-      this.#freeMouse();
+      this.freeMouse();
     }
   }
 
   closeAll() {
-    this.#endTalk(false);
+    this.endTalk(false);
     this.panels.close();
     this.menus.close();
   }
@@ -147,12 +160,20 @@ export class Game {
     if (input.hit('KeyK')) this.togglePack('skills');
     if (input.hit('KeyL')) this.togglePack('worn');
     if (input.hit('KeyC')) this.togglePack('log');
+    if (input.hit('KeyJ')) this.togglePack('quests');
     if (input.hit('Escape') && this.uiOpen) this.closeAll();
 
     // What's under the crosshair.
     this.target = this.menus.isOpen || this.talk.isOpen ? null : this.#findTarget();
-    this.hud.setPrompt(this.target ? this.#prompt(this.target) : null);
-    if (input.hit('KeyE') && this.target) this.#interact(this.target);
+    // No prompt for what you're already doing.
+    const busyWith = this.activity && this.activity.target === this.target;
+    this.hud.setPrompt(this.target && !busyWith ? this.#prompt(this.target) : null);
+    if (input.hit('KeyE')) {
+      if (this.activity?.strike) this.activity.onStrike();
+      else if (this.target && !(this.activity && this.activity.target === this.target)) this.#interact(this.target);
+    }
+    // Walking off ends a conversation.
+    if (this.talking && this.talking.pos.distanceTo(this.player.pos) > 6) this.endTalk();
 
     // Moving away or starting to walk ends work.
     if (this.activity) {
@@ -255,17 +276,19 @@ export class Game {
   }
 
   // ------------------------------------------------------------ activities
-  #begin(target, { clip, interval, tick, tool = null, speed = 1, ticksFirst = 1 }) {
+  begin(target, { clip, interval, tick, tool = null, speed = 1, ticksFirst = 1, onStop = null }) {
     this.stop();
     this.player.faceTowards(target.x, target.z);
     this.player.perform(clip, { loop: true, speed, onEnd: () => this.stop() });
     this.#showHeld(tool);
-    this.activity = { target, interval, tick, next: this.time + interval * ticksFirst };
+    this.activity = { target, interval, tick, onStop, next: this.time + interval * ticksFirst };
   }
 
   stop() {
     if (!this.activity) return;
+    const a = this.activity;
     this.activity = null;
+    a.onStop?.();
     if (this.player.state === 'act') this.player.stopAction();
     this.#showHeld();
   }
@@ -282,7 +305,7 @@ export class Game {
     if (!this.#need('woodcutting', def.level, `chop down ${def.name.toLowerCase()}s`)) return;
     if (!this.state.inv.room(def.log)) return this.panels.message('Your pack is too full to hold any more logs.', 'bad');
     this.panels.message('You swing your axe at the tree.');
-    this.#begin(t, {
+    this.begin(t, {
       clip: 'TreeChopping_Loop', interval: TICK * 4, tool: axe, speed: 1.1,
       tick: () => {
         this.audio.play('chop', t);
@@ -309,7 +332,7 @@ export class Game {
     if (!this.state.inv.room(def.ore)) return this.panels.message('Your pack is too full to hold any more ore.', 'bad');
     const power = ITEMS[pick].power;
     this.panels.message('You swing your pickaxe at the rock.');
-    this.#begin(r, {
+    this.begin(r, {
       clip: 'OverhandThrow', interval: TICK * Math.max(3, 6 - power), tool: pick, speed: 0.9,
       tick: () => {
         this.audio.play('mine', r);
@@ -334,7 +357,7 @@ export class Game {
     if (!this.#need('fishing', def.catches[0].level, `fish here`)) return;
     if (def.bait && !this.state.inv.has(def.bait)) return this.panels.message(`You need ${ITEMS[def.bait].name.toLowerCase()}s to fish here.`, 'bad');
     this.panels.message(def.tool === 'net' ? 'You cast out your net.' : 'You cast out your line.');
-    this.#begin(s, {
+    this.begin(s, {
       clip: def.tool === 'net' ? 'Fixing_Kneeling' : 'Idle_Torch_Loop', interval: TICK * 5, tool,
       tick: () => {
         if (Math.random() < 0.5) this.audio.play('splash', s, 0.6);
@@ -499,6 +522,8 @@ export class Game {
         return this.exitDungeon();
       case 'chest':
         return this.#openChest(s);
+      case 'quest':
+        return this.quests.use(s);
     }
   }
 
@@ -520,6 +545,7 @@ export class Game {
     this.hud.fade?.(true);
     const seed = (Date.now() ^ (Math.random() * 1e9)) & 0x7fffffff;
     this.dungeon = new Dungeon({ kit: this.world.village.kit, assets: this.assets }).build(seed);
+    this.quests.dressDungeon(this.dungeon);
     this.realm = 'dungeon';
     this.dungeon.scene.add(this.hero.root);
     // three.js refreshes each skeleton once per frame number, and the world's shadow
@@ -590,7 +616,7 @@ export class Game {
   #makeMenu(s, title, sub, recipes, how) {
     this.stop();
     this.menus.openMake({ title, sub, recipes, onMake: (r, qty) => this.#produce(s, r, qty, how) });
-    this.#freeMouse();
+    this.freeMouse();
   }
 
   // Runs a recipe on ticks until the count is reached or materials run out.
@@ -599,7 +625,7 @@ export class Game {
     const needs = r.needs;
     const can = () => needs.every(([id, n]) => this.state.inv.count(id) >= n);
     if (!can()) return this.panels.message("You don't have the materials for that.", 'bad');
-    this.#begin(target, {
+    this.begin(target, {
       clip, interval: TICK * ticks, tool, ticksFirst: 1,
       tick: () => {
         if (!can() || made >= qty) return this.stop();
@@ -631,6 +657,7 @@ export class Game {
     const it = ITEMS[s.id];
     if (this.mode === 'bank') return this.#deposit(i, this.menus.qty);
     if (this.mode === 'shop') return this.#sell(i, this.menus.qty === 10 ? 10 : this.menus.qty);
+    if (it.read) return this.quests.read(s.id);
     if (it.food) return this.#eat(i);
     if (it.equip) return this.equip(i);
     this.panels.beginUse(i);
@@ -646,11 +673,12 @@ export class Game {
       return o;
     }
     if (this.mode === 'shop') {
-      o.push({ label: `Value ${name}`, run: () => this.panels.message(`${it.name}: the shop will pay ${this.#sellPrice(s.id)} coins.`) });
+      o.push({ label: `Value ${name}`, run: () => this.panels.message(this.#buys(this.currentShop, s.id) ? `${it.name}: the shop will pay ${this.#sellPrice(s.id)} coins.` : `${this.currentShop.owner} won't buy that.`) });
       for (const n of [1, 5, 10]) o.push({ label: `Sell ${n} ${name}`, run: () => this.#sell(i, n) });
       return o;
     }
-    if (it.food) o.push({ label: `Eat ${name}`, run: () => this.#eat(i) });
+    if (it.read) o.push({ label: `Read ${name}`, run: () => this.quests.read(s.id) });
+    if (it.food) o.push({ label: `${it.drink ? 'Drink' : 'Eat'} ${name}`, run: () => this.#eat(i) });
     if (it.equip) o.push({ label: `${it.equip === 'weapon' || it.equip === 'ammo' ? 'Wield' : 'Wear'} ${name}`, run: () => this.equip(i) });
     o.push({ label: `Use ${name}`, run: () => this.panels.beginUse(i) });
     o.push({ label: `Drop ${name}`, run: () => this.#drop(i) });
@@ -661,6 +689,7 @@ export class Game {
   #drop(i) {
     const s = this.state.inv.slots[i];
     if (!s) return;
+    if (ITEMS[s.id].quest) return this.panels.message("You can't drop that. You'll need it.", 'bad');
     this.state.inv.remove(s.id, s.n, i);
     this.panels.message(`You drop the ${ITEMS[s.id].name.toLowerCase()}.`);
   }
@@ -670,7 +699,7 @@ export class Game {
     this.state.inv.remove(s.id, 1, i);
     const before = this.state.hp;
     this.state.hp = Math.min(this.state.maxHp, this.state.hp + it.heal);
-    this.panels.message(`You eat the ${it.name.toLowerCase()}.${this.state.hp > before ? ' It heals some health.' : ''}`);
+    this.panels.message(`You ${it.drink ? 'drink' : 'eat'} the ${it.name.toLowerCase()}.${this.state.hp > before ? ' It heals some health.' : ''}`);
     this.state.changed('hp');
   }
 
@@ -749,7 +778,7 @@ export class Game {
         this.menus.renderBank();
       },
     });
-    this.#freeMouse();
+    this.freeMouse();
   }
 
   #deposit(i, n, quiet = false) {
@@ -779,7 +808,8 @@ export class Game {
     return Math.max(0, Math.floor(ITEMS[id].value * 0.4));
   }
 
-  openShop(shop) {
+  openShop(which) {
+    const shop = typeof which === 'string' ? this.#shop(which) : which;
     this.stop();
     this.mode = 'shop';
     this.currentShop = shop;
@@ -806,50 +836,47 @@ export class Game {
         this.menus.renderShop();
       },
     });
-    this.#freeMouse();
+    this.freeMouse();
   }
 
   #sell(i, n) {
     const s = this.state.inv.slots[i];
     if (!s) return;
     if (s.id === 'coins') return;
+    if (!this.#buys(this.currentShop, s.id)) return this.panels.message(`${this.currentShop.owner} isn't interested in that.`, 'bad');
     const id = s.id, price = this.#sellPrice(id);
     const count = this.state.inv.remove(id, Math.min(n, this.state.inv.count(id)), i);
     if (price * count > 0) this.state.inv.add('coins', price * count);
     const stock = this.currentShop.stock.find((x) => x.id === id);
     if (stock) stock.n += count;
-    else if (this.currentShop.buysAll) this.currentShop.stock.push({ id, n: count, price: Math.max(1, Math.ceil(ITEMS[id].value * 1.2)) });
+    else if (this.currentShop.buys === 'all') this.currentShop.stock.push({ id, n: count, price: Math.max(1, Math.ceil(ITEMS[id].value * 1.2)) });
     this.menus.renderShop();
   }
 
   // ------------------------------------------------------------ villagers
   async #villagers() {
-    const v = this.world.village, places = v.places;
-    const defs = [];
-    const inside = (place, lx, lz, extra) => {
-      const p = v.at(place, lx, lz);
-      return { x: p.x, z: p.z, facing: place.rot, ...extra };
-    };
-    defs.push({ name: 'Aldwyn', role: 'banker', look: { outfit: 'male_peasant', body: 'male', hair: 'hair_buzzed', beard: 'hair_beard', eyebrows: 'eyebrows_regular' }, idle: 'Idle_FoldArms_Loop', ...inside(places.bank, 0, -2.6) });
-    defs.push({ name: 'Maren', role: 'shop', look: { outfit: 'female_peasant', body: 'female', hair: 'hair_buns', eyebrows: 'eyebrows_female' }, ...inside(places.store, 0, -1.9) });
-    const smithy = this.resources.places.smithy;
-    defs.push({ name: 'Brom', role: 'smith', look: { outfit: 'male_peasant', body: 'male', hair: 'hair_buzzed', beard: 'hair_beard', eyebrows: 'eyebrows_regular' }, idle: 'Idle_FoldArms_Loop', ...inside(smithy, -2.0, -0.2) });
-    defs.push({ name: 'Old Tam', role: 'fisher', look: { outfit: 'male_ranger', body: 'male', hair: 'hair_long', beard: 'hair_beard', eyebrows: 'eyebrows_regular' }, x: -50.5, z: 171.5, facing: 2.6 });
-    const craft = this.resources.items.find((o) => o.station === 'potter');
-    defs.push({ name: 'Ysolde', role: 'potter', look: { outfit: 'female_ranger', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female' }, x: craft.x + 1.2, z: craft.z - 1.0, facing: -0.8 });
-    // Folk going about their day around the square.
-    const C = VILLAGE;
-    const loop = (r, a0, n = 6) => Array.from({ length: n }, (_, k) => [C.x + Math.cos(a0 + (k / n) * Math.PI * 2) * r, C.z + Math.sin(a0 + (k / n) * Math.PI * 2) * r]);
-    defs.push({ name: 'Wenna', role: 'villager', look: { outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female' }, x: C.x + 9, z: C.z, route: loop(9, 0), speed: 1.0 });
-    defs.push({ name: 'Hob', role: 'villager', look: { outfit: 'male_peasant', body: 'male', hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular' }, x: C.x - 11, z: C.z, route: loop(11.5, Math.PI, 7).reverse(), speed: 1.15 });
-    defs.push({ name: 'Garrow', role: 'guard', look: { outfit: 'male_ranger', body: 'male', hair: 'hair_buzzed', eyebrows: 'eyebrows_regular' }, idle: 'Idle_FoldArms_Loop', x: C.x + 30, z: C.z - 8, facing: 1.2 });
-    for (const d of defs) {
-      const ch = await this.factory.create(d.look);
+    const v = this.world.village, C = VILLAGE;
+    const places = { ...v.places, ...this.resources.places };
+    for (const p of PEOPLE) {
+      const a = p.at, d = { ...p };
+      if (a.place) {
+        const place = places[a.place];
+        const w = v.at(place, a.x, a.z);
+        Object.assign(d, { x: w.x, z: w.z, facing: place.rot });
+      } else if (a.station) {
+        const st = this.resources.items.find((o) => o.station === a.station);
+        Object.assign(d, { x: st.x + a.dx, z: st.z + a.dz, facing: a.facing });
+      } else if (a.loop) {
+        const [r, a0, n] = a.loop;
+        const route = Array.from({ length: n }, (_, k) => [C.x + Math.cos(a0 + (k / n) * Math.PI * 2) * r, C.z + Math.sin(a0 + (k / n) * Math.PI * 2) * r]);
+        Object.assign(d, { route: a.reverse ? route.reverse() : route, x: route[0][0], z: route[0][1] });
+      } else Object.assign(d, { x: a.x, z: a.z, facing: a.facing ?? 0 });
+      const ch = await this.factory.create(p.look);
       this.scene.add(ch.root);
       this.npcs.push(new Npc(d, ch, this.world));
     }
     // The bank counter doubles as a booth.
-    const counter = v.at(places.bank, 0, -1.4);
+    const counter = v.at(v.places.bank, 0, -1.4);
     this.resources.add({ kind: 'station', station: 'bank', name: 'Bank counter', verb: 'Bank at', x: counter.x, y: VILLAGE.y + 0.9, z: counter.z, r: 1.2, h: 1.2, reach: 2.0 });
   }
 
@@ -858,67 +885,48 @@ export class Game {
     this.player.faceTowards(npc.pos.x, npc.pos.z);
     npc.talking = true;
     this.talking = npc;
-    this.#freeMouse();
-    const bye = { label: 'Goodbye.', run: () => this.#endTalk() };
-    const say = (text, options) => this.talk.show(npc.name, text, options);
-    switch (npc.def.role) {
-      case 'banker':
-        return say('Good day. Your coin and goods are safe with the Bank of Ashford. Shall I open your account?', [
-          { label: 'Yes, open my bank.', run: () => { this.#endTalk(false); this.openBank(); } },
-          { label: 'How safe is safe?', run: () => say('Stone walls, iron locks, and me. Nothing has gone missing in forty years, bar one goat.', [{ label: 'Open my bank, then.', run: () => { this.#endTalk(false); this.openBank(); } }, bye]) },
-          bye,
-        ]);
-      case 'shop':
-        return say('Welcome to Maren\'s! Tools, nets, knives, whatever you need to get started. I\'ll buy most things too.', [
-          { label: "Let's trade.", run: () => { this.#endTalk(false); this.openShop(this.#shop('general')); } },
-          { label: 'Where should I start?', run: () => say('Grab an axe and try the trees by the road, or take a pickaxe to the quarry north-west. Brom will show you the furnace once you have ore.', [{ label: "Let's trade.", run: () => { this.#endTalk(false); this.openShop(this.#shop('general')); } }, bye]) },
-          bye,
-        ]);
-      case 'smith':
-        return say('Copper and tin make bronze. Put them in the furnace, then bring the bars to the anvil with a hammer. Iron wants a steadier hand.', [
-          { label: 'What can I make at the anvil?', run: () => say('Daggers and swords to begin, then helmets, shields and plate as you improve. Arrowtips too, if you shoot.', [bye]) },
-          bye,
-        ]);
-      case 'fisher':
-        return say("Shrimp and anchovies by the jetty with a net. Trout and salmon run in the river for them as can cast a fly. I sell what you'll need.", [
-          { label: "Show me what you've got.", run: () => { this.#endTalk(false); this.openShop(this.#shop('fishing')); } },
-          bye,
-        ]);
-      case 'potter':
-        return say('Dig clay at the quarry, soften it at the well, shape it on my wheel and fire it in the kiln. Flax from the east field spins into bow string on that wheel there.', [bye]);
-      case 'guard':
-        return say('Keep your wits about you east of the river. Bandits have been camping in the woods past the farms.', [bye]);
-      default:
-        return say(['Lovely day for it.', 'Have you seen the size of the pike in that lake?', "Mind the well, it's deeper than it looks."][Math.floor(Math.random() * 3)], [bye]);
-    }
+    this.freeMouse();
+    this.questUI.setHold(true);
+    this.dialogue.open(npc);
   }
 
-  #endTalk(relock = true) {
+  endTalk(relock = true) {
     this.talk.hide();
+    this.dialogue.close();
     if (this.talking) this.talking.talking = false;
     this.talking = null;
+    this.questUI.setHold(false);
     if (relock) this.#takeMouse();
   }
 
+  // A shop's current stock: counts carry on between visits; some lines only appear
+  // once a quest is done.
   #shop(id) {
-    this.shops ??= {
-      general: {
-        name: "Maren's General Store", owner: 'Maren', buysAll: true,
-        stock: [
-          ['bronze_axe', 5, 18], ['iron_axe', 3, 60], ['steel_axe', 2, 210], ['bronze_pickaxe', 5, 18], ['iron_pickaxe', 3, 60], ['steel_pickaxe', 2, 210],
-          ['hammer', 8, 3], ['knife', 8, 4], ['small_net', 6, 6], ['bronze_sword', 3, 30], ['bronze_med_helm', 2, 25],
-        ].map(([sid, n, price]) => ({ id: sid, n, price })),
-      },
-      fishing: {
-        name: "Tam's Tackle", owner: 'Old Tam',
-        stock: [['small_net', 5, 6], ['fly_rod', 4, 12], ['feather', 2000, 3]].map(([sid, n, price]) => ({ id: sid, n, price })),
-      },
-    };
-    return this.shops[id];
+    this.shopStock ??= {};
+    const def = SHOPS[id];
+    const rows = def.stock.map((r) => (Array.isArray(r) ? { id: r[0], n: r[1], price: r[2] } : r)).filter((r) => this.quests.check(r.if));
+    const stock = (this.shopStock[id] ??= []);
+    for (const r of rows) if (!stock.some((x) => x.id === r.id)) stock.push({ id: r.id, n: r.n, price: r.price });
+    return { ...def, id, stock };
+  }
+
+  // Whether a shop will take an item off you.
+  #buys(shop, id) {
+    const it = ITEMS[id];
+    if (it.quest || id === 'coins') return false;
+    if (shop.stock.some((x) => x.id === id)) return true;
+    if (shop.buys === 'all') return true;
+    if (Array.isArray(shop.buys)) return shop.buys.includes(id);
+    if (shop.buys === 'fish') return /(^raw_|shrimp|anchovies|trout|salmon)/.test(id) || id === 'feather';
+    if (shop.buys === 'metal') return /_ore$|_bar$|^coal$/.test(id) || !!it.smith;
+    if (shop.buys === 'food') return !!it.food;
+    return false;
   }
 
   // ------------------------------------------------------------ minimap and vitals
   #markers() {
+    // Nothing up top is useful to plot down in the Warren.
+    if (this.realm === 'dungeon') return [];
     if (!this.staticMarkers) {
       const v = this.world.village.places, r = this.resources;
       const st = (name) => r.items.find((o) => o.station === name);
@@ -930,7 +938,9 @@ export class Game {
       for (const s of r.spots) if (!m.some((o) => o.icon === 'fish' && Math.hypot(o.x - s.x, o.z - s.z) < 25)) m.push({ x: s.x, z: s.z, icon: 'fish' });
       this.staticMarkers = m.map(({ x, z, icon: i }) => ({ x, z, icon: i }));
     }
-    return [...this.npcs.map((n) => ({ x: n.pos.x, z: n.pos.z, dot: '#ffe04a' })), ...this.staticMarkers];
+    const quest = this.quests.markers();
+    const dots = this.npcs.filter((n) => !quest.some((q) => q.npc === n.def.id)).map((n) => ({ x: n.pos.x, z: n.pos.z, dot: '#ffe04a' }));
+    return [...dots, ...this.staticMarkers, ...quest];
   }
 
   #vitals() {
@@ -952,7 +962,7 @@ export class Game {
   // ------------------------------------------------------------ skill guide
   #guide(skill) {
     this.menus.openGuide(skill, this.unlockList.filter((u) => u.skill === skill));
-    this.#freeMouse();
+    this.freeMouse();
   }
 
   // ------------------------------------------------------------ held items

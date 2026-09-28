@@ -67,6 +67,8 @@ function lathe(points, segs = 28) {
 }
 
 // ------------------------------------------------------------------ builders
+const PIKE_SPOT = new THREE.Color(0xe6dc98);
+
 const BUILD = {
   coins(a) {
     const g = new THREE.Group();
@@ -127,44 +129,58 @@ const BUILD = {
 
   fish(a) {
     const g = new THREE.Group();
-    const L = 0.34 * (a.size || 1);
+    const L = 0.34 * (a.size || 1), k = a.girth || 1;
+    const cy = 0.06 * k;
     // Body: a lathe along x, flattened sideways.
     const prof = [];
     for (let i = 0; i <= 16; i++) {
       const t = i / 16;
-      prof.push([Math.sin(Math.PI * Math.pow(t, 0.8)) * 0.055 * (1 - t * 0.35) + 0.002, (t - 0.5) * L]);
+      prof.push([Math.sin(Math.PI * Math.pow(t, 0.8)) * 0.055 * k * (1 - t * 0.35) + 0.002, (t - 0.5) * L]);
     }
     const body = lathe(prof, 20);
     body.rotateZ(-Math.PI / 2);
     body.scale(1, 1, 0.55);
-    // Colour: darker back, lighter belly, speckles for trout.
+    // Colour: darker back, lighter belly, speckles for trout, pale spots for pike.
     const n = body.attributes.position.count, col = new Float32Array(n * 3);
     const back = new THREE.Color(a.color), belly = new THREE.Color(a.belly ?? 0xdedcd0), c = new THREE.Color(), v = new THREE.Vector3();
     for (let i = 0; i < n; i++) {
       v.fromBufferAttribute(body.attributes.position, i);
-      c.copy(belly).lerp(back, THREE.MathUtils.smoothstep(v.y, -0.02, 0.03));
-      if (!a.cooked && !a.burnt && Math.sin(v.x * 190) * Math.sin(v.y * 170 + v.z * 90) > 0.85) c.multiplyScalar(0.5);
+      c.copy(belly).lerp(back, THREE.MathUtils.smoothstep(v.y / k, -0.02, 0.03));
+      if (a.pike) {
+        if (Math.sin((v.x / k) * 95) * Math.sin((v.y / k) * 120 + (v.z / k) * 40) > 0.55 && v.y > -0.01 * k) c.lerp(PIKE_SPOT, 0.6);
+      } else if (!a.cooked && !a.burnt && Math.sin(v.x * 190) * Math.sin(v.y * 170 + v.z * 90) > 0.85) c.multiplyScalar(0.5);
       if (a.cooked) c.multiplyScalar(0.85 + 0.25 * Math.max(0, Math.sin(v.x * 70)));
       col.set([c.r, c.g, c.b], i * 3);
     }
     body.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const skin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: a.cooked ? 0.7 : a.burnt ? 0.95 : 0.3, metalness: a.cooked || a.burnt ? 0 : 0.25 });
-    g.add(mesh(body, skin, { y: 0.06 }));
+    g.add(mesh(body, skin, { y: cy }));
     // Tail and fins.
     const fin = new THREE.MeshStandardMaterial({ color: new THREE.Color(a.color).multiplyScalar(0.8), roughness: 0.6, side: THREE.DoubleSide });
     const tail = new THREE.Shape();
+    const tw = 0.07 * (a.size || 1), th = 0.045 * k;
     tail.moveTo(0, 0);
-    tail.lineTo(-0.07 * (a.size || 1), 0.045);
-    tail.quadraticCurveTo(-0.05, 0, -0.07 * (a.size || 1), -0.045);
+    tail.lineTo(-tw, th);
+    tail.quadraticCurveTo(-tw * 0.7, 0, -tw, -th);
     tail.closePath();
-    g.add(mesh(new THREE.ShapeGeometry(tail), fin, { x: -L / 2 + 0.01, y: 0.06 }));
+    g.add(mesh(new THREE.ShapeGeometry(tail), fin, { x: -L / 2 + 0.01, y: cy }));
     const dorsal = new THREE.Shape();
-    dorsal.moveTo(-0.04, 0);
-    dorsal.quadraticCurveTo(0, 0.05, 0.03, 0);
+    dorsal.moveTo(-0.04 * k, 0);
+    dorsal.quadraticCurveTo(0, 0.05 * k, 0.03 * k, 0);
     dorsal.closePath();
-    g.add(mesh(new THREE.ShapeGeometry(dorsal), fin, { x: -0.01, y: 0.105 }));
+    // A pike's dorsal fin sits far back, near the tail.
+    g.add(mesh(new THREE.ShapeGeometry(dorsal), fin, { x: a.pike ? -L * 0.3 : -0.01, y: cy + 0.045 * k }));
+    if (a.pike) {
+      // The long duck-bill jaw, with teeth.
+      const jaw = new THREE.ConeGeometry(0.03 * k, 0.12 * k, 10);
+      jaw.rotateZ(-Math.PI / 2);
+      jaw.scale(1, 0.45, 0.8);
+      g.add(mesh(jaw, skin, { x: L / 2 + 0.03 * k, y: cy - 0.008 * k }));
+      const tooth = plain(0xf4f0e0, 0.4);
+      for (let i = 0; i < 5; i++) for (const sz of [-1, 1]) g.add(mesh(new THREE.ConeGeometry(0.0045 * k, 0.014 * k, 4), tooth, { x: L / 2 + (0.0 + i * 0.016) * k, y: cy - 0.012 * k, z: sz * (0.016 - i * 0.0022) * k, rx: Math.PI }));
+    }
     // Eye.
-    for (const s of [-1, 1]) g.add(mesh(new THREE.SphereGeometry(0.008, 8, 6), plain(0x111111, 0.2), { x: L / 2 - 0.045, y: 0.07, z: s * 0.024 }));
+    for (const s of [-1, 1]) g.add(mesh(new THREE.SphereGeometry(0.008 * k, 8, 6), plain(0x111111, 0.2), { x: L / 2 - 0.045 * k, y: cy + 0.01 * k, z: s * 0.024 * k }));
     return g;
   },
 
@@ -638,6 +654,75 @@ const BUILD = {
     return g;
   },
 
+  hook(a) {
+    // A heavy fish hook: an eye to tie on, the shank, the bend, and a barbed point.
+    const g = new THREE.Group();
+    const m = metal(a.color), r = 0.011;
+    g.add(mesh(new THREE.TorusGeometry(0.014, 0.005, 8, 16), m, { y: 0.176 }));
+    g.add(mesh(new THREE.CylinderGeometry(r, r, 0.13, 10), m, { y: 0.1 }));
+    g.add(mesh(new THREE.TorusGeometry(0.036, r, 8, 24, Math.PI + 0.35), m, { x: 0.036, y: 0.036, rz: Math.PI }));
+    const tipX = 0.036 + Math.cos(0.35) * 0.036, tipY = 0.036 + Math.sin(0.35) * 0.036;
+    g.add(mesh(new THREE.ConeGeometry(r * 1.1, 0.045, 10), m, { x: tipX, y: tipY + 0.02, rz: 0.12 }));
+    g.add(mesh(new THREE.ConeGeometry(0.006, 0.02, 6), m, { x: tipX - 0.009, y: tipY + 0.012, rz: 0.9 }));
+    return g;
+  },
+
+  book(a) {
+    // A leather-bound ledger with a strap and a brass buckle.
+    const g = new THREE.Group();
+    const cover = plain(a.color, 0.75), pages = plain(0xe6d9b8, 0.9);
+    g.add(mesh(new THREE.BoxGeometry(0.2, 0.012, 0.27), cover, { y: 0.006 }));
+    g.add(mesh(new THREE.BoxGeometry(0.188, 0.042, 0.256), pages, { x: 0.005, y: 0.033 }));
+    g.add(mesh(new THREE.BoxGeometry(0.2, 0.012, 0.27), cover, { y: 0.06 }));
+    g.add(mesh(new THREE.BoxGeometry(0.016, 0.066, 0.27), cover, { x: -0.098, y: 0.033 }));
+    g.add(mesh(new THREE.BoxGeometry(0.212, 0.07, 0.032), leather(), { x: 0.003, y: 0.033, z: 0.05 }));
+    g.add(mesh(new THREE.BoxGeometry(0.012, 0.03, 0.04), metal(0xc9a13a), { x: 0.11, y: 0.036, z: 0.05 }));
+    return g;
+  },
+
+  strongbox() {
+    // A small iron-bound box with a brass lock plate.
+    const g = new THREE.Group();
+    const box = wood(0x5a3d26), iron = metal(0x3b3b3e);
+    g.add(mesh(new THREE.BoxGeometry(0.26, 0.14, 0.18), box, { y: 0.07 }));
+    g.add(mesh(new THREE.BoxGeometry(0.266, 0.045, 0.186), box, { y: 0.162 }));
+    for (const x of [-0.092, 0.092]) g.add(mesh(new THREE.BoxGeometry(0.024, 0.19, 0.192), iron, { x, y: 0.094 }));
+    g.add(mesh(new THREE.BoxGeometry(0.27, 0.02, 0.19), iron, { y: 0.01 }));
+    g.add(mesh(new THREE.BoxGeometry(0.05, 0.056, 0.012), metal(0xc9a13a), { y: 0.125, z: 0.094 }));
+    g.add(mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.004, 8), plain(0x111111, 0.5), { y: 0.12, z: 0.1, rx: Math.PI / 2 }));
+    return g;
+  },
+
+  bread() {
+    // A round loaf: golden crust, darker on top, with pale scoring.
+    const geo = lumpy(0.1, 3, 0.035, 7, [1.2, 0.62, 0.85]);
+    const p = geo.attributes.position, col = new Float32Array(p.count * 3), v = new THREE.Vector3();
+    const top = new THREE.Color(0x9a5a22), side = new THREE.Color(0xd49a55), score = new THREE.Color(0xf0d6a0), c = new THREE.Color();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      c.copy(side).lerp(top, THREE.MathUtils.smoothstep(v.y, 0.0, 0.06));
+      if (v.y > 0.035 && Math.abs(Math.sin((v.x + v.z * 0.5) * 42)) > 0.94) c.copy(score);
+      col.set([c.r, c.g, c.b], i * 3);
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const g = new THREE.Group();
+    g.add(mesh(geo, mat('bread', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 })), { y: 0.055 }));
+    return g;
+  },
+
+  mug() {
+    // A wooden tankard with iron bands, full of ale with a head of foam.
+    const g = new THREE.Group();
+    const w = wood(0x7a5230), band = metal(0x55504a);
+    g.add(mesh(new THREE.CylinderGeometry(0.05, 0.056, 0.12, 18, 1, true), w, { y: 0.06 }));
+    g.add(mesh(new THREE.CircleGeometry(0.056, 18), w, { y: 0.001, rx: Math.PI / 2 }));
+    for (const y of [0.018, 0.1]) g.add(mesh(new THREE.TorusGeometry(0.054 - y * 0.05, 0.004, 6, 24), band, { y, rx: Math.PI / 2 }));
+    g.add(mesh(new THREE.TorusGeometry(0.032, 0.009, 8, 14, Math.PI), w, { x: 0.052, y: 0.062, rz: -Math.PI / 2 }));
+    g.add(mesh(new THREE.CircleGeometry(0.049, 18), plain(0x7a4a14, 0.25), { y: 0.108, rx: -Math.PI / 2 }));
+    g.add(mesh(lumpy(0.05, 2, 0.14, 3, [1, 0.32, 1]), plain(0xf2ead6, 0.9), { y: 0.116 }));
+    return g;
+  },
+
   bones() {
     const g = new THREE.Group();
     const bone = plain(0xe7dfc8, 0.7);
@@ -798,6 +883,10 @@ const POSE = {
   petgolem: { ry: 0.5 },
   petsapling: { ry: 0.5 },
   petfrog: { ry: 0.5 },
+  hook: { rz: 0.35, ry: 0.2 },
+  book: { rx: 0.55, ry: 0.5 },
+  strongbox: { ry: 0.55, rx: 0.2 },
+  mug: { ry: -0.5 },
   platebody: { ry: 0.3 },
   platelegs: { ry: 0.3 },
 };

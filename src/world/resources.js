@@ -442,7 +442,7 @@ export class Resources {
     const deckBox = this.world.colliders.addBox(cx, cz, 1.0, len / 2, rot, deck - 0.3, deck);
     deckBox.noCamera = true;
     deckBox.floor = true;
-    this.jettyEnd = { x: sx + dir.x * len, z: sz + dir.y * len };
+    this.jettyEnd = { x: sx + dir.x * len, z: sz + dir.y * len, dx: dir.x, dz: dir.y };
   }
 
   // ------------------------------------------------------------------ flax

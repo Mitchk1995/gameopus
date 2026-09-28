@@ -177,6 +177,14 @@ export class Village {
     put(inn, 'Barrel_Holder', 2.8, -4.9, 0);
     put(inn, 'Mug', 0.4, -0.6, 0, 0.81, false);
     put(inn, 'Mug', 0.2, -1.6, 1, 0.81, false);
+    // Bess's bar at the back, with stools in front and bottles behind.
+    put(inn, 'Table_Large', -0.9, -3.7, 0);
+    put(inn, 'Stool', -2.0, -2.8, 0.3);
+    put(inn, 'Stool', -0.2, -2.8, -0.2);
+    put(inn, 'Mug', -1.6, -3.55, 0.4, 0.81, false);
+    put(inn, 'Mug', -1.3, -3.8, 2.1, 0.81, false);
+    put(inn, 'Bottle_1', -0.1, -3.75, 0, 0.81, false);
+    put(inn, 'Shelf_Small_Bottles', -0.9, -5.72, 0, 1.2, false);
   }
 
   // Debug: a row of parts, for learning which way pieces face.

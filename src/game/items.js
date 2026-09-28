@@ -129,6 +129,23 @@ add('pet_frogling', { name: 'Frogling', value: 0, pet: 'frogling', unique: 'Fish
 // ---------------------------------------------------------------- odds and ends
 add('bones', { name: 'Bones', value: 1, examine: 'Bones are for burying.', art: { kind: 'bones' } });
 
+// ---------------------------------------------------------------- the inn
+cooked('bread', 'Bread', 5, 12, { kind: 'bread' });
+add('ale', { name: 'Ale', value: 3, heal: 2, food: true, drink: true, examine: "A mug of Bess's own brew. Restores 2 hitpoints.", art: { kind: 'mug' } });
+
+// ---------------------------------------------------------------- quest items
+// They can't be dropped or sold; dialogue and quest steps look for them.
+add('heavy_hook', { name: 'Heavy hook', value: 0, quest: 'gnasher', examine: 'A bronze hook as thick as your thumb. Brom made it for Old Gnasher.', art: { kind: 'hook', color: METALS.bronze.color } });
+add('old_gnasher', { name: 'Old Gnasher', value: 0, quest: 'gnasher', examine: 'The terror of the lake. Heavier than he looks, and he looks very heavy.', art: { kind: 'fish', color: 0x4b5a2c, belly: 0xd9d09a, size: 2.4, girth: 1.9, pike: true } });
+add('captains_ledger', {
+  name: "Captain's ledger", value: 0, quest: 'ledger', examine: "A battered ledger from the bandit captain's coat.", art: { kind: 'book', color: 0x5a2418 },
+  read: [
+    'Most of it is sums, done badly. One entry keeps coming up:',
+    '"Iron, three carts, to the King under the hill. Paid in goblin silver. The King keeps Brom\'s strongbox till the next load. NOBODY goes down there alone."',
+  ],
+});
+add('ore_strongbox', { name: "Brom's strongbox", value: 0, quest: 'ledger', examine: 'A small iron-bound strongbox stamped with an anvil. It clinks.', art: { kind: 'strongbox' } });
+
 export function item(id) {
   const it = ITEMS[id];
   if (!it) throw new Error(`unknown item ${id}`);

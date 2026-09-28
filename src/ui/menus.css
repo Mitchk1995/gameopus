@@ -145,7 +145,12 @@
 .talk[hidden] { display: none; }
 .talk .who { font: 700 16px/1 var(--serif); letter-spacing: 0.06em; color: #f4d38e; margin-bottom: 8px; }
 .talk .said { font-size: 17px; line-height: 1.45; min-height: 50px; white-space: pre-wrap; }
-.talk .said.thinking { color: var(--ink-dim); font-style: italic; }
+.talk .said.thinking { color: var(--ink-dim); font-style: italic; animation: talk-wait 1.2s ease-in-out infinite; }
+.talk .said.narrate { color: #cfc3a8; font-style: italic; }
+.talk .you { margin: -2px 0 8px; font-size: 14px; color: var(--ink-dim); font-style: italic; }
+.talk .you[hidden] { display: none; }
+.talk input:disabled, .talk .btn:disabled { opacity: 0.5; }
+@keyframes talk-wait { 50% { opacity: 0.45; } }
 .talk .opts { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; }
 .talk .opt {
   padding: 5px 10px;

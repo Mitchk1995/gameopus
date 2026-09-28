@@ -55,8 +55,12 @@ code can be reused; its design direction is retired.
 
 ## Content grammar (how Claude adds things without making a mess)
 
-Everything is data in `src/content/`. Adding content means adding rows, not new code,
-unless it needs a new mechanic, and then the mechanic comes first.
+Content is data. People, dialogue, quests, shops and the lore villagers know live in
+`src/content/`; items are in `src/game/items.js`, skilling tables in
+`src/game/content.js`, and monsters and drop tables in `src/game/combat.js`. Adding
+content means adding rows, not new code, unless it needs a new mechanic, and then the
+mechanic comes first (quest mechanics live in `src/game/quests.js` and are named by
+the quest data).
 
 | Kind | Must define |
 |---|---|
@@ -65,8 +69,9 @@ unless it needs a new mechanic, and then the mechanic comes first.
 | Resource node | skill, level, depletion and respawn, drop, visual |
 | Enemy | stats, attack patterns with telegraph timings, drop table, model and outfit |
 | Drop table | always, weighted main table, rare table with 1/N odds, pet odds |
-| NPC | name, role, persona sheet for typed chat, dialogue tree, shop stock |
-| Quest | steps with conditions and hooks, requirements, rewards |
+| NPC | name, role, look, where they stand, persona sheet for typed chat, dialogue tree |
+| Shop | owner, stock rows (some unlocked by quests), what it buys |
+| Quest | giver, steps (tracker line, journal text, map goal), spots and mechanics it adds, quest drops, rewards |
 | Region | map layout, terrain and biome, towns, nodes, spawns |
 
 ## Art sources (all free for any use)
@@ -81,10 +86,11 @@ unless it needs a new mechanic, and then the mechanic comes first.
 
 ## Roadmap
 
-- [ ] M1 World and feel: sky and sun, terrain, water, trees and grass, the village, the
+- [x] M1 World and feel: sky and sun, terrain, water, trees and grass, the village, the
       third-person controller, an animated character
-- [ ] M2 Skills: gathering and production loops, inventory, bank, XP, skill guides
-- [ ] M3 Combat: melee with tells, lock-on, dodge, block and parry; then ranged and magic
-- [ ] M4 Dungeon and boss: procedural layouts, boss, drop tables, collection log, pets
-- [ ] M5 People: dialogue (options and typing), two quests, shops
+- [x] M2 Skills: gathering and production loops, inventory, bank, XP, skill guides
+- [ ] M3 Combat: melee with tells, lock-on, dodge, block and parry (done); then ranged
+      and magic
+- [x] M4 Dungeon and boss: procedural layouts, boss, drop tables, collection log, pets
+- [x] M5 People: dialogue (options and typing), two quests, shops
 - [ ] Then: more regions, skills and bosses, added between sessions

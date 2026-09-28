@@ -48,11 +48,13 @@ export class Panels {
         <button role="tab" data-tab="inv" aria-selected="true" title="Inventory (Tab)">${icon('bag', 20)}</button>
         <button role="tab" data-tab="worn" aria-selected="false" title="Worn equipment">${icon('worn', 20)}</button>
         <button role="tab" data-tab="skills" aria-selected="false" title="Skills (K)">${icon('stats', 20)}</button>
+        <button role="tab" data-tab="quests" aria-selected="false" title="Quests (J)">${icon('quest', 20)}</button>
         <button role="tab" data-tab="log" aria-selected="false" title="Collection log (C)">${icon('log', 20)}</button>
       </div>
       <div class="pane" data-pane="inv"><div class="grid"></div></div>
       <div class="pane" data-pane="worn" hidden><div class="worn"></div><div class="bonuses"></div></div>
       <div class="pane" data-pane="skills" hidden><div class="skills"></div><div class="totals"></div></div>
+      <div class="pane" data-pane="quests" hidden><div class="quests"></div></div>
       <div class="pane" data-pane="log" hidden><div class="clog"></div></div>`;
     document.body.append(this.side);
     this.side.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.tab)));
@@ -134,6 +136,7 @@ export class Panels {
     if (tab === 'worn') this.renderWorn();
     if (tab === 'skills') this.renderSkills();
     if (tab === 'log') this.renderLog();
+    if (tab === 'quests') this.actions.quests?.(this.side.querySelector('.quests'));
   }
 
   // ------------------------------------------------------------ collection log

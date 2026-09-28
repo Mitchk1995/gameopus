@@ -225,15 +225,18 @@ export class Talk {
   constructor() {
     this.root = el('div', 'talk');
     this.root.hidden = true;
-    this.root.innerHTML = `<div class="who"></div><div class="said"></div><div class="opts"></div>
-      <form><input id="talk-say" autocomplete="off" placeholder="Say something (Enter)"><button class="btn" type="submit">Say</button></form>`;
+    this.root.innerHTML = `<div class="who"></div><div class="you" hidden></div><div class="said"></div><div class="opts"></div>
+      <form><input id="talk-say" autocomplete="off" maxlength="240" placeholder="Or say something of your own (Enter)"><button class="btn" type="submit">Say</button></form>`;
     document.body.append(this.root);
+    this.whoEl = this.root.querySelector('.who');
+    this.youEl = this.root.querySelector('.you');
+    this.saidEl = this.root.querySelector('.said');
     this.form = this.root.querySelector('form');
     this.input = this.root.querySelector('input');
     this.form.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = this.input.value.trim();
-      if (!text || !this.onSay) return;
+      if (!text || !this.onSay || this.busy) return;
       this.input.value = '';
       this.onSay(text);
     });
@@ -262,13 +265,13 @@ export class Talk {
     return !this.root.hidden;
   }
 
-  // options: [{ label, run }]; onSay(text) enables the typing line.
-  show(who, text, options, { onSay = null, thinking = false } = {}) {
+  // options: [{ label, run }]. kind: 'say' (the speaker talks), 'narrate' (what
+  // happens), 'me' (your own line). onSay(text) shows the typing line.
+  show(who, text, options, { onSay = null, kind = 'say', thinking = false } = {}) {
     this.root.hidden = false;
-    this.root.querySelector('.who').textContent = who;
-    const said = this.root.querySelector('.said');
-    said.textContent = text;
-    said.classList.toggle('thinking', thinking);
+    this.whoEl.textContent = kind === 'me' ? 'You' : who;
+    this.youEl.hidden = true;
+    this.said(text, { thinking, kind });
     const opts = this.root.querySelector('.opts');
     opts.innerHTML = '';
     options.forEach((o, i) => {
@@ -281,9 +284,36 @@ export class Talk {
     this.form.hidden = !onSay;
   }
 
+  // Updates just the spoken text (typed chat streams into it).
+  said(text, { thinking = false, kind = 'say' } = {}) {
+    this.saidEl.textContent = text;
+    this.saidEl.classList.toggle('thinking', thinking);
+    this.saidEl.classList.toggle('narrate', kind === 'narrate');
+  }
+
+  // Your own typed line, shown above the reply.
+  you(text) {
+    this.youEl.hidden = !text;
+    this.youEl.textContent = text ? `You: ${text}` : '';
+  }
+
+  setBusy(busy) {
+    this.busy = busy;
+    this.input.disabled = busy;
+    this.root.querySelector('form .btn').disabled = busy;
+    if (!busy && !this.root.hidden) this.input.focus();
+  }
+
+  hideTyping() {
+    this.onSay = null;
+    this.form.hidden = true;
+  }
+
   hide() {
     this.root.hidden = true;
     this.onSay = null;
+    this.setBusy(false);
     this.input.blur();
   }
 }
+

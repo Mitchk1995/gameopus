@@ -13,7 +13,8 @@ const CONTROLS = [
   ['LMB', 'Attack (chain 3)'], ['F', 'Heavy attack'],
   ['RMB', 'Block, tap to parry'], ['Q', 'Lock on'],
   ['E', 'Use / talk'], ['Tab', 'Pack'],
-  ['K', 'Skills'], ['Esc', 'Free the mouse'],
+  ['K', 'Skills'], ['J', 'Quests'],
+  ['C', 'Collection log'], ['Esc', 'Free the mouse'],
 ];
 
 // The screen overlay: loading, the pause card, crosshair and the "E to ..." prompt.
