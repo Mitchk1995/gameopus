@@ -6,7 +6,9 @@
     "build": "vite build",
     "artifact": "vite build && node scripts/artifact.mjs",
     "preview": "vite preview",
-    "balance": "node scripts/balance.mjs"
+    "balance": "node scripts/balance.mjs",
+    "sync": "node scripts/sync.mjs",
+    "playtest": "python tests/playtest/play.py"
   },
   "repository": {
     "type": "git",

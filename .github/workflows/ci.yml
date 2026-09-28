@@ -1,0 +1,69 @@
+name: CI
+
+# Builds the game, checks the combat numbers, and plays a few headless scenarios in
+# Chromium (software GL) on every push to main and every pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/balance.mjs > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 3
+
+  playtest:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - run: npx playwright install --with-deps chromium
+      - name: Play the scenarios
+        env:
+          SOFTWARE_GL: '1'
+          READY_TIMEOUT: '240000'
+        run: |
+          export CHROME="$(node -e "import('playwright-core').then(m => console.log(m.chromium.executablePath()))")"
+          status=0
+          for scenario in movement melee gathering; do
+            echo "::group::$scenario"
+            python3 tests/playtest/play.py "tests/playtest/$scenario.py" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playtest-shots
+          path: tests/playtest/out
+          if-no-files-found: ignore
+          retention-days: 3

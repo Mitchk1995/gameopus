@@ -15,6 +15,11 @@ npm run dev          # open the printed URL; edits reload live
 Click the page to capture the mouse. The controls card on the pause screen lists the keys.
 Progress saves in the browser (localStorage).
 
+## Keeping in sync
+
+`npm run sync` pulls from GitHub (rebasing) and pushes local commits; add a message
+(`npm run sync -- "did a thing"`) to commit everything first. CI runs on every push and PR.
+
 ## Build and publish
 
 - `npm run build` builds `dist/` (a single-file page plus `dist/assets/`).

@@ -34,16 +34,25 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
 - `src/ui/`: panels (pack, worn, skills, quests, collection log), menus, talk box,
   minimap, combat UI, HUD, item art (procedural 3D item models and icons).
 
+## Sync and workflow (read this first each session)
+
+- The repo is https://github.com/Mitchk1995/gameopus and `D:\diablolike` is a clone of it; GitHub
+  `main` is the source of truth. Start a session with `npm run sync` (pulls and rebases).
+  End it with `npm run sync -- "what changed"` (commits everything, pulls, pushes).
+  It never force-pushes; a conflict stops it and it says why.
+- Work on a branch and open a PR for anything bigger than a tweak; CI (`.github/workflows/ci.yml`)
+  builds, checks `scripts/balance.mjs`, and plays `movement`, `melee` and `gathering` headless.
+  Merge when it's green.
+- `npm run playtest -- tests/playtest/<name>.py` runs one scenario (`CHANNEL=chrome` locally).
+  Scenarios exit non-zero on a `FAIL` line or page error, so CI catches regressions. Add a
+  scenario to the CI loop when you add a mechanic.
+- Movement (done): plain movement is a jog (5 m/s), holding Shift runs (7.4 m/s), Z/CapsLock
+  toggles walk, and aiming walks. Starts and stops settle in about 0.15 s, the gait clip is
+  picked by intent and its rate follows real speed. `tests/playtest/movement.py` measures it.
+
 ## Open feedback from the player (do these next)
 
-1. **Movement feels floaty and "walking looks like running."** In `player.js` the
-   default gait is a 5 m/s jog; velocity eases in with a ~0.2 s time constant
-   (`accel` 26/34 divided by the target speed); the clip rate is clamped to 0.55-1.35 of
-   the clip's natural speed so feet slide while speeding up and slowing down, and idle
-   only kicks in below 0.8 m/s; the body turns slower (rate 12) than the velocity
-   changes. Make starts and stops near-instant, match clip rate to actual speed (blend
-   walk and jog by speed), and ask the player whether plain movement should walk or run.
-2. **Combat must be fluid: move, jump, attack and dodge freely.** Attacks put the player
+1. **Combat must be fluid: move, jump, attack and dodge freely.** Attacks put the player
    in the `attack` state, which drives a root-motion lunge and ignores movement until
    after the hit; rolls are only allowed late in a swing. Plan: play attack clips on the
    upper body only over the legs' locomotion (the approach in `aim.js`: sample the clip's
@@ -51,13 +60,13 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
    swinging with a small lunge, let dodges and jumps cancel attacks at any time, and add a
    jump (clips `Jump_Start`, `Jump_Loop`, `Jump_Land` are loaded; the controller already
    has gravity). Proposed keys: Space jumps, tap Shift (or C) dodges, hold Shift sprints.
-3. **Characters and buildings look textureless.** Every character and village material
+2. **Characters and buildings look textureless.** Every character and village material
    does have base colour, normal and roughness/ORM maps (1024 px), so nothing fails to
    load; they read flat. Try: anisotropic filtering on GLB-embedded textures (only
    `assets.texture()` sets it today), stronger `normalScale`, detail maps (triplanar on
    buildings), checking exposure and the environment light for washed-out contrast, and
    judging on a real GPU at High quality.
-4. **The camera clips into buildings.** The rig's line-of-sight test sees wall colliders
+3. **The camera clips into buildings.** The rig's line-of-sight test sees wall colliders
    but interiors have no ceiling colliders (the dungeon adds a `noFloor` box under its
    vault for this), so the camera rises through ceilings; also check door jambs and
    corners against the 0.28 m camera padding and the 0.08 m near plane.

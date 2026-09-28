@@ -24,3 +24,6 @@ if 'H' in ns: env['H'] = str(ns['H'])
 out = subprocess.run(['node', 'scripts/playtest.mjs'], cwd=root, env=env, capture_output=True, text=True, errors='replace', timeout=1500)
 lines = [l for l in (out.stdout + out.stderr).splitlines() if ('rror' in l and '404' not in l) or l.startswith('EVAL') or 'timeout' in l]
 print('\n'.join(lines)[:6000])
+# Non-zero exit for CI: a missed check, a page error, or the game never starting.
+if out.returncode != 0 or any('FAIL' in l or 'PAGEERROR' in l or 'timeout' in l or l.startswith('error:') for l in lines):
+    sys.exit(1)
