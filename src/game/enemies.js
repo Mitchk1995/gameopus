@@ -3,6 +3,7 @@ import { MONSTERS, ELITE_FIRST, ELITE_TITLE, ELITE_AFFIXES } from '../content/mo
 import { buildMonster } from './monsterModels.js';
 import { SpatialHash } from '../core/spatial.js';
 import { pick, randInt, weighted, clamp } from '../core/rng.js';
+import { dreadMods } from '../content/dread.js';
 
 const CAP = 420;
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -53,7 +54,7 @@ export class Enemies {
   reset() {
     this.list.length = 0;
     this.spawnTimer = 1.5;
-    this.eliteTimer = 32;
+    this.eliteTimer = 45;
     this.eliteCount = 0;
     this.boss = null;
   }
@@ -79,9 +80,10 @@ export class Enemies {
     const def = MONSTERS[typeId];
     const g = this.game;
     const depth = g.depth;
-    const hpMult = Math.pow(1.3, depth - 1) * (1 + g.runTime / 400);
-    const dmgMult = Math.pow(1.17, depth - 1);
-    const eliteHp = opts.elite === 'rare' ? 9 : opts.elite === 'champion' ? 3.2 : 1;
+    const dm = dreadMods(g.dread);
+    const hpMult = Math.pow(1.38, depth - 1) * (1 + g.runTime / 420) * dm.hp;
+    const dmgMult = Math.pow(1.22, depth - 1) * dm.dmg;
+    const eliteHp = opts.elite === 'rare' ? 12 : opts.elite === 'champion' ? (depth === 1 ? 2.5 : 4) : 1;
     const e = {
       id: this.nextId++,
       typeId,
@@ -91,7 +93,7 @@ export class Enemies {
       radius: def.radius * (opts.elite === 'rare' ? 1.4 : opts.elite ? 1.2 : 1),
       scale: opts.elite === 'rare' ? 1.4 : opts.elite ? 1.22 : 1,
       maxHp: def.hp * hpMult * eliteHp,
-      damage: def.damage * dmgMult * (opts.elite ? 1.4 : 1),
+      damage: def.damage * dmgMult * (opts.elite === 'rare' ? 1.6 : opts.elite ? 1.4 : 1),
       speed: def.speed * (0.9 + Math.random() * 0.2),
       atkCd: 0.5 + Math.random(),
       windup: 0,
@@ -123,7 +125,7 @@ export class Enemies {
     const p = g.player;
     const w = Object.entries(g.world.biome.monsters).filter(([id]) => (id === 'wisp' ? g.runTime > 25 : id === 'brute' ? g.runTime > 50 : true));
     const typeId = weighted(w);
-    const size = { husk: randInt(4, 9), skitter: randInt(5, 11), wisp: randInt(1, 3), brute: randInt(1, 2) }[typeId];
+    const size = { husk: randInt(4, 8), skitter: randInt(5, 10), wisp: randInt(1, 2), brute: 1 }[typeId];
     const a = Math.random() * Math.PI * 2;
     const d = 24 + Math.random() * 8;
     const cx = p.x + Math.cos(a) * d, cz = p.z + Math.sin(a) * d;
@@ -141,11 +143,13 @@ export class Enemies {
       const affix = pick(Object.keys(ELITE_AFFIXES));
       const boss = this.spawn(typeId === 'wisp' ? 'brute' : typeId, cx, cz, { elite: 'rare', name, affix });
       this.boss = boss;
-      for (let i = 0; i < 5; i++) this.spawn(typeId, cx + (Math.random() - 0.5) * 5, cz + (Math.random() - 0.5) * 5, { elite: 'champion' });
+      const minions = g.depth <= 2 ? 3 : 5;
+      for (let i = 0; i < minions; i++) this.spawn(typeId, cx + (Math.random() - 0.5) * 5, cz + (Math.random() - 0.5) * 5, { elite: 'champion' });
       g.hud.announce(name, `${ELITE_AFFIXES[affix].name} — ${ELITE_AFFIXES[affix].desc}`, 'rare');
     } else {
-      const n = randInt(3, 4);
-      for (let i = 0; i < n; i++) this.spawn(typeId, cx + (Math.random() - 0.5) * 4, cz + (Math.random() - 0.5) * 4, { elite: 'champion' });
+      const n = g.depth === 1 ? randInt(2, 3) : randInt(3, 4);
+      const affix = g.depth > 1 && Math.random() < 0.5 ? 'frenzied' : null;
+      for (let i = 0; i < n; i++) this.spawn(typeId, cx + (Math.random() - 0.5) * 4, cz + (Math.random() - 0.5) * 4, { elite: 'champion', affix });
       g.hud.announce('Champions approach', 'Their blood runs blue with fortune', 'magic');
     }
     g.audio.play('elite');
@@ -158,7 +162,7 @@ export class Enemies {
 
     // Director ---------------------------------------------------------
     const alive = this.list.length;
-    const target = Math.min(22 + g.runTime * 0.9 + (g.depth - 1) * 16, 300);
+    const target = Math.min(12 + g.runTime * 0.5 + (g.depth - 1) * 14, 260);
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0 && alive < target && !p.dead) {
       this.#spawnPack();
@@ -167,8 +171,9 @@ export class Enemies {
     this.eliteTimer -= dt;
     if (this.eliteTimer <= 0 && !p.dead) {
       this.eliteCount++;
-      this.spawnElitePack(this.eliteCount % 3 === 0);
-      this.eliteTimer = 45;
+      // Named elites only once you're past the first depth.
+      this.spawnElitePack(this.eliteCount % 3 === 0 && g.depth >= 2);
+      this.eliteTimer = 50;
     }
 
     this.hash.clear();

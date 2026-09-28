@@ -34,7 +34,7 @@ function rollAffixes(slot, ilvl, count, taken = new Set()) {
 }
 
 export function rollRarity(mf = 0, uniqueBonus = 1) {
-  const u = 0.028 * uniqueBonus * (1 + mf / 100);
+  const u = 0.016 * uniqueBonus * (1 + mf / 100);
   const r = 0.24 * (1 + mf / 250);
   const x = Math.random();
   if (x < u) return 'unique';

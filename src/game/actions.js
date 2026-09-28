@@ -72,7 +72,7 @@ export class Actions {
   #novaHits(x, z, radius, mult, element, opts) {
     const g = this.game;
     for (const e of g.enemies.near(x, z, radius)) {
-      g.combat.playerHit(e, mult, { kind: 'nova', element, noProc: opts.noProc ?? !opts.frost, chill: opts.chill, chainDepth: opts.chainDepth, knock: 4, from: [x, z] });
+      g.combat.playerHit(e, mult, { kind: 'nova', element, noProc: opts.noProc ?? !opts.frost, chill: opts.chill, chainDepth: opts.chainDepth, knock: 3, from: [x, z] });
     }
   }
 

@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { computeStats } from './stats.js';
 import { RARITY } from '../content/bases.js';
 import { angleDiff, damp, clamp } from '../core/rng.js';
+import { SKILLS, SKILL_BY_ID } from '../content/skills.js';
 
-export const xpForLevel = (L) => Math.floor(45 * Math.pow(1.3, L - 1) + 25 * L);
+export const xpForLevel = (L) => Math.floor(70 * Math.pow(1.34, L - 1) + 30 * L);
 
 function buildModel(env) {
   const root = new THREE.Group();
@@ -140,6 +141,7 @@ export class Player {
     const g = this.game;
     this.xp += v;
     let leveled = false;
+    const before = this.level;
     while (this.xp >= xpForLevel(this.level)) {
       this.xp -= xpForLevel(this.level);
       this.level++;
@@ -150,7 +152,11 @@ export class Player {
       this.life = this.stats.life;
       this.mana = this.stats.mana;
       g.audio.play('levelUp');
-      g.hud.announce(`Level ${this.level}`, 'Your strength grows', 'level');
+      const learned = SKILLS.find((s) => s.level > before && s.level <= this.level);
+      if (learned) {
+        g.hud.announce(learned.name, `New skill · ${learned.desc}`, 'level');
+        g.hud.toast(`<b>${learned.name}</b> learned — ${learned.desc}`, 'discover');
+      } else g.hud.announce(`Level ${this.level}`, 'Your strength grows', 'level');
       for (let i = 0; i < 80; i++) {
         const a = Math.random() * Math.PI * 2, r = Math.random() * 1.2;
         g.particles.spawn(this.x + Math.cos(a) * r, Math.random() * 0.5, this.z + Math.sin(a) * r, 0, 3 + Math.random() * 5, 0, 1.2, 0.4, 4, 3.2, 1.2, 0, 1.5);
@@ -158,6 +164,18 @@ export class Player {
     }
     g.save.level = this.level;
     g.save.xp = this.xp;
+  }
+
+  can(id) {
+    return this.level >= SKILL_BY_ID[id].level;
+  }
+
+  #lockedHint(id) {
+    const g = this.game;
+    if (g.time - (this.hintT ?? -9) < 2) return;
+    this.hintT = g.time;
+    const s = SKILL_BY_ID[id];
+    g.hud.toast(`${s.name} unlocks at level ${s.level}`, 'warn');
   }
 
   aimAngle() {
@@ -189,33 +207,35 @@ export class Player {
     if (ml > 0) { mx /= ml; mz /= ml; }
 
     // Skills.
+    if (inp.hit('KeyQ') && !this.can('nova')) this.#lockedHint('nova');
+    if (inp.mouse.right && !this.can('bolt')) this.#lockedHint('bolt');
     if (inp.hit('Space') && this.dashCd <= 0) {
       const a = ml > 0 ? Math.atan2(mx, mz) : this.aimAngle();
       this.dashDir = [Math.sin(a), Math.cos(a)];
       this.dashT = 0.17;
       this.invuln = 0.3;
-      this.dashCd = 1.3 * s.cdrMult;
+      this.dashCd = 1.6 * s.cdrMult;
       this.facing = a;
       g.audio.play('dash');
       g.powers.emit('dash', { x: this.x, z: this.z });
     }
-    if (inp.hit('KeyQ') && this.novaCd <= 0 && this.mana >= 16) {
-      this.mana -= 16;
-      this.novaCd = 6 * s.cdrMult;
+    if (inp.hit('KeyQ') && this.can('nova') && this.novaCd <= 0 && this.mana >= 25) {
+      this.mana -= 25;
+      this.novaCd = 9 * s.cdrMult;
       g.actions.nova(this.x, this.z, 6 * s.areaMult, 1.3, 'cold', { chill: 2.5, frost: true });
       g.audio.play('nova');
       g.shake(0.2);
       g.powers.emit('nova', { x: this.x, z: this.z });
     }
     if (inp.hit('KeyR') && this.potionCd <= 0 && this.life < s.life) {
-      this.potionCd = 12;
-      this.heal(s.life * 0.45);
+      this.potionCd = 15;
+      this.heal(s.life * 0.4);
       g.audio.play('potion');
       for (let i = 0; i < 40; i++) g.particles.spawn(this.x + (Math.random() - 0.5), Math.random() * 2, this.z + (Math.random() - 0.5), 0, 2 + Math.random() * 2, 0, 0.8, 0.35, 5, 0.6, 0.6, 0, 1);
     }
-    if (inp.mouse.right && this.boltCd <= 0 && this.mana >= 5 && this.dashT <= 0) {
-      this.mana -= 5;
-      this.boltCd = 0.3 / (1 + s.atkSpd / 100);
+    if (inp.mouse.right && this.can('bolt') && this.boltCd <= 0 && this.mana >= 8 && this.dashT <= 0) {
+      this.mana -= 8;
+      this.boltCd = 0.34 / (1 + s.atkSpd / 100);
       this.castT = 0.2;
       const a = this.aimAngle();
       this.facing = a;
@@ -271,8 +291,8 @@ export class Player {
     const g = this.game, s = this.stats;
     const ev = { angle: this.attackAngle, areaMult: s.areaMult, forceCrit: false, dmgMult: 1, thunderclap: false };
     g.powers.emit('swing', ev);
-    const range = 2.8 * ev.areaMult;
-    const half = 1.15;
+    const range = 2.6 * ev.areaMult;
+    const half = 1.0;
     g.fx.slash(this.x, this.z, ev.angle, range, ev.thunderclap ? [3, 3.2, 7] : this.slashColor, this.swingDir);
     g.audio.play('swing');
     let hits = 0, crit = false;
@@ -282,7 +302,7 @@ export class Player {
       const slack = Math.atan2(e.radius, Math.max(d, 0.01));
       if (d > e.radius + 0.6 && Math.abs(angleDiff(Math.atan2(dx, dz), ev.angle)) > half + slack) continue;
       const before = e.hp;
-      g.combat.playerHit(e, ev.dmgMult, { kind: 'melee', forceCrit: ev.forceCrit, knock: 3.5 });
+      g.combat.playerHit(e, ev.dmgMult, { kind: 'melee', forceCrit: ev.forceCrit, knock: 2 });
       hits++;
       if (e.lastCrit && before !== e.hp) crit = true;
     }

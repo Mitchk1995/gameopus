@@ -34,7 +34,7 @@ export class Projectiles {
   }
 
   enemyBolt(e, nx, nz) {
-    const sp = 9;
+    const sp = 10;
     this.spawn({ kind: 'enemy', owner: 'enemy', x: e.x + nx * 0.7, z: e.z + nz * 0.7, y: 1.3, vx: nx * sp, vz: nz * sp, life: 2.4, radius: 0.35, damage: e.damage });
     this.game.audio.play('enemyShoot');
   }
@@ -65,7 +65,7 @@ export class Projectiles {
         for (const e of g.enemies.near(b.x, b.z, b.radius)) {
           if (b.hit.has(e)) continue;
           b.hit.add(e);
-          g.combat.playerHit(e, b.mult, { kind: b.kind, element: b.element, noProc: b.kind !== 'bolt', chill: b.chill, chainDepth: b.chainDepth, knock: 1.5 });
+          g.combat.playerHit(e, b.mult, { kind: b.kind, element: b.element, noProc: b.kind !== 'bolt', chill: b.chill, chainDepth: b.chainDepth, knock: 0.6 });
           P.burst(b.x, b.y, b.z, 8, 4, look.c, 0.3, 0.3, 3, 1);
           if (b.kind === 'bolt') g.audio.play('boltHit');
           if (b.homing) b.target = null;

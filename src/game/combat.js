@@ -1,4 +1,5 @@
 import { ELEMENT_COLOR } from './actions.js';
+import { dreadMods } from '../content/dread.js';
 
 export class Combat {
   constructor(game) {
@@ -28,7 +29,7 @@ export class Combat {
     if (opts.knock && !e.elite) {
       const [fx, fz] = opts.from || [p.x, p.z];
       const dx = e.x - fx, dz = e.z - fz, d = Math.hypot(dx, dz) || 1;
-      const k = opts.knock * (e.def.behavior === 'slam' ? 0.3 : 1);
+      const k = opts.knock * (e.def.behavior === 'slam' ? 0.2 : 1);
       e.vx += (dx / d) * k * 2;
       e.vz += (dz / d) * k * 2;
     }
@@ -66,7 +67,7 @@ export class Combat {
     g.audio.play('kill');
     g.kills++;
     const xpMult = e.elite === 'rare' ? 12 : e.elite ? 4 : 1;
-    g.player.gainXp(e.def.xp * xpMult * (1 + (g.depth - 1) * 0.35));
+    g.player.gainXp(e.def.xp * xpMult * (1 + (g.depth - 1) * 0.35) * dreadMods(g.dread).xp);
     g.loot.onKill(e);
     g.powers.emit('kill', { enemy: e, x: e.x, z: e.z, chainDepth });
     if (e.elite === 'rare') {
@@ -78,10 +79,16 @@ export class Combat {
     }
   }
 
+  // Armor gets less effective the deeper you go, so it can't trivialize late depths.
+  drFor(armor) {
+    const g = this.game;
+    return Math.min(0.7, armor / (armor + 90 + 45 * (g.depth - 1) + 60 * g.dread));
+  }
+
   hurtPlayer(amt, src, { dot = false } = {}) {
     const g = this.game, p = g.player;
     if (p.dead || (!dot && p.invuln > 0)) return;
-    const dmg = amt * (1 - p.stats.dr);
+    const dmg = amt * (1 - this.drFor(p.stats.armor));
     p.life -= dmg;
     g.damagePulse = Math.min(1, g.damagePulse + (dmg / p.stats.life) * (dot ? 1 : 2.5));
     if (!dot) {

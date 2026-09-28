@@ -4,6 +4,7 @@ import { generateItem, rollRarity, isUnique } from './items.js';
 import { RARITY } from '../content/bases.js';
 import { UNIQUE_BY_ID } from '../content/uniques.js';
 import { randInt } from '../core/rng.js';
+import { dreadMods } from '../content/dread.js';
 
 const BEAM_VERT = /* glsl */ `
   varying vec2 vUv; varying float vFres;
@@ -107,40 +108,42 @@ export class Loot {
 
   ilvl() {
     const g = this.game;
-    return Math.max(1, (g.depth - 1) * 5 + Math.floor(g.player.level * 0.6) + randInt(0, 3));
+    return Math.max(1, (g.depth - 1) * 5 + Math.floor(g.player.level * 0.6) + randInt(0, 3) + dreadMods(g.dread).ilvl);
   }
 
   onKill(e) {
     const g = this.game, s = g.player.stats;
     const mf = s.magicFind;
+    const dm = dreadMods(g.dread);
+    const ub = dm.unique;
     if (e.elite === 'rare') {
-      for (let i = 0; i < 4; i++) this.dropItem(generateItem({ ilvl: this.ilvl() + 2, rarity: i === 0 ? (Math.random() < 0.35 ? 'unique' : 'rare') : rollRarity(mf, 5) }), e.x, e.z);
+      for (let i = 0; i < 4; i++) this.dropItem(generateItem({ ilvl: this.ilvl() + 2, rarity: i === 0 ? (Math.random() < 0.15 * ub ? 'unique' : 'rare') : rollRarity(mf, 4 * ub) }), e.x, e.z);
       this.goldFountain(e.x, e.z);
       for (let i = 0; i < 2; i++) this.spawnPickup('orb', e.x, e.z, 1);
       for (let i = 0; i < 6; i++) this.spawnPickup('shard', e.x, e.z, 1);
       return;
     }
     if (e.elite === 'champion') {
-      let rarity = rollRarity(mf, 2.5);
+      let rarity = rollRarity(mf, 2 * ub);
       if (!g.save.firstUnique) {
         g.save.firstUnique = true;
         rarity = 'unique';
       }
       this.dropItem(generateItem({ ilvl: this.ilvl() + 1, rarity }), e.x, e.z);
-      if (Math.random() < 0.5) this.dropItem(generateItem({ ilvl: this.ilvl() + 1, rarity: rollRarity(mf, 2.5) }), e.x, e.z);
+      if (Math.random() < 0.5 * dm.items) this.dropItem(generateItem({ ilvl: this.ilvl() + 1, rarity: rollRarity(mf, 2 * ub) }), e.x, e.z);
       for (let i = 0; i < 4; i++) this.spawnPickup('gold', e.x, e.z, this.goldAmount());
       if (Math.random() < 0.5) this.spawnPickup('orb', e.x, e.z, 1);
       return;
     }
-    if (Math.random() < 0.045 * (1 + mf / 300)) this.dropItem(generateItem({ ilvl: this.ilvl(), rarity: rollRarity(mf) }), e.x, e.z);
+    if (Math.random() < 0.035 * (1 + mf / 300) * dm.items) this.dropItem(generateItem({ ilvl: this.ilvl(), rarity: rollRarity(mf, ub) }), e.x, e.z);
     if (Math.random() < 0.3) this.spawnPickup('gold', e.x, e.z, this.goldAmount());
     if (Math.random() < 0.06) this.spawnPickup('shard', e.x, e.z, 1);
-    if (Math.random() < 0.025) this.spawnPickup('orb', e.x, e.z, 1);
+    if (Math.random() < 0.018) this.spawnPickup('orb', e.x, e.z, 1);
   }
 
   goldAmount() {
     const g = this.game;
-    return Math.max(1, Math.round(randInt(2, 6) * (1 + (g.depth - 1) * 0.6) * (1 + g.player.stats.goldFind / 100)));
+    return Math.max(1, Math.round(randInt(2, 6) * (1 + (g.depth - 1) * 0.6) * (1 + g.player.stats.goldFind / 100) * dreadMods(g.dread).gold));
   }
 
   goldFountain(x, z) {

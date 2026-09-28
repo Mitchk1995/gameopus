@@ -14,6 +14,7 @@ const VERT = /* glsl */ `
     gl_PointSize = max(1.5, aSize * uScale / -mv.z);
   }`;
 const FRAG = /* glsl */ `
+  uniform float uGain;
   varying vec4 vColor;
   void main() {
     vec2 d = gl_PointCoord - 0.5;
@@ -21,13 +22,14 @@ const FRAG = /* glsl */ `
     if (r > 1.0) discard;
     float a = 1.0 - r;
     a *= a;
-    gl_FragColor = vec4(vColor.rgb * vColor.a * a * 0.62, 1.0);
+    gl_FragColor = vec4(vColor.rgb * vColor.a * a * uGain, 1.0);
   }`;
 
 export class Particles {
   constructor(scene, cap = 40000) {
     this.cap = cap;
     this.n = 0;
+    this.gain = 1; // effects-brightness setting
     this.pos = new Float32Array(cap * 3);
     this.col = new Float32Array(cap * 4);
     this.size = new Float32Array(cap);
@@ -48,7 +50,7 @@ export class Particles {
     g.setAttribute('aSize', this.aSize);
     g.setDrawRange(0, 0);
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uScale: { value: 500 } },
+      uniforms: { uScale: { value: 500 }, uGain: { value: 0.62 } },
       vertexShader: VERT,
       fragmentShader: FRAG,
       blending: THREE.AdditiveBlending,
@@ -67,6 +69,8 @@ export class Particles {
 
   spawn(x, y, z, vx, vy, vz, life, size, r, g, b, grav = 0, drag = 0, sizeEnd = 0) {
     if (this.n >= this.cap) return;
+    // Never let a bad number into the GPU buffers.
+    if (x !== x || y !== y || z !== z || r !== r || g !== g || b !== b || size !== size) return;
     const i = this.n++;
     const i3 = i * 3;
     this.pos[i3] = x; this.pos[i3 + 1] = y; this.pos[i3 + 2] = z;
@@ -104,6 +108,9 @@ export class Particles {
       i++;
     }
     const n = this.n;
+    // Dense fights get dimmer per particle so the screen never turns into a white-out.
+    const density = Math.min(1, Math.max(0.4, 1 / Math.sqrt(Math.max(1, n / 1500))));
+    this.material.uniforms.uGain.value = 0.62 * this.gain * density;
     this.points.geometry.setDrawRange(0, n);
     for (const [attr, k] of [[this.aPos, 3], [this.aCol, 4], [this.aSize, 1]]) {
       attr.clearUpdateRanges();

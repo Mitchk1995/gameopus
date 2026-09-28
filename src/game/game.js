@@ -18,18 +18,24 @@ import { BIOMES, biomeForDepth } from '../content/biomes.js';
 import { UNIQUES } from '../content/uniques.js';
 import { SLOTS } from '../content/bases.js';
 import { generateItem } from './items.js';
+import { SettingsUI, applySettings, DEFAULT_SETTINGS } from '../ui/settings.js';
+import { DREAD_TIERS, DREAD_UNLOCK_DEPTH, dreadName, dreadMods } from '../content/dread.js';
 
 const SAVE_KEY = 'hollowreach-save-v1';
-const DEPTH_SECONDS = 80;
+const DEPTH_SECONDS = 100;
 
 function loadSave() {
-  const fresh = { v: 1, level: 1, xp: 0, gold: 0, shards: 0, equipment: {}, bag: [], codex: {}, firstUnique: false, deepest: 1, lifetimeKills: 0 };
+  const fresh = { v: 1, level: 1, xp: 0, gold: 0, shards: 0, equipment: {}, bag: [], codex: {}, firstUnique: false, deepest: 1, lifetimeKills: 0, dread: 0, dreadUnlocked: 0, settings: { ...DEFAULT_SETTINGS } };
   for (const s of SLOTS) fresh.equipment[s] = null;
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return fresh;
     const s = JSON.parse(raw);
-    return { ...fresh, ...s, equipment: { ...fresh.equipment, ...s.equipment } };
+    const out = { ...fresh, ...s, equipment: { ...fresh.equipment, ...s.equipment } };
+    out.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+    out.dread ??= 0;
+    out.dreadUnlocked ??= out.deepest >= DREAD_UNLOCK_DEPTH ? 1 : 0;
+    return out;
   } catch {
     return fresh;
   }
@@ -53,6 +59,9 @@ export class Game {
     this.gfx.onResize = () => this.particles.setViewport(this.gfx.renderer.domElement.height, this.camera.fov);
     this.gfx.onResize();
 
+    this.settings = this.save.settings;
+    this.dread = Math.min(this.save.dread, this.save.dreadUnlocked);
+    this.shakeScale = 1;
     this.time = 0;
     this.runTime = 0;
     this.depth = 1;
@@ -76,12 +85,14 @@ export class Game {
     this.loot = new Loot(this);
     this.hud = new HUD(this);
     this.inventory = new InventoryUI(this);
+    this.settingsUI = new SettingsUI(this);
     this.player = new Player(this);
     this.player.recompute();
     this.world.setBiome(BIOMES[0], true);
+    applySettings(this);
 
-    this.camPos = new THREE.Vector3(0, 22, 15);
-    this.camLook = new THREE.Vector3();
+    this.camPos = new THREE.Vector3(-5.5, 7, 13.5);
+    this.camLook = new THREE.Vector3(-5.5, 1.2, 1.5);
     this.#titleScreen();
     this.#bindKeys();
 
@@ -97,6 +108,7 @@ export class Game {
     };
     requestAnimationFrame(loop);
     window.__game = this;
+    if (this.debug) window.__gen = generateItem;
   }
 
   // Timed callbacks in game time (used by chained effects).
@@ -104,7 +116,7 @@ export class Game {
     this.timers.push({ t: delay, fn });
   }
   shake(v) {
-    this.trauma = Math.min(1, this.trauma + v);
+    this.trauma = Math.min(1, this.trauma + v * this.shakeScale);
   }
   hitstop(s) {
     this.stop = Math.max(this.stop, s);
@@ -133,16 +145,18 @@ export class Game {
       if (e.code === 'KeyI' || e.code === 'Tab') this.inventory.toggle();
       if (e.code === 'KeyC') this.inventory.toggleCodex();
       if (e.code === 'KeyM') this.toggleMute();
+      if (e.code === 'KeyO') this.settingsUI.toggle();
       if (e.code === 'Backquote') this.hud.fps.hidden = !this.hud.fps.hidden;
       if (e.code === 'Escape') {
-        this.inventory.toggle(false);
+        if (this.inventory.open) this.inventory.toggle(false);
         this.inventory.toggleCodex(false);
+        this.settingsUI.toggle(false);
       }
       if (this.debug) {
         const n = parseInt(e.key, 10);
         if (n >= 1 && n <= UNIQUES.length) this.loot.debugDrop(UNIQUES[n - 1].id, e.shiftKey);
         if (e.code === 'KeyK') this.enemies.spawnElitePack(false);
-        if (e.code === 'KeyO') this.enemies.spawnElitePack(true);
+        if (e.code === 'KeyP') this.enemies.spawnElitePack(true);
         if (e.code === 'KeyJ') this.#nextDepth();
       }
     });
@@ -156,6 +170,33 @@ export class Game {
     return s;
   }
 
+  // Difficulty picker shared by the title and death screens.
+  #dreadPicker(host) {
+    const render = () => {
+      const unlocked = this.save.dreadUnlocked;
+      const btns = [];
+      for (let d = 0; d < DREAD_TIERS; d++) {
+        const locked = d > unlocked;
+        btns.push(`<button type="button" data-d="${d}" aria-pressed="${d === this.dread}" ${locked ? 'disabled' : ''}>${locked ? '🔒 ' : ''}${d === 0 ? 'Normal' : dreadName(d).replace('Dread ', '')}</button>`);
+      }
+      const m = dreadMods(this.dread);
+      const note = this.dread === 0
+        ? `Reach depth ${DREAD_UNLOCK_DEPTH} to unlock Dread I: tougher monsters, better loot.`
+        : `Monsters ×${m.hp.toFixed(1)} life, ×${m.dmg.toFixed(1)} damage · items ×${m.items.toFixed(2)}, uniques ×${m.unique.toFixed(1)}, +${m.ilvl} item level`;
+      host.innerHTML = `<div class="dlabel">Difficulty</div><div class="dread" role="group" aria-label="Difficulty">${btns.join('')}</div><div class="dnote">${note}</div>`;
+    };
+    host.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-d]');
+      if (!b || b.disabled) return;
+      this.dread = +b.dataset.d;
+      this.save.dread = this.dread;
+      this.persist();
+      this.audio.play('click');
+      render();
+    });
+    render();
+  }
+
   #titleScreen() {
     this.hud.root.hidden = true;
     const returning = this.save.level > 1 || this.save.lifetimeKills > 0;
@@ -163,16 +204,17 @@ export class Game {
       <div class="tag">A descent without end</div>
       <h1>Hollowreach</h1>
       <div class="tag" style="letter-spacing:.14em">${returning ? `Level ${this.save.level} · deepest depth ${this.save.deepest}` : 'The kingdom fell upward into the dark'}</div>
+      <div class="picker"></div>
       <button class="go" type="button">${returning ? 'Descend again' : 'Descend'}</button>
       <div class="keys">
         <b>WASD</b><span>move</span>
         <b>Left mouse</b><span>cleave (hold)</span>
-        <b>Right mouse</b><span>arcane bolt</span>
-        <b>Space</b><span>dash</span>
-        <b>Q</b><span>frost nova</span>
-        <b>R</b><span>potion</span>
-        <b>I · C</b><span>inventory · codex</span>
+        <b>Space</b><span>shadowstep dash</span>
+        <b>R</b><span>healing draught</span>
+        <b>Right mouse · Q</b><span>unlock at levels 3 and 6</span>
+        <b>I · C · O</b><span>inventory · codex · settings</span>
       </div>`);
+    this.#dreadPicker(s.querySelector('.picker'));
     s.querySelector('.go').onclick = () => {
       this.audio.init();
       s.remove();
@@ -200,7 +242,9 @@ export class Game {
         <h1>You have fallen</h1>
         <div class="runstats">Depth ${this.depth} · ${this.kills} slain · ${mins}:${secs}</div>
         <div class="runstats">Your gear, levels and gold are kept. The descent begins again.</div>
+        <div class="picker"></div>
         <button class="go" type="button">Rise again</button>`);
+      this.#dreadPicker(s.querySelector('.picker'));
       s.querySelector('.go').onclick = () => {
         s.remove();
         this.newRun();
@@ -228,6 +272,13 @@ export class Game {
   #nextDepth() {
     this.depth++;
     this.save.deepest = Math.max(this.save.deepest, this.depth);
+    if (this.depth >= DREAD_UNLOCK_DEPTH && this.save.dreadUnlocked === this.dread && this.dread < DREAD_TIERS - 1) {
+      this.save.dreadUnlocked = this.dread + 1;
+      this.schedule(3.5, () => {
+        this.hud.announce(`${dreadName(this.dread + 1)} unlocked`, 'Choose it when you next descend', 'rare');
+        this.hud.toast(`<b>${dreadName(this.dread + 1)}</b> unlocked — pick it on the next descent for better loot`, 'discover');
+      });
+    }
     const b = biomeForDepth(this.depth);
     this.world.setBiome(b);
     this.hud.announce(b.name, `Depth ${this.depth} — ${b.tagline}`, 'depth');
@@ -245,7 +296,7 @@ export class Game {
   }
 
   frame(real) {
-    const paused = this.inventory.open || this.inventory.codexOpen;
+    const paused = this.inventory.open || this.inventory.codexOpen || this.settingsUI.open;
     let dt = real;
     if (this.stop > 0) {
       this.stop -= real;
@@ -317,9 +368,10 @@ export class Game {
   #camera(dt) {
     const p = this.player;
     const title = this.state === 'title';
-    const tx = title ? Math.sin(this.time * 0.1) * 3 : p.x + (this.aim.x - p.x) * 0.08;
-    const tz = title ? Math.cos(this.time * 0.1) * 3 : p.z + (this.aim.z - p.z) * 0.08;
-    const off = title ? [Math.sin(this.time * 0.07) * 9, 9, 13] : [0, 21.5, 15];
+    // On the title screen the hero stands off to the right, clear of the menu.
+    const tx = title ? -5.5 + Math.sin(this.time * 0.1) * 1.5 : p.x + (this.aim.x - p.x) * 0.08;
+    const tz = title ? Math.cos(this.time * 0.1) * 1.5 : p.z + (this.aim.z - p.z) * 0.08;
+    const off = title ? [Math.sin(this.time * 0.07) * 3, 7, 12] : [0, 21.5, 15];
     const k = 1 - Math.exp(-(title ? 1 : 7) * dt);
     this.camPos.x += (tx + off[0] - this.camPos.x) * k;
     this.camPos.y += (off[1] - this.camPos.y) * k;

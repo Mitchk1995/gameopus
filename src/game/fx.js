@@ -108,6 +108,7 @@ class Pool {
 export class FX {
   constructor(game) {
     this.game = game;
+    this.gain = 1; // effects-brightness setting
     const s = game.scene;
     this.slashes = new Pool(s, new THREE.RingGeometry(0.25, 1, 40, 3, -1.2, 2.4), 'slash', 16);
     this.rings = new Pool(s, new THREE.CircleGeometry(1, 64), 'ring', 24);
@@ -125,7 +126,7 @@ export class FX {
     it.mesh.position.set(x, 1.0, z);
     it.mesh.rotation.z = angle - Math.PI / 2;
     it.mesh.scale.setScalar(range);
-    it.u.uColor.value.setRGB(...color);
+    it.u.uColor.value.setRGB(...color).multiplyScalar(this.gain);
     it.u.uDir.value = dir;
   }
 
@@ -135,7 +136,7 @@ export class FX {
     it.kind = implode ? 'implode' : 'ring';
     it.mesh.position.set(x, 0.06, z);
     it.mesh.scale.setScalar(radius);
-    it.u.uColor.value.setRGB(...color);
+    it.u.uColor.value.setRGB(...color).multiplyScalar(this.gain);
   }
 
   telegraph(x, z, radius, dur) {
@@ -153,7 +154,7 @@ export class FX {
     it.kind = 'fire';
     it.mesh.position.set(x, 0.035 + Math.random() * 0.01, z);
     it.mesh.scale.setScalar(radius);
-    it.u.uColor.value.setRGB(...(enemy ? [1.3, 0.35, 0.8] : [1, 1, 1]));
+    it.u.uColor.value.setRGB(...(enemy ? [1.3, 0.35, 0.8] : [1, 1, 1])).multiplyScalar(enemy ? 1 : this.gain);
     return it;
   }
 
@@ -163,7 +164,7 @@ export class FX {
     it.kind = 'glow';
     it.mesh.position.set(x, 0.05, z);
     it.mesh.scale.setScalar(radius);
-    it.u.uColor.value.setRGB(...color);
+    it.u.uColor.value.setRGB(...color).multiplyScalar(loot ? 1 : this.gain);
     return it;
   }
 

@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { SKILL_ICONS } from './icons.js';
 import { xpForLevel } from '../game/player.js';
 import { RARITY } from '../content/bases.js';
+import { SKILL_BY_ID } from '../content/skills.js';
+import { dreadName } from '../content/dread.js';
 
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -24,12 +26,13 @@ export class HUD {
     const top = el('div', 'top');
     this.zone = el('div', 'zone', '<div class="name"></div><div class="sub"></div>');
     this.purse = el('div', 'purse', `<span class="coin"></span><span class="shard"></span>
-      <button data-a="inv">Inventory<kbd>I</kbd></button><button data-a="codex">Codex<kbd>C</kbd></button><button data-a="mute">Sound<kbd>M</kbd></button>`);
+      <button data-a="inv">Inventory<kbd>I</kbd></button><button data-a="codex">Codex<kbd>C</kbd></button><button data-a="settings">Settings<kbd>O</kbd></button><button data-a="mute">Sound<kbd>M</kbd></button>`);
     this.purse.addEventListener('click', (e) => {
       const a = e.target.closest('button')?.dataset.a;
       if (a === 'inv') game.inventory.toggle();
       if (a === 'codex') game.inventory.toggleCodex();
       if (a === 'mute') game.toggleMute();
+      if (a === 'settings') game.settingsUI.toggle();
     });
     top.append(this.zone, this.purse);
     root.append(top);
@@ -52,7 +55,8 @@ export class HUD {
     this.skills = el('div', 'skills');
     this.skillEls = {};
     for (const [id, key] of [['cleave', 'LMB'], ['bolt', 'RMB'], ['dash', 'SPACE'], ['nova', 'Q'], ['potion', 'R']]) {
-      const s = el('div', 'skill', `${SKILL_ICONS[id]}<span class="key">${key}</span><div class="cd"></div>`);
+      const s = el('div', 'skill', `<span class="ico">${SKILL_ICONS[id]}</span><span class="key">${key}</span><div class="cd"></div><span class="req">Lv ${SKILL_BY_ID[id].level}</span>`);
+      s.title = SKILL_BY_ID[id].name;
       this.skillEls[id] = s;
       this.skills.append(s);
     }
@@ -86,6 +90,8 @@ export class HUD {
   }
 
   damageNumber(x, y, z, amt, crit, kind) {
+    const mode = this.game.settings.numbers;
+    if (kind !== 'player' && (mode === 'off' || (mode === 'crits' && !crit))) return;
     const n = this.numPool[this.numI];
     this.numI = (this.numI + 1) % this.numPool.length;
     n.active = true;
@@ -99,12 +105,22 @@ export class HUD {
   }
 
   createLootLabel(item, onClick) {
-    const l = el('div', `loot-label ${item.rarity}`);
-    l.textContent = item.name;
+    const inv = this.game.inventory;
+    const up = inv.isUpgrade(item);
+    const l = el('div', `loot-label ${item.rarity}${up ? ' up' : ''}`);
+    l.textContent = (up ? '▲ ' : '') + item.name;
     l.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
+      inv.hideTip();
       onClick();
     });
+    l.addEventListener('pointerenter', (e) => inv.showTip(item, e.clientX, e.clientY, { hint: 'Click to walk over and pick it up' }));
+    l.addEventListener('pointerleave', () => inv.hideTip());
+    l.dropRemove = l.remove;
+    l.remove = () => {
+      inv.hideTip();
+      l.dropRemove();
+    };
     this.labels.append(l);
     return l;
   }
@@ -186,16 +202,17 @@ export class HUD {
     this.lvl.textContent = `Level ${p.level}`;
 
     const cd = (id, v, max) => this.skillEls[id].querySelector('.cd').style.setProperty('--p', `${Math.max(0, v / max) * 100}%`);
-    cd('dash', p.dashCd, 1.3 * s.cdrMult);
-    cd('nova', p.novaCd, 6 * s.cdrMult);
-    cd('potion', p.potionCd, 12);
-    this.skillEls.nova.classList.toggle('nomana', p.mana < 16);
-    this.skillEls.bolt.classList.toggle('nomana', p.mana < 5);
+    cd('dash', p.dashCd, 1.6 * s.cdrMult);
+    cd('nova', p.novaCd, 9 * s.cdrMult);
+    cd('potion', p.potionCd, 15);
+    this.skillEls.nova.classList.toggle('nomana', p.mana < 25);
+    this.skillEls.bolt.classList.toggle('nomana', p.mana < 8);
+    for (const id in this.skillEls) this.skillEls[id].classList.toggle('locked', !p.can(id));
 
     const b = g.world.biome;
     const mins = Math.floor(g.runTime / 60), secs = Math.floor(g.runTime % 60).toString().padStart(2, '0');
     this.zone.querySelector('.name').textContent = b.name;
-    this.zone.querySelector('.sub').textContent = `Depth ${g.depth} · ${mins}:${secs} · ${g.kills} slain`;
+    this.zone.querySelector('.sub').textContent = `Depth ${g.depth}${g.dread ? ` · ${dreadName(g.dread)}` : ''} · ${mins}:${secs} · ${g.kills} slain`;
     this.purse.querySelector('.coin').textContent = `${fmt(g.save.gold)} gold`;
     this.purse.querySelector('.shard').textContent = `${fmt(g.save.shards)} shards`;
 

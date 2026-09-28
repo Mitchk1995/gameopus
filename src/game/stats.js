@@ -1,15 +1,15 @@
 // Turns level + equipment into the numbers combat reads.
 export function computeStats(level, equipment) {
   const s = {
-    life: 100 + 14 * (level - 1),
+    life: 100 + 12 * (level - 1),
     mana: 60 + 3 * (level - 1),
-    lifeRegen: 1 + 0.25 * level,
+    lifeRegen: 0.6 + 0.12 * level,
     manaRegen: 7,
     armor: 0,
     dmgMin: 3,
     dmgMax: 6,
     flatDmg: 0,
-    pctDmg: 5 * (level - 1),
+    pctDmg: 6 * (level - 1),
     atkSpd: 0,
     critChance: 5,
     critDmg: 50,
@@ -35,8 +35,8 @@ export function computeStats(level, equipment) {
     if (item.implicit?.armor) s.armor += item.implicit.armor;
     for (const a of item.affixes || []) s[a.id] = (s[a.id] || 0) + a.value;
   }
-  s.attacksPerSec = 1.75 * (1 + s.atkSpd / 100);
-  s.dr = Math.min(0.75, s.armor / (s.armor + 140));
+  s.attacksPerSec = 1.6 * (1 + s.atkSpd / 100);
+  s.dr = Math.min(0.7, s.armor / (s.armor + 90)); // at depth 1; see Combat.drFor
   s.moveSpeed = 6.8 * (1 + s.moveSpd / 100);
   s.cdrMult = 1 - Math.min(0.5, s.cdr / 100);
   s.areaMult = 1 + s.area / 100;

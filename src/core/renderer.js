@@ -6,6 +6,33 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
+// Runs right after the scene render, before bloom:
+// 1. Replaces any NaN/Inf pixel with black. A single bad pixel otherwise gets
+//    smeared by the bloom blur into large black squares.
+// 2. Soft-compresses very bright pixels so stacked effects can't white out the view.
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null }, uKnee: { value: 2.5 }, uMax: { value: 7.0 } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uKnee, uMax;
+    varying vec2 vUv;
+    bool bad(float v) { return isnan(v) || isinf(v) || !(v > -1e4 && v < 6e4); }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec3 v = (bad(c.r) || bad(c.g) || bad(c.b)) ? vec3(0.0) : clamp(c.rgb, 0.0, 6e4);
+      float m = max(max(v.r, v.g), v.b);
+      if (m > uKnee) {
+        float over = m - uKnee;
+        float k = uKnee + over / (1.0 + over / (uMax - uKnee));
+        v *= k / m;
+      }
+      gl_FragColor = vec4(v, 1.0);
+    }`,
+};
+
 // Final display-space pass: vignette, hurt pulse, loot flash, film grain.
 const GradeShader = {
   uniforms: {
@@ -37,7 +64,7 @@ const GradeShader = {
       c.rgb = mix(c.rgb, vec3(0.45, 0.0, 0.02), edge * uDamage * 0.6);
       c.rgb += uFlashColor * uFlash * (0.05 + edge * 0.28);
       c.rgb += (hash(vUv * 931.0 + fract(uTime) * 71.0) - 0.5) * 0.028;
-      gl_FragColor = vec4(c.rgb, 1.0);
+      gl_FragColor = vec4(clamp(c.rgb, 0.0, 1.0), 1.0);
     }`,
 };
 
@@ -63,13 +90,15 @@ export function createRenderer(container) {
   composer.renderTarget1.samples = 4;
   composer.renderTarget2.samples = 4;
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.7, 0.4, 1.0);
+  const sanitize = new ShaderPass(SanitizeShader);
+  composer.addPass(sanitize);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.35, 1.1);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
 
-  const api = { renderer, scene, camera, composer, bloom, grade, env, onResize: null };
+  const api = { renderer, scene, camera, composer, bloom, sanitize, grade, env, onResize: null };
   api.resize = () => {
     renderer.setSize(innerWidth, innerHeight);
     composer.setSize(innerWidth, innerHeight);
