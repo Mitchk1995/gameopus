@@ -69,6 +69,43 @@ function lathe(points, segs = 28) {
 // ------------------------------------------------------------------ builders
 const PIKE_SPOT = new THREE.Color(0xe6dc98);
 
+// Rune glyphs, drawn in a 5 cm square: air a ring, mind an eye, water a drop,
+// earth a mountain, fire a flame.
+function runeGlyph(kind) {
+  const s = new THREE.Shape(), r = 0.022;
+  const circle = (path, cx, cy, rad, ccw = false) => path.absarc(cx, cy, rad, 0, Math.PI * 2, ccw);
+  if (kind === 'air') {
+    circle(s, 0, 0, r);
+    const h = new THREE.Path();
+    circle(h, 0, 0, r * 0.55, true);
+    s.holes.push(h);
+  } else if (kind === 'mind') {
+    s.absellipse(0, 0, r * 1.15, r * 0.7, 0, Math.PI * 2, false);
+    const h = new THREE.Path();
+    circle(h, 0, 0, r * 0.35, true);
+    s.holes.push(h);
+  } else if (kind === 'water') {
+    s.moveTo(0, r * 1.2);
+    s.quadraticCurveTo(r * 0.95, -r * 0.1, r * 0.7, -r * 0.55);
+    s.absarc(0, -r * 0.45, r * 0.72, -0.1, Math.PI + 0.1, true);
+    s.quadraticCurveTo(-r * 0.95, -r * 0.1, 0, r * 1.2);
+  } else if (kind === 'earth') {
+    s.moveTo(-r * 1.1, -r * 0.8);
+    s.lineTo(-r * 0.2, r * 0.9);
+    s.lineTo(r * 0.25, r * 0.1);
+    s.lineTo(r * 0.5, r * 0.45);
+    s.lineTo(r * 1.1, -r * 0.8);
+    s.closePath();
+  } else {
+    s.moveTo(0, r * 1.2);
+    s.quadraticCurveTo(r * 0.4, r * 0.5, r * 0.8, r * 0.3);
+    s.quadraticCurveTo(r * 1.0, -r * 0.9, 0, -r * 0.95);
+    s.quadraticCurveTo(-r * 1.0, -r * 0.9, -r * 0.8, r * 0.1);
+    s.quadraticCurveTo(-r * 0.3, r * 0.2, 0, r * 1.2);
+  }
+  return s;
+}
+
 const BUILD = {
   coins(a) {
     const g = new THREE.Group();
@@ -654,6 +691,34 @@ const BUILD = {
     return g;
   },
 
+  rune(a) {
+    // A small grey stone with its element's glyph cut in and glowing.
+    const g = new THREE.Group();
+    g.add(mesh(lumpy(0.05, 2, 0.08, a.glow % 97, [1, 0.45, 0.9]), plain(a.color, 0.8), { y: 0.022 }));
+    const glyph = new THREE.MeshStandardMaterial({ color: a.glow, emissive: a.glow, emissiveIntensity: 0.9, roughness: 0.4 });
+    g.add(mesh(new THREE.ShapeGeometry(runeGlyph(a.glyph), 12), glyph, { y: 0.047, rx: -Math.PI / 2 }));
+    return g;
+  },
+
+  staff(a) {
+    // Grip at the origin, shaft along +Y, a gem held in a forked head.
+    const g = new THREE.Group();
+    const w = wood(0x6b4a2c);
+    g.add(mesh(new THREE.CylinderGeometry(0.021, 0.026, 1.55, 8), w, { y: 0.3 }));
+    // Three prongs lean out around the gem.
+    for (let k = 0; k < 3; k++) {
+      const a3 = (k / 3) * Math.PI * 2, r = new THREE.Vector3(Math.cos(a3), 0, Math.sin(a3));
+      const prong = mesh(new THREE.CylinderGeometry(0.005, 0.009, 0.11, 5), w, { x: r.x * 0.026, y: 1.12, z: r.z * 0.026 });
+      prong.quaternion.setFromAxisAngle(new THREE.Vector3(-r.z, 0, r.x), -0.45);
+      g.add(prong);
+    }
+    const gem = new THREE.MeshStandardMaterial({ color: a.orb, emissive: a.glow ? a.orb : 0x000000, emissiveIntensity: a.glow ? 1.2 : 0, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.92 });
+    g.add(mesh(new THREE.IcosahedronGeometry(0.052, 1), gem, { y: 1.14 }));
+    g.add(mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.03, 8), metal(0x8a7a5a), { y: 1.06 }));
+    g.add(mesh(new THREE.CylinderGeometry(0.02, 0.016, 0.03, 8), metal(0x8a7a5a), { y: -0.46 }));
+    return g;
+  },
+
   hook(a) {
     // A heavy fish hook: an eye to tie on, the shank, the bend, and a barbed point.
     const g = new THREE.Group();
@@ -884,6 +949,8 @@ const POSE = {
   petsapling: { ry: 0.5 },
   petfrog: { ry: 0.5 },
   hook: { rz: 0.35, ry: 0.2 },
+  staff: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
+  rune: { rx: 0.5 },
   book: { rx: 0.55, ry: 0.5 },
   strongbox: { ry: 0.55, rx: 0.2 },
   mug: { ry: -0.5 },

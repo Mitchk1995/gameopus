@@ -10,8 +10,8 @@ const el = (tag, cls, html) => {
 const CONTROLS = [
   ['W A S D', 'Move'], ['Mouse', 'Look'],
   ['Shift', 'Sprint'], ['Space', 'Roll'],
-  ['LMB', 'Attack (chain 3)'], ['F', 'Heavy attack'],
-  ['RMB', 'Block, tap to parry'], ['Q', 'Lock on'],
+  ['LMB', 'Attack (chain 3); hold to draw a bow or cast'], ['F', 'Heavy attack'],
+  ['RMB', 'Block, tap to parry; steady your aim'], ['Q', 'Lock on'],
   ['E', 'Use / talk'], ['Tab', 'Pack'],
   ['K', 'Skills'], ['J', 'Quests'],
   ['C', 'Collection log'], ['Esc', 'Free the mouse'],
@@ -22,9 +22,13 @@ export class Hud {
   constructor() {
     this.root = el('div', 'hud');
     this.cross = el('div', 'crosshair');
+    this.ring = el('div', 'aimring');
+    this.ring.hidden = true;
+    this.ammoEl = el('div', 'ammo');
+    this.ammoEl.hidden = true;
     this.prompt = el('div', 'prompt');
     this.toastEl = el('div', 'toast');
-    this.root.append(this.cross, this.prompt, this.toastEl);
+    this.root.append(this.cross, this.ring, this.ammoEl, this.prompt, this.toastEl);
     document.body.append(this.root);
 
     this.loading = el('div', 'screen loading', `<div class="card">
@@ -73,6 +77,17 @@ export class Hud {
   }
 
   // target: { verb, noun, level?, locked? } or null
+  // Aiming a bow or a staff: the ring tightens as the shot is drawn.
+  setAim(a) {
+    this.ring.hidden = this.ammoEl.hidden = !a;
+    if (!a) return;
+    const k = a.draw;
+    this.ring.style.transform = `translate(-50%, -50%) scale(${(1.9 - k * 0.9).toFixed(3)})`;
+    this.ring.classList.toggle('full', k >= 1);
+    this.ring.classList.toggle('staff', a.style === 'staff');
+    if (this.ammoEl.textContent !== a.label) this.ammoEl.textContent = a.label;
+  }
+
   setPrompt(target) {
     const key = target ? `${target.verb}|${target.noun}|${target.level || ''}` : '';
     if (key === this.lastPrompt) return;

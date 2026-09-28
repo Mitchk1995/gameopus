@@ -1,4 +1,5 @@
 import { ITEMS } from './items.js';
+import { SPELLS } from './combat.js';
 
 // Gathering nodes and production recipes. Everything the skill guides show comes
 // from here, so adding a tree, a rock or a recipe adds its unlock to the guide too.
@@ -120,6 +121,7 @@ export function unlocks() {
   for (const s of SMITHING) push('smithing', s.level, ITEMS[s.out].name, s.out);
   for (const f of FLETCHING) push('fletching', f.level, `${ITEMS[f.out].name}${f.key ? ` (${ITEMS[f.needs[0][0]].name.toLowerCase()})` : ''}`, f.out);
   for (const list2 of Object.values(CRAFTING)) for (const c of list2) push('crafting', c.level, ITEMS[c.out].name, c.out);
+  for (const s of SPELLS) push('magic', s.level, s.name, s.runes[0][0]);
   for (const it of Object.values(ITEMS)) {
     if (!it.req || !it.equip) continue;
     for (const [skill, level] of Object.entries(it.req)) {

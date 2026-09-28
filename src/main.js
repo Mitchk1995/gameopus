@@ -83,8 +83,9 @@ async function start() {
       game.update(sdt);
       player.update(sdt, rig.yaw);
     } else game.minimap.update(player, rig.yaw);
-    rig.update(dt, input, player.pos, { sprinting: player.gait === 'Sprint_Loop' });
+    rig.update(dt, input, player.pos, { sprinting: player.gait === 'Sprint_Loop', aiming: game.ranged.aiming });
     hero.update(sdt);
+    game.afterAnimate(sdt);
     hero.root.visible = rig.cur > 1.0;
     input.endFrame();
   };

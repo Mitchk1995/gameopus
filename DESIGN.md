@@ -89,8 +89,8 @@ the quest data).
 - [x] M1 World and feel: sky and sun, terrain, water, trees and grass, the village, the
       third-person controller, an animated character
 - [x] M2 Skills: gathering and production loops, inventory, bank, XP, skill guides
-- [ ] M3 Combat: melee with tells, lock-on, dodge, block and parry (done); then ranged
-      and magic
+- [x] M3 Combat: melee with tells, lock-on, dodge, block and parry; bows (drawn with an
+      aim pose built from IK) and strike spells with runes and staves
 - [x] M4 Dungeon and boss: procedural layouts, boss, drop tables, collection log, pets
 - [x] M5 People: dialogue (options and typing), two quests, shops
 - [ ] Then: more regions, skills and bosses, added between sessions

@@ -9,7 +9,7 @@ import rootMotion from './rootmotion.json';
 // rolls so the body and the ground stay in step.
 
 const RADIUS = 0.32, HEIGHT = 1.8, GRAVITY = 24;
-export const SPEED = { walk: 1.3, jog: 5.0, sprint: 7.4 };
+export const SPEED = { walk: 1.3, jog: 5.0, sprint: 7.4, aim: 1.7 };
 // Natural ground speed of each locomotion clip (from the root-motion versions).
 const CLIP_SPEED = { Walk_Loop: 0.97, Jog_Fwd_Loop: 5.36, Sprint_Loop: 8.25 };
 const ROLL = { clip: 'Roll', rate: 1.2, scale: 0.8, control: 0.95, iframes: [0.04, 0.55] };
@@ -223,9 +223,12 @@ export class Player {
       if (depth > 0.15) target *= 1 - Math.min(0.55, depth * 0.6);
       const accel = moving ? 26 : 34;
       const k = 1 - Math.exp(-accel * dt / Math.max(1, target || SPEED.jog));
+      if (this.aimYaw != null) target = Math.min(target, SPEED.aim);
       this.vel.x += (wish.x * target - this.vel.x) * k;
       this.vel.z += (wish.z * target - this.vel.z) * k;
-      if (moving) this.#turnTowards(Math.atan2(wish.x, wish.z), dt, target > SPEED.jog ? 9 : 12);
+      // Aiming: face the crosshair and walk, strafing as needed.
+      if (this.aimYaw != null) this.#turnTowards(this.aimYaw, dt, 16);
+      else if (moving) this.#turnTowards(Math.atan2(wish.x, wish.z), dt, target > SPEED.jog ? 9 : 12);
     } else {
       this.vel.x *= Math.exp(-20 * dt);
       this.vel.z *= Math.exp(-20 * dt);
@@ -327,7 +330,7 @@ export class Player {
   #animate(speed, target) {
     let gait;
     if (target === 0) gait = speed < 0.8 ? 'Idle_Loop' : this.gait || 'Idle_Loop';
-    else if (target <= SPEED.walk + 0.01) gait = 'Walk_Loop';
+    else if (target <= SPEED.walk + 0.01 || this.aimYaw != null) gait = 'Walk_Loop';
     else if (target > SPEED.jog + 0.1 && speed > 5.8) gait = 'Sprint_Loop';
     else gait = 'Jog_Fwd_Loop';
     if (gait === 'Roll' || !(gait in CLIP_SPEED || gait === 'Idle_Loop')) gait = 'Idle_Loop';

@@ -74,6 +74,14 @@ for (const [id, name, rangedLvl, fletchLvl, color, len, acc, logs] of BOWS) {
   add(id, { name, value: fletchLvl * 8, equip: 'weapon', twoHanded: true, style: 'bow', req: { ranged: rangedLvl }, bonus: { rangedAcc: acc }, speed: len > 0.9 ? 2.4 : 1.8, examine: `A ${name.toLowerCase()}.`, art: { kind: 'bow', color, len, strung: true } });
 }
 
+// ---------------------------------------------------------------- magic
+for (const [id, name, glyph, color, glow, value] of [
+  ['air_rune', 'Air rune', 'air', 0x5d6266, 0xbfefff, 4], ['mind_rune', 'Mind rune', 'mind', 0x5f5a53, 0xffa33a, 3],
+  ['water_rune', 'Water rune', 'water', 0x565e66, 0x3a8dff, 4], ['earth_rune', 'Earth rune', 'earth', 0x5e5a4f, 0x7fc23a, 4], ['fire_rune', 'Fire rune', 'fire', 0x625750, 0xff5a14, 4],
+]) add(id, { name, stack: true, value, examine: `A ${name.toLowerCase()}, for casting spells.`, art: { kind: 'rune', glyph, color, glow } });
+add('staff', { name: 'Staff', value: 15, equip: 'weapon', twoHanded: false, style: 'staff', req: { magic: 1 }, bonus: { magicAcc: 8, acc: 2, str: 1 }, speed: 2.4, examine: 'A plain oak staff. Mages like them.', art: { kind: 'staff', orb: 0xb8c4cc } });
+add('staff_of_air', { name: 'Staff of air', value: 1500, equip: 'weapon', style: 'staff', staffRune: 'air_rune', req: { magic: 1 }, bonus: { magicAcc: 10, acc: 2, str: 1 }, speed: 2.4, examine: 'It hums faintly. Casting with it needs no air runes.', art: { kind: 'staff', orb: 0x9fe4ff, glow: true } });
+
 // ---------------------------------------------------------------- tools
 for (const [metal, m] of Object.entries(METALS)) {
   add(`${metal}_axe`, { name: `${cap(metal)} axe`, value: 16 * m.tier * m.value, tool: 'axe', power: m.tier, req: { woodcutting: m.level }, equip: 'weapon', style: 'axe', bonus: { acc: 2 + 4 * m.tier, str: 2 + 3 * m.tier }, speed: 2.2, examine: 'For chopping trees.', art: { kind: 'axe', color: m.color } });

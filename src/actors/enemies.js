@@ -302,7 +302,7 @@ export class Enemy {
   // Returns how the enemy took it: 'blocked', 'stagger', 'hit' or 'dead'.
   takeHit(result, move, fromYaw) {
     if (!this.alive) return 'dead';
-    if (this.state === 'block' && move.kind !== 'heavy' && move.kind !== 'riposte') return 'blocked';
+    if (this.state === 'block' && !['heavy', 'riposte', 'ranged', 'magic'].includes(move.kind)) return 'blocked';
     this.hp -= result.damage;
     this.engaged = true;
     if (this.state === 'idle' || this.state === 'return') this.setState('chase');

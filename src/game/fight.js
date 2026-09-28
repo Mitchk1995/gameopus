@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MONSTERS, PLAYER_MOVES, playerMelee, monsterMelee, rollDrops, XP_PER_DAMAGE, HP_XP_PER_DAMAGE } from './combat.js';
+import { MONSTERS, PLAYER_MOVES, playerMelee, playerRanged, playerMagic, monsterMelee, rollDrops, XP_PER_DAMAGE, HP_XP_PER_DAMAGE } from './combat.js';
 import { ITEMS } from './items.js';
 import { MonsterFactory, Enemy } from '../actors/enemies.js';
 import { CombatUI } from '../ui/combatui.js';
@@ -89,6 +89,7 @@ export class Fight {
     this.lock = null;
     this.boss = null;
     this.ui.recent = null;
+    this.game.ranged.clear();
   }
 
   // Tents, a fire and some crates, so a camp reads as a camp.
@@ -154,6 +155,8 @@ export class Fight {
     }
 
     if (alive && !busy) this.#input(dt);
+    else g.ranged.reset();
+    g.ranged.update(dt);
     const here = this.enemies.filter((e) => e.realm === g.realm);
     const ctx = {
       player: P, alive, enemies: here,
@@ -180,7 +183,7 @@ export class Fight {
     this.#drawStamina();
   }
 
-  #input() {
+  #input(dt) {
     const g = this.game, P = g.player, input = g.input;
     // Lock on (Q or middle mouse): the nearest enemy near the middle of the screen.
     if (input.hit('KeyQ') || input.clicked.has(1)) this.lock = this.lock ? null : this.#pickLock();
@@ -188,6 +191,13 @@ export class Fight {
       const next = this.#pickLock(Math.sign(input.dx));
       if (next) this.lock = next;
     }
+    // A bow or a staff: draw and loose, cast; no swings or guard.
+    if (g.ranged.style) {
+      if (P.state === 'block') P.endBlock();
+      this.queued = null;
+      return g.ranged.input(dt);
+    }
+    g.ranged.reset();
     const attackPressed = input.clicked.has(0);
     const heavyPressed = input.hit('KeyF');
     const blocking = input.buttons.has(2);
@@ -324,6 +334,40 @@ export class Fight {
       if (outcome === 'stagger' && kind === 'riposte') this.riposteUntil = 0;
     }
     if (!landed) g.audio.play('miss', P.pos, 0.6);
+  }
+
+  // An arrow or a spell reached someone.
+  projectileHit(e, shot) {
+    const g = this.game;
+    if (!e.alive) return;
+    const arrow = shot.kind === 'arrow';
+    const res = arrow
+      ? playerRanged(g.state.skills, g.state.bonuses(), e.def, { draw: shot.draw, exposed: e.exposed })
+      : playerMagic(g.state.skills, g.state.bonuses(), e.def, shot.spell, { exposed: e.exposed });
+    const outcome = e.takeHit(res, { kind: arrow ? 'ranged' : 'magic' }, shot.yaw);
+    const at = e.pos.clone().setY(e.pos.y + e.height * 0.7);
+    this.ui.recent = e;
+    if (res.damage > 0) {
+      g.audio.play(arrow ? 'hit' : 'crit', e.pos, arrow ? 0.8 : 0.6);
+      this.ui.splat(at, String(res.damage), 'dmg');
+      this.#hitStop(0.035);
+      g.state.skills.add('hitpoints', res.damage * HP_XP_PER_DAMAGE);
+    } else {
+      g.audio.play('miss', e.pos);
+      this.ui.splat(at, arrow ? '0' : 'Splash', arrow ? 'zero' : 'word');
+    }
+    if (arrow) g.state.skills.add('ranged', res.damage * XP_PER_DAMAGE);
+    else g.state.skills.add('magic', shot.spell.xp + res.damage * 2);
+    if (outcome === 'dead') this.#killed(e);
+    else if (e.def.boss && e.phase === 1 && e.hp < e.def.hp * 0.5) this.#phase(e);
+  }
+
+  // Arrows that survive a hit land under the target, stacking with any already there.
+  dropArrow(id, x, z) {
+    const g = this.game;
+    const pile = this.ground.find((it) => !it.gone && it.id === id && it.realm === g.realm && Math.hypot(it.x - x, it.z - z) < 1.6);
+    if (pile) pile.n += 1;
+    else this.drop(id, 1, x, z);
   }
 
   #enemyStrike(e, a) {

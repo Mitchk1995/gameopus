@@ -21,6 +21,8 @@ import { Quests } from './quests.js';
 import { Dialogue } from './dialogue.js';
 import { Chat } from './chat.js';
 import { QuestUI } from '../ui/questui.js';
+import { AimRig } from '../actors/aim.js';
+import { Ranged } from './ranged.js';
 
 // The game on top of the world: what you're looking at and can use, skilling loops
 // that run on 0.6 s ticks, the inventory and bank, shops, villagers and saving.
@@ -82,6 +84,10 @@ export class Game {
     this.quests.init(this.questUI);
     this.minimap = new Minimap({ world, markers: () => this.#markers() });
     this.#vitals();
+    this.aim = new AimRig(this.hero, this.assets);
+    this.aim.attach(this.scene);
+    this.ranged = new Ranged(this);
+    this.ranged.attach(this.scene);
     this.fight = new Fight(this);
     await this.fight.init();
     this.pets = new Pets(this);
@@ -96,6 +102,30 @@ export class Game {
     this.panels.message('Welcome to Ashford. Tab opens your pack, E uses what you look at.', 'game');
     addEventListener('beforeunload', () => this.save());
     document.addEventListener('visibilitychange', () => document.hidden && this.save());
+  }
+
+  // Runs after the character's animation each frame: the aim pose, bow and spell glow.
+  afterAnimate(dt) {
+    const r = this.ranged, P = this.player;
+    const active = r.aiming && P.state === 'move';
+    let dir = null;
+    if (active) {
+      const point = r.aimPoint();
+      const from = this.hero.bones.upperarm_l.getWorldPosition(this.tmpV ??= new THREE.Vector3());
+      dir = point.sub(from).normalize();
+    }
+    this.aim.apply(dt, { active, dir, draw: r.drawing ? r.draw : 0, nocked: r.style === 'bow' && this.state.ammo > 0, yaw: P.yaw });
+    if (r.style === 'staff' && r.drawing) r.handGlow(this.aim.castPoint(new THREE.Vector3()), r.spell(), r.draw);
+    this.hud.setAim(active ? { style: r.style, draw: r.drawing ? r.draw : 0, label: this.#aimLabel() } : null);
+  }
+
+  #aimLabel() {
+    const r = this.ranged, st = this.state;
+    if (r.style === 'bow') return st.equip.ammo ? `${ITEMS[st.equip.ammo].name} · ${st.ammo}` : 'No arrows';
+    const s = r.spell();
+    if (!s) return 'No runes';
+    const n = r.casts(s);
+    return `${s.name} · ${n === Infinity ? '∞' : n}`;
   }
 
   // Slows the simulation for a moment of real time (hit-stop, parries, perfect dodges).
@@ -560,6 +590,8 @@ export class Game {
     this.rig.snap();
     await this.fight.spawnDungeon(this.dungeon);
     this.pets.moveTo(this.dungeon.scene, this.player.pos);
+    this.aim.attach(this.dungeon.scene);
+    this.ranged.attach(this.dungeon.scene);
     this.minimap.setDungeon(this.dungeon);
     this.audio.indoors = true;
     this.entering = false;
@@ -590,6 +622,8 @@ export class Game {
       this.rig.snap();
     }
     this.pets.moveTo(this.scene, this.player.pos);
+    this.aim.attach(this.scene);
+    this.ranged.attach(this.scene);
     this.minimap.setDungeon(null);
     this.audio.indoors = false;
   }
@@ -920,6 +954,7 @@ export class Game {
     if (shop.buys === 'fish') return /(^raw_|shrimp|anchovies|trout|salmon)/.test(id) || id === 'feather';
     if (shop.buys === 'metal') return /_ore$|_bar$|^coal$/.test(id) || !!it.smith;
     if (shop.buys === 'food') return !!it.food;
+    if (shop.buys === 'magic') return /_rune$/.test(id) || it.style === 'staff';
     return false;
   }
 
@@ -982,7 +1017,9 @@ export class Game {
   #showHeld(tool = null) {
     const id = tool || this.state.equip.weapon;
     this.held.clear();
-    if (!id) return;
+    const style = !tool && id ? ITEMS[id].style : null;
+    this.aim?.setWeapon(style === 'bow' || style === 'staff' ? id : null, style);
+    if (!id || style === 'bow') return;
     if (!this.heldModels.has(id)) this.heldModels.set(id, buildItem(id, this.assets));
     const m = this.heldModels.get(id);
     const h = HOLD[ITEMS[id].art?.kind] || HOLD.default;

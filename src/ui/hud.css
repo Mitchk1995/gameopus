@@ -50,6 +50,32 @@ html, body {
   box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
   transition: transform 0.12s, background 0.12s;
 }
+.aimring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 246, 225, 0.75);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+  transform: translate(-50%, -50%) scale(1.9);
+  pointer-events: none;
+}
+.aimring.full { border-color: #ffe29a; box-shadow: 0 0 10px rgba(255, 214, 120, 0.8); }
+.aimring.staff { border-color: rgba(170, 220, 255, 0.85); }
+.aimring.staff.full { border-color: #bfe6ff; box-shadow: 0 0 12px rgba(120, 190, 255, 0.9); }
+.ammo {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 34px);
+  transform: translateX(-50%);
+  font: 600 13px/1 var(--sans);
+  color: #f3ecdd;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  pointer-events: none;
+}
 .crosshair.live {
   transform: scale(1.6);
   background: #ffe7a8;

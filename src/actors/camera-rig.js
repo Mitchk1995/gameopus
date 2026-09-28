@@ -25,6 +25,7 @@ export class CameraRig {
     this.right = new THREE.Vector3();
     this.shake = 0;
     this.sensitivity = 1;
+    this.aimK = 0;
   }
 
   // After a teleport: start from the usual distance and height rather than easing there.
@@ -39,8 +40,10 @@ export class CameraRig {
     return out.set(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
   }
 
-  update(dt, input, target, { sprinting = false } = {}) {
-    const turn = SENS * this.sensitivity;
+  update(dt, input, target, { sprinting = false, aiming = false } = {}) {
+    // Aiming steadies the mouse and pulls the view in over the shoulder.
+    this.aimK += ((aiming ? 1 : 0) - this.aimK) * (1 - Math.exp(-dt * 10));
+    const turn = SENS * this.sensitivity * (1 - this.aimK * 0.35);
     if (this.lockTarget) {
       // Locked on: keep the target ahead, a little below the horizon.
       const dx = this.lockTarget.x - target.x, dz = this.lockTarget.z - target.z;
@@ -66,14 +69,15 @@ export class CameraRig {
     // The shoulder offset shrinks as the camera comes in, so close up it's centred.
     const k = Math.min(1, Math.max(0, (this.cur - 0.8) / 2.2));
     const shoulder = this.tmpA || (this.tmpA = new THREE.Vector3());
-    shoulder.copy(head).addScaledVector(this.right, this.shoulder * k);
+    shoulder.copy(head).addScaledVector(this.right, (this.shoulder + this.aimK * 0.14) * k);
     const side = this.world.lineOfSight(head, shoulder, 0.25);
     shoulder.lerpVectors(head, shoulder, side);
 
     const want = this.tmpB || (this.tmpB = new THREE.Vector3());
-    want.copy(shoulder).addScaledVector(this.fwd, -this.dist);
+    const dist = this.dist + (Math.min(this.dist, 2.6) - this.dist) * this.aimK;
+    want.copy(shoulder).addScaledVector(this.fwd, -dist);
     const clear = this.world.lineOfSight(shoulder, want, 0.28);
-    const reach = Math.max(0.35, this.dist * clear - 0.1);
+    const reach = Math.max(0.35, dist * clear - 0.1);
     // Snap in immediately when blocked, ease back out.
     this.cur = reach < this.cur ? reach : this.cur + (reach - this.cur) * (1 - Math.exp(-3 * dt));
 
@@ -89,7 +93,7 @@ export class CameraRig {
     }
     cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
 
-    const fov = this.fov + (sprinting ? 6 : 0);
+    const fov = this.fov + (sprinting ? 6 : 0) - this.aimK * 12;
     if (Math.abs(cam.fov - fov) > 0.01) {
       cam.fov += (fov - cam.fov) * (1 - Math.exp(-5 * dt));
       cam.updateProjectionMatrix();

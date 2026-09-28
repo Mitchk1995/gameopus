@@ -251,6 +251,33 @@ Crafting: dig clay at the quarry, soften it with water from the well, shape pots
   },
 
   {
+    id: 'mirelle', name: 'Mirelle', role: 'mage',
+    look: { outfit: 'female_peasant', body: 'female', hair: 'hair_buns', eyebrows: 'eyebrows_female', tint: 0x2e3a86, tintMaterial: 'Peasant' },
+    at: { x: -19.37, z: 22.14, facing: 1.920 },
+    persona: `Mirelle is a travelling mage who has set up a stall on the west side of Ashford's square, selling runes and staves. Quick-witted, theatrical, delighted by anyone curious about magic, and a little vain about her own spellwork.
+She teaches the four strike spells: Wind Strike (magic level 1: an air rune and a mind rune), Water Strike (level 5), Earth Strike (level 9) and Fire Strike (level 13), each hitting harder and needing more runes. With a staff in hand you gather the spell in your open hand and let it fly; a staff of air saves you the air runes.
+She thinks swords are loud and bows are fiddly. She has heard the goblins under the hill hate fire.`,
+    dialogue: {
+      start: {
+        say: ['Runes! Staves! The finer arts, for the discerning traveller. Or for anyone with coins, really.'],
+        options: [
+          { text: 'Show me your wares.', do: { shop: 'runes' } },
+          { text: 'How does magic work?', go: 'how' },
+          bye,
+        ],
+      },
+      how: {
+        say: [
+          'Take a staff in hand. Hold your other hand out, gather the spell, and let it go. It flies where you look, and it will chase whatever you have your eye fixed on.',
+          'Every spell eats runes. Wind Strike needs an air rune and a mind rune. Water, Earth and Fire Strike need more, and a bit more skill, and hit a great deal harder.',
+          'A staff of air saves you the air runes. Not cheap. Neither am I.',
+        ],
+        options: [{ text: 'Show me your wares.', do: { shop: 'runes' } }, bye],
+      },
+    },
+  },
+
+  {
     id: 'garrow', name: 'Garrow', role: 'guard',
     look: { outfit: 'male_ranger', body: 'male', hair: 'hair_buzzed', eyebrows: 'eyebrows_regular' },
     idle: 'Idle_FoldArms_Loop', at: { x: 22, z: 10, facing: 1.2 },

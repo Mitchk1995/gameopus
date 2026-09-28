@@ -20,5 +20,7 @@ Skills people practise, and where:
 - Crafting: clay softened with water at the well, shaped on the potter's wheel, fired in the kiln; flax spun into bow string on the spinning wheel.
 - Fletching with a knife: arrow shafts and bows from logs, strung with bow string.
 - Fighting: attack, strength, defence and hitpoints. Better weapons and armour need higher levels: bronze, then iron (10), then steel (20).
+- Ranged: bows fletched from logs (or a shortbow from Maren's) with arrows; the better the bow and arrows, the higher the Ranged level they need.
+- Magic: Mirelle, a travelling mage with a stall on the west side of the square, sells runes and staves. Strike spells (Wind at magic level 1, Water at 5, Earth at 9, Fire at 13) are cast with a staff and use up runes.
 
-Money is coins. The bank keeps items safe. Food restores health.`;
+Money is coins. The bank keeps items safe. Food restores health. Bess at the Crooked Pike sells bread and ale.`;

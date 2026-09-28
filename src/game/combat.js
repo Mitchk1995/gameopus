@@ -30,6 +30,37 @@ export function playerMelee(skills, bonus, monster, move, { exposed = false } = 
   return { hit, damage: hit ? Math.floor(Math.random() * (max + 1)) : 0, crit: false, max };
 }
 
+// Player shooting an arrow; a hasty, half-drawn shot is weaker and less accurate.
+export function playerRanged(skills, bonus, monster, { draw = 1, exposed = false } = {}) {
+  const eff = skills.level('ranged') + 8;
+  let att = eff * (bonus.rangedAcc + 64) * (0.7 + 0.3 * draw);
+  if (exposed) att *= 1.5;
+  const def = (monster.def + 9) * ((monster.defR ?? monster.defB) + 64);
+  const max = Math.max(1, Math.round(maxHit(eff, bonus.rangedStr) * (0.45 + 0.55 * draw)));
+  const hit = Math.random() < hitChance(att, def);
+  return { hit, damage: hit ? Math.floor(Math.random() * (max + 1)) : 0, crit: false, max };
+}
+
+// Player casting a combat spell: the spell sets the max hit; magic level and gear set
+// the accuracy, against the monster's defence.
+export function playerMagic(skills, bonus, monster, spell, { exposed = false } = {}) {
+  const eff = skills.level('magic') + 8;
+  let att = eff * ((bonus.magicAcc || 0) + 64);
+  if (exposed) att *= 1.5;
+  const def = (monster.def + 9) * ((monster.defM ?? monster.defB) + 64);
+  const hit = Math.random() < hitChance(att, def);
+  return { hit, damage: hit ? Math.floor(Math.random() * (spell.max + 1)) : 0, crit: false, max: spell.max };
+}
+
+// Strike spells, cast from the standard spellbook with runes. A staff of an element
+// supplies that element's runes.
+export const SPELLS = [
+  { id: 'wind_strike', name: 'Wind Strike', level: 1, max: 2, xp: 5.5, runes: [['air_rune', 1], ['mind_rune', 1]], color: 0xe6f7ff, glow: 0x9fe4ff },
+  { id: 'water_strike', name: 'Water Strike', level: 5, max: 4, xp: 7.5, runes: [['water_rune', 1], ['air_rune', 1], ['mind_rune', 1]], color: 0x7cc4ff, glow: 0x2a7dff },
+  { id: 'earth_strike', name: 'Earth Strike', level: 9, max: 6, xp: 9.5, runes: [['earth_rune', 2], ['air_rune', 1], ['mind_rune', 1]], color: 0xc9e27a, glow: 0x6a9a2a },
+  { id: 'fire_strike', name: 'Fire Strike', level: 13, max: 8, xp: 11.5, runes: [['fire_rune', 3], ['air_rune', 2], ['mind_rune', 1]], color: 0xffd08a, glow: 0xff5a14 },
+];
+
 // A monster swinging at the player.
 export function monsterMelee(monster, attack, skills, bonus) {
   const att = (monster.att + 8) * (monster.acc + 64);

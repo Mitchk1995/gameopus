@@ -69,7 +69,7 @@ export class GameState {
 
   // Equipment bonuses summed over everything worn.
   bonuses() {
-    const b = { acc: 0, str: 0, def: 0, rangedAcc: 0, rangedStr: 0 };
+    const b = { acc: 0, str: 0, def: 0, rangedAcc: 0, rangedStr: 0, magicAcc: 0 };
     for (const id of Object.values(this.equip)) {
       const it = id && ITEMS[id];
       if (!it) continue;

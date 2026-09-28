@@ -179,6 +179,30 @@ export class Audio {
         this.#noise(out, { dur: 0.5, type: 'bandpass', f0: 600, f1: 1400, q: 0.8, gain: 0.5, attack: 0.05 });
         this.#tone(out, { dur: 0.4, freq: 180, freq1: 90, type: 'sawtooth', gain: 0.08 });
         break;
+      case 'draw':
+        // The creak of a bow coming to full draw.
+        this.#noise(out, { dur: 0.55, type: 'bandpass', f0: 380, f1: 900, q: 6, gain: 0.18, attack: 0.25 });
+        break;
+      case 'bow':
+        this.#tone(out, { dur: 0.16, freq: 190 * r(), freq1: 150, type: 'triangle', gain: 0.45 });
+        this.#noise(out, { dur: 0.18, type: 'bandpass', f0: 2600, f1: 900, q: 1.4, gain: 0.35, attack: 0.01 });
+        break;
+      case 'thunk':
+        this.#tone(out, { dur: 0.08, freq: 260 * r(), freq1: 120, type: 'triangle', gain: 0.4 });
+        this.#noise(out, { dur: 0.06, type: 'lowpass', f0: 1400, f1: 300, gain: 0.35 });
+        break;
+      case 'charge':
+        this.#tone(out, { dur: 0.45, freq: 320, freq1: 780, type: 'sine', gain: 0.12, attack: 0.2 });
+        this.#noise(out, { dur: 0.45, type: 'bandpass', f0: 1500, f1: 4200, q: 3, gain: 0.12, attack: 0.2 });
+        break;
+      case 'cast':
+        this.#tone(out, { dur: 0.3, freq: 880 * r(), freq1: 330, type: 'sine', gain: 0.22 });
+        this.#noise(out, { dur: 0.35, type: 'bandpass', f0: 3200, f1: 700, q: 1.6, gain: 0.35, attack: 0.02 });
+        break;
+      case 'zap':
+        this.#noise(out, { dur: 0.3, type: 'highpass', f0: 2500, f1: 800, q: 0.8, gain: 0.4 });
+        this.#tone(out, { dur: 0.2, freq: 520 * r(), freq1: 180, type: 'square', gain: 0.05 });
+        break;
       case 'step':
         this.#noise(out, { dur: 0.07, type: 'lowpass', f0: 700 * r(), f1: 200, q: 0.5, gain: 0.12 });
         break;
