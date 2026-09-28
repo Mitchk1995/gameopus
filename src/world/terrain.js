@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WORLD } from './map.js';
-import { assetURL } from '../engine/assets.js';
+import { fetchBinary } from '../engine/assets.js';
 
 // Terrain: a baked 1 m heightmap drawn as 64 m patches that are displaced on the GPU,
 // with coarser patches farther away. Lighting normals come from the heightmap per
@@ -24,7 +24,7 @@ export class Terrain {
 
   async load() {
     const [buf, ground, albedo, nr] = await Promise.all([
-      fetch(assetURL('world/height.bin')).then((r) => r.arrayBuffer()),
+      fetchBinary('world/height.bin'),
       this.assets.texture('world/ground.png', { srgb: false, repeat: false, anisotropy: 4 }),
       Promise.all(LAYERS.map((l) => this.assets.image(`ground/${l}_a.webp`))),
       Promise.all(LAYERS.map((l) => this.assets.image(`ground/${l}_nr.webp`))),
