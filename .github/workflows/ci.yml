@@ -54,7 +54,7 @@ jobs:
         run: |
           export CHROME="$(node -e "import('playwright-core').then(m => console.log(m.chromium.executablePath()))")"
           status=0
-          for scenario in movement combat_flow melee gathering; do
+          for scenario in movement combat_flow melee gathering look; do
             echo "::group::$scenario"
             python3 tests/playtest/play.py "tests/playtest/$scenario.py" || status=1
             echo "::endgroup::"
