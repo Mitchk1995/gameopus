@@ -185,10 +185,68 @@
 .menu button:hover, .menu button:focus-visible { background: rgba(216, 179, 106, 0.18); outline: none; }
 .menu button .n { color: #ffd98a; }
 
-/* Goal tracker and experience drops (top right) */
-.goal {
+/* Minimap, health, goal tracker and experience drops (top right) */
+.minimap {
   position: fixed;
   right: 16px;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  z-index: 2;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(216, 179, 106, 0.55), 0 4px 18px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  background: #1b1914;
+}
+.minimap canvas { width: 100%; height: 100%; border-radius: 50%; display: block; }
+.minimap .north {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: rgba(15, 12, 8, 0.85);
+  color: #ffdf8a;
+  font: 700 10px/16px var(--sans);
+  text-align: center;
+}
+.vitals {
+  position: fixed;
+  right: 16px;
+  top: calc(196px + env(safe-area-inset-top, 0px));
+  z-index: 2;
+  width: 170px;
+  display: grid;
+  gap: 5px;
+  pointer-events: none;
+}
+.vital {
+  position: relative;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(15, 12, 8, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(216, 179, 106, 0.3);
+  overflow: hidden;
+}
+.vital i { position: absolute; inset: 0 auto 0 0; border-radius: 10px; transition: width 0.25s; }
+.vital.hp i { background: linear-gradient(#d94a4a, #9c2626); }
+.vital span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font: 700 12.5px/1 var(--sans);
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
+  font-variant-numeric: tabular-nums;
+}
+.goal {
+  position: fixed;
+  right: 196px;
   top: calc(16px + env(safe-area-inset-top, 0px));
   z-index: 2;
   width: 236px;
@@ -211,7 +269,8 @@
 .goal .next b { color: var(--ink); font-weight: 500; }
 .drops {
   position: fixed;
-  right: 262px;
+  right: 196px;
+  margin-top: 96px;
   top: calc(18px + env(safe-area-inset-top, 0px));
   z-index: 2;
   pointer-events: none;

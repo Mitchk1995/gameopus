@@ -23,12 +23,19 @@ export class Grass {
     let seed = 7;
     const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const side = Math.ceil(Math.sqrt(COUNT)), cell = SIZE / side;
-    for (let i = 0; i < COUNT; i++) {
-      offs[i * 2] = ((i % side) + r()) * cell;
-      offs[i * 2 + 1] = (Math.floor(i / side) + r()) * cell;
-      rnd[i * 3] = r() * Math.PI * 2;
-      rnd[i * 3 + 1] = r();
-      rnd[i * 3 + 2] = r();
+    // Shuffled, so drawing fewer (lower quality) still covers the whole square.
+    const order = Array.from({ length: COUNT }, (_, i) => i);
+    for (let i = COUNT - 1; i > 0; i--) {
+      const j = Math.floor(r() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    for (let k = 0; k < COUNT; k++) {
+      const i = order[k];
+      offs[k * 2] = ((i % side) + r()) * cell;
+      offs[k * 2 + 1] = (Math.floor(i / side) + r()) * cell;
+      rnd[k * 3] = r() * Math.PI * 2;
+      rnd[k * 3 + 1] = r();
+      rnd[k * 3 + 2] = r();
     }
     inst.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offs, 2));
     inst.setAttribute('aRand', new THREE.InstancedBufferAttribute(rnd, 3));
@@ -115,6 +122,12 @@ export class Grass {
     mesh.renderOrder = 1;
     scene.add(mesh);
     this.mesh = mesh;
+  }
+
+  // 0..1 share of the tufts to draw.
+  setDensity(f) {
+    this.mesh.geometry.instanceCount = Math.round(COUNT * f);
+    this.mesh.visible = f > 0;
   }
 
   update(dt, focus, pusher) {

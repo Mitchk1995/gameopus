@@ -15,7 +15,8 @@ const SPECIES = {
   pine: { presets: ['Pine Medium', 'Pine Large'], scale: [0.2, 0.25], trunk: 0.45 },
   bush: { presets: ['Bush 1', 'Bush 2'], scale: [0.06, 0.08], trunk: 0 },
 };
-const NEAR = 40, MID = 150;
+let NEAR = 40;
+const MID = 150;
 const BARK = ['oak', 'birch', 'pine', 'willow'];
 const LEAVES = ['ash', 'aspen', 'oak', 'pine'];
 
@@ -287,6 +288,11 @@ export class Forest {
       }
       for (const mesh of Object.values(M)) mesh.instanceMatrix.needsUpdate = true;
     }
+  }
+
+  setNear(d) {
+    NEAR = d;
+    this.lastUpdate.set(1e9, 0, 0);
   }
 
   // Trees whose trunks are near a point (for collision and interaction).

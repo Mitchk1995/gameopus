@@ -9,6 +9,7 @@ import { CameraRig } from './actors/camera-rig.js';
 import { Hud } from './ui/hud.js';
 import { Game } from './game/game.js';
 import { SPAWN } from './world/map.js';
+import { loadSettings, saveSettings, applyQuality } from './engine/settings.js';
 
 // Headless tests (#test) step the game by hand, since software GL renders slowly.
 const TEST = location.hash.includes('test');
@@ -49,6 +50,22 @@ async function start() {
     hud.setPaused(p, 'Continue');
   };
   hud.playButton.addEventListener('click', () => input.lock());
+  const settings = loadSettings();
+  const applySettings = () => {
+    applyQuality(settings.quality, { renderer, world });
+    rig.sensitivity = settings.sensitivity;
+    hud.showSettings(settings);
+    saveSettings(settings);
+  };
+  hud.onQuality = (q) => {
+    settings.quality = q;
+    applySettings();
+  };
+  hud.onSensitivity = (v) => {
+    settings.sensitivity = v;
+    applySettings();
+  };
+  applySettings();
   renderer.domElement.addEventListener('click', () => {
     if (game.uiOpen) game.closeAll();
     if (!input.locked) input.lock();
@@ -59,7 +76,7 @@ async function start() {
     if (!paused) {
       game.update(dt);
       player.update(dt, rig.yaw);
-    }
+    } else game.minimap.update(player, rig.yaw);
     rig.update(dt, input, player.pos, { sprinting: player.gait === 'Sprint_Loop' });
     hero.update(dt);
     hero.root.visible = rig.cur > 0.75;

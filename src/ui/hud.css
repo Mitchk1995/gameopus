@@ -195,3 +195,27 @@ html, body {
   .title { font-size: 34px; }
   .controls { grid-template-columns: auto 1fr; }
 }
+
+.settings {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(216, 179, 106, 0.22);
+  font-size: 15px;
+  color: var(--ink-dim);
+  text-align: left;
+}
+.settings label { display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: auto; }
+.seg { display: inline-flex; border: 1px solid rgba(216, 179, 106, 0.4); border-radius: 6px; overflow: hidden; }
+.seg button {
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: 500 14px/1 var(--sans);
+  cursor: pointer;
+}
+.seg button + button { border-left: 1px solid rgba(216, 179, 106, 0.25); }
+.seg button[aria-pressed='true'] { background: rgba(216, 179, 106, 0.28); color: #fff3d2; }
+.settings input[type='range'] { width: 170px; accent-color: #d8b36a; }

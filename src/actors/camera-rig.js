@@ -24,6 +24,7 @@ export class CameraRig {
     this.fwd = new THREE.Vector3();
     this.right = new THREE.Vector3();
     this.shake = 0;
+    this.sensitivity = 1;
   }
 
   // Direction the camera looks (and the crosshair points).
@@ -33,8 +34,9 @@ export class CameraRig {
   }
 
   update(dt, input, target, { sprinting = false } = {}) {
-    this.yaw -= input.dx * SENS;
-    this.pitch = Math.min(PITCH[1], Math.max(PITCH[0], this.pitch - input.dy * SENS));
+    const turn = SENS * this.sensitivity;
+    this.yaw -= input.dx * turn;
+    this.pitch = Math.min(PITCH[1], Math.max(PITCH[0], this.pitch - input.dy * turn));
     if (input.wheel) this.dist = Math.min(ZOOM[1], Math.max(ZOOM[0], this.dist * (1 + input.wheel * 0.12)));
 
     // Follow the feet, smoothing height changes from steps and slopes.

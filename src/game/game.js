@@ -5,6 +5,8 @@ import { SKILL } from './skills.js';
 import { TICK, TREES, SPECIES_TREE, FISHING, COOKING, SMELTING, SMITHING, FLETCHING, CRAFTING, rate, unlocks } from './content.js';
 import { Panels } from '../ui/panels.js';
 import { Menus, Talk } from '../ui/menus.js';
+import { Minimap } from '../ui/minimap.js';
+import { icon } from '../ui/icons.js';
 import { IconStudio, buildItem, setBarkTextures } from '../ui/itemart.js';
 import { Resources } from '../world/resources.js';
 import { Npc } from '../actors/npcs.js';
@@ -57,6 +59,8 @@ export class Game {
     this.resources = await new Resources({ scene: this.scene, assets, world, kit: world.village.kit }).load();
     await this.#villagers();
     this.#stations();
+    this.minimap = new Minimap({ world, markers: () => this.#markers() });
+    this.#vitals();
     this.#hand();
     this.#showHeld();
     // Put the player back where they left off.
@@ -133,6 +137,7 @@ export class Game {
     }
     for (const n of this.npcs) n.update(dt, this.player);
     this.resources.update(dt);
+    this.minimap.update(this.player, this.rig.yaw);
     this.#updateFalling(dt);
     this.saveTimer += dt;
     this.state.played += dt;
@@ -765,6 +770,38 @@ export class Game {
       },
     };
     return this.shops[id];
+  }
+
+  // ------------------------------------------------------------ minimap and vitals
+  #markers() {
+    if (!this.staticMarkers) {
+      const v = this.world.village.places, r = this.resources;
+      const st = (name) => r.items.find((o) => o.station === name);
+      const m = [];
+      m.push({ ...v.bank, icon: 'bank' }, { ...v.store, icon: 'store' }, { ...v.inn, icon: 'inn' });
+      m.push({ ...r.places.smithy, icon: 'smithy' }, { ...st('fire'), icon: 'fire' }, { ...st('potter'), icon: 'craft' });
+      m.push({ ...r.mineCentre, icon: 'mine' });
+      // One fish marker per cluster of spots.
+      for (const s of r.spots) if (!m.some((o) => o.icon === 'fish' && Math.hypot(o.x - s.x, o.z - s.z) < 25)) m.push({ x: s.x, z: s.z, icon: 'fish' });
+      this.staticMarkers = m.map(({ x, z, icon: i }) => ({ x, z, icon: i }));
+    }
+    return [...this.npcs.map((n) => ({ x: n.pos.x, z: n.pos.z, dot: '#ffe04a' })), ...this.staticMarkers];
+  }
+
+  #vitals() {
+    const el = document.createElement('div');
+    el.className = 'vitals';
+    el.innerHTML = `<div class="vital hp"><i></i><span>${icon('hitpoints', 13)}<b></b></span></div>`;
+    document.body.append(el);
+    const bar = el.querySelector('.hp i'), label = el.querySelector('.hp b');
+    const draw = () => {
+      const max = this.state.maxHp;
+      bar.style.width = `${Math.max(0, Math.min(1, this.state.hp / max)) * 100}%`;
+      label.textContent = `${Math.ceil(this.state.hp)} / ${max}`;
+    };
+    this.state.listeners.add((what) => what === 'hp' && draw());
+    this.state.skills.listeners.add(({ id }) => id === 'hitpoints' && draw());
+    draw();
   }
 
   // ------------------------------------------------------------ skill guide

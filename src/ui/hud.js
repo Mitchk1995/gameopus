@@ -10,7 +10,8 @@ const el = (tag, cls, html) => {
 const CONTROLS = [
   ['W A S D', 'Move'], ['Mouse', 'Look'],
   ['Shift', 'Sprint'], ['Space', 'Roll'],
-  ['E', 'Use / talk'], ['Z', 'Walk toggle'],
+  ['E', 'Use / talk'], ['Tab', 'Pack'],
+  ['K', 'Skills'], ['Z', 'Walk toggle'],
   ['Wheel', 'Zoom'], ['Esc', 'Free the mouse'],
 ];
 
@@ -35,10 +36,23 @@ export class Hud {
       <h1 class="title">Aldermere</h1>
       <p class="subtitle">The valley of Ashford</p>
       <button class="play">Enter the world</button>
-      <div class="controls">${CONTROLS.map(([k, v]) => `<span class="key">${k}</span><span>${v}</span>`).join('')}</div></div>`);
+      <div class="controls">${CONTROLS.map(([k, v]) => `<span class="key">${k}</span><span>${v}</span>`).join('')}</div>
+      <div class="settings">
+        <label>Graphics <span class="seg" role="radiogroup">
+          <button data-q="high">High</button><button data-q="medium">Medium</button><button data-q="low">Low</button></span></label>
+        <label for="sens">Mouse <input id="sens" type="range" min="0.3" max="2.5" step="0.05"></label>
+      </div></div>`);
     document.body.append(this.pause);
     this.playButton = this.pause.querySelector('.play');
+    this.pause.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => this.onQuality?.(b.dataset.q)));
+    this.sens = this.pause.querySelector('#sens');
+    this.sens.addEventListener('input', () => this.onSensitivity?.(+this.sens.value));
     this.lastPrompt = '';
+  }
+
+  showSettings({ quality, sensitivity }) {
+    this.pause.querySelectorAll('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.q === quality)));
+    this.sens.value = sensitivity;
   }
 
   progress(f, text) {
