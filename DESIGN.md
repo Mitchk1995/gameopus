@@ -1,58 +1,90 @@
-# Hollowreach — design bible
+# Aldermere — design (working title)
 
-A Diablo-style loot ARPG made for one player, with Claude as the dungeon master
-who keeps expanding the world between sessions.
+A single-player world you live in: OSRS-style skills and long goals, skill-and-timing
+action combat, one designed continent seen over the shoulder. Claude keeps building it
+between sessions, carefully.
 
-## The core promise
+The earlier prototype (Hollowreach, a top-down Diablo-style loot game) lives in git
+history at `b339c22`. Its post-processing, synthesized audio and procedural item-model
+code can be reused; its design direction is retired.
 
-1. **Loot is the protagonist.** Every kill is a lottery ticket. Uniques change how you play,
-   not just your numbers.
-2. **You never know what exists.** The Codex shows `???` for everything you haven't found.
-   Discovery is the reward as much as power is.
-3. **Number go up, and it leads somewhere.** Every grind (gold, shards, levels, professions)
-   feeds a deeper place where newer, stranger content lives.
-4. **The world keeps growing.** Claude reads what you did last session and writes new
-   regions, monsters, uniques, NPCs and mechanics for next time.
+## Decisions from the player
 
-## How it stays cohesive (the rules Claude follows when adding content)
+| Topic | Decision |
+|---|---|
+| Camera and controls | Locked third-person over the shoulder. Mouse captured with a crosshair, WASD relative to the view, **E** interacts with what you look at, Esc frees the mouse. |
+| Combat | Lots of action combat built on skill and timing: dodges, blocks and parries, perfect hits, readable enemy tells. Free aim plus lock-on. |
+| Combat progression | OSRS skills (Attack, Strength, Defence, Ranged, Magic, Hitpoints). Gear tiers are gated by level: bronze, iron, steel and up. |
+| Items | No constant swapping and comparing. Gear moves in clear tiers at OSRS pace, and rare drops are events. |
+| Rare hunting | Bosses with drop tables (1/100 to 1/5000), a collection log, skilling pets. |
+| First skills | Woodcutting, Mining, Fishing, Smithing, Cooking, Crafting, Fletching, plus the combat skills. |
+| Grind | OSRS-long: an exponential XP curve to 99, and always a clear next goal. |
+| World | One fixed, designed continent that moves through regions (farmland, forest, desert, snow, marsh). Dungeons are procedural with real layouts. The outdoors has to be well made. |
+| Mood and look | Cozy and fairly bright, with realistic lighting and textures. |
+| Quests | Real written quests plus small everyday jobs. Claude adds more between sessions; it must never feel sloppy, slow or annoying. |
+| Talking to NPCs | Dialogue options, plus the option to type freely (Claude answers in character). |
+| Death | Respawn at the nearest safe haven (for now). |
+| Inventory | 28-slot backpack plus banks, with quality-of-life touches (Claude's call). |
+| Character | Whatever free art looks good. |
 
-Claude never free-writes content into the game. Everything new is written in the game's
-**content grammar**, so it obeys the same rules, power curve and visual language as
-everything else:
+## Pillars
 
-| Layer | Lives in | What a new entry must define |
-|---|---|---|
-| Stats | `src/content/affixes.js` | stat id, roll range, ilvl scaling, prefix/suffix name |
-| Uniques | `src/content/uniques.js` | slot, fixed stat lines, a **power** built from triggers + actions |
-| Triggers | `src/game/powers.js` | `swing`, `attack`, `hit`, `crit`, `kill`, `dash`, `nova`, `pickup`, `hurt`, `tick` |
-| Actions | `src/game/actions.js` | `chainLightning`, `nova`, `firePatch`, `shards`, `soul`, `orbit`... |
-| Monsters | `src/content/monsters.js` | stats, behavior archetype, procedural model |
-| Regions | `src/content/biomes.js` | palette, fog, light, name, monster mix |
+1. **The grind is great.** Every skill has a visible unlock table, so you always know the next
+   milestone (a new tree, a new bar, a new tier of gear). Gathering and making things should
+   feel good second to second: sound, animation, the pop of a level-up.
+2. **Combat is a skill.** Enemies telegraph, and you answer with dodges, blocks, parries and
+   well-timed hits. Levels and gear matter, but a good player beats a bad fight.
+3. **A world worth living in.** Towns with banks and specialist NPCs, roads, rivers,
+   landmarks, weather and time of day. Walking somewhere should be pleasant.
+4. **Rare things are rare.** Few drops, clear tiers, and the jackpots (boss uniques, pets)
+   are real events you remember.
+5. **It keeps growing, carefully.** New regions, quests and bosses arrive between sessions,
+   written in the game's content grammar and playtested before they ship.
 
-Adding a new mechanic means adding a new trigger or action to the engine first, then
-content can use it. That keeps weird ideas possible without the game turning to mush.
+## First playable slice
 
-### World canon (tone guide for all names and text)
+- **Ashford and its surroundings:** a village with a bank, general store, smithy (furnace
+  and anvil), cooking range and fishing dock; farmland, a forest (normal, oak and willow
+  trees), a river and a lake, a hill mine (copper, tin, iron), a bandit camp and a cave.
+- **Skills:** the seven first skills plus the combat skills, with the OSRS XP curve,
+  resource nodes that deplete and respawn, and a skill guide per skill.
+- **Combat:** sword and shield first (light and heavy attacks, block, parry, dodge roll,
+  lock-on), then bows and magic. Three or four enemy types with distinct tells.
+- **A procedural dungeon** under the hill with a boss, a drop table and a collection log.
+- **People:** dialogue with options and free typing, two quests, shops.
 
-- The Hollowreach is a drowned kingdom that fell *upward* into the dark: the deeper you
-  go, the older and stranger it gets.
-- Tone: grim, a little wry, never goofy. Item names sound like they were found, not designed.
-- Colors carry meaning: ember orange = unique, violet = void/arcane, cyan = cold,
-  pale blue = storm, magenta-red = **Ascendant** (the rarest tier).
+## Content grammar (how Claude adds things without making a mess)
 
-## The two content loops
+Everything is data in `src/content/`. Adding content means adding rows, not new code,
+unless it needs a new mechanic, and then the mechanic comes first.
 
-- **Fast loop (in game, every second):** procedural hordes, affix rolls, drops, elites,
-  depth scaling. Endless by construction.
-- **Slow loop (between sessions, Claude as DM):** you play, the game logs what happened,
-  Claude reads it and ships a content patch: a new region, a boss that counters your
-  build, a unique that fits what you've been chasing, an NPC who remembers you.
+| Kind | Must define |
+|---|---|
+| Item | id, name, slot, tier, requirements, stats, model recipe, value |
+| Skill action | skill, level, XP, inputs, outputs, tool, node or station, timing |
+| Resource node | skill, level, depletion and respawn, drop, visual |
+| Enemy | stats, attack patterns with telegraph timings, drop table, model and outfit |
+| Drop table | always, weighted main table, rare table with 1/N odds, pet odds |
+| NPC | name, role, persona sheet for typed chat, dialogue tree, shop stock |
+| Quest | steps with conditions and hooks, requirements, rewards |
+| Region | map layout, terrain and biome, towns, nodes, spawns |
 
-## Roadmap (to decide together)
+## Art sources (all free for any use)
 
-- [x] Slice 1: combat feel, hordes, loot rarities, 8 uniques, Codex, depth biomes
-- [ ] Persistent cloud save the DM can read (artifact `db`)
-- [ ] Town hub + NPCs you can actually talk to (live Claude dialogue, bounded by game tools)
-- [ ] Professions: salvaging, crafting and enchanting with shards (the OSRS grind)
-- [ ] Session log + "DM patch notes" loop
-- [ ] Bosses, rifts, set items, the Ascendant chase
+- **Quaternius (CC0):** Universal Base Characters, Modular Character Outfits (Fantasy),
+  Universal Animation Library 1 and 2 (86 clips on one rig), Medieval Village MegaKit,
+  Fantasy Props MegaKit, Bestiary Dungeon Monsters.
+- **Poly Haven (CC0):** terrain and building textures, HDRI skies, rocks.
+- **ez-tree (MIT):** procedural trees with real bark and leaf textures.
+
+`scripts/fetch-assets.mjs` downloads and optimizes them into `public/assets/`.
+
+## Roadmap
+
+- [ ] M1 World and feel: sky and sun, terrain, water, trees and grass, the village, the
+      third-person controller, an animated character
+- [ ] M2 Skills: gathering and production loops, inventory, bank, XP, skill guides
+- [ ] M3 Combat: melee with tells, lock-on, dodge, block and parry; then ranged and magic
+- [ ] M4 Dungeon and boss: procedural layouts, boss, drop tables, collection log, pets
+- [ ] M5 People: dialogue (options and typing), two quests, shops
+- [ ] Then: more regions, skills and bosses, added between sessions
