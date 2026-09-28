@@ -46,6 +46,8 @@ export class Sky {
     s.left = -45; s.right = 45; s.top = 45; s.bottom = -45; s.near = 1; s.far = 260;
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.04;
+    // Layer 1 holds shadow-only stand-ins (lighter tree geometry).
+    sun.shadow.camera.layers.enable(1);
     this.sun = sun;
     this.scene.add(sun, sun.target);
     return this;

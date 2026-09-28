@@ -1,0 +1,488 @@
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Batcher } from './kit.js';
+import { buildHouse, rng } from './buildings.js';
+import { Fire, fishingRings } from './effects.js';
+import { ROCKS, FISHING } from '../game/content.js';
+import { VILLAGE, LAKE, RIVER, FARMS, MINE_ENTRANCE, polylineDistance } from './map.js';
+
+// The things you work with: ore rocks at the mine, fishing spots on the lake and
+// river, flax in the field, and the village's workstations (furnace and anvil in
+// the smithy, the cooking fire, spinning wheel, potter's wheel and kiln).
+//
+// Each registers an interactable: { kind, x, y, z, r, h, reach, ... } that the game's
+// targeting picks from when you look at it and press E.
+
+const C = { x: VILLAGE.x, z: VILLAGE.z };
+
+export class Resources {
+  constructor({ scene, assets, world, kit }) {
+    this.scene = scene;
+    this.assets = assets;
+    this.world = world;
+    this.kit = kit;
+    this.items = [];
+    this.fires = [];
+    this.rocks = [];
+    this.spots = [];
+  }
+
+  async load() {
+    const rockTex = await this.assets.texture('ground/cliff_a.webp');
+    this.rockMat = new THREE.MeshStandardMaterial({ map: rockTex, color: 0x9a948c, roughness: 0.92 });
+    this.#mine();
+    this.#fishing();
+    const batch = new Batcher(this.kit);
+    this.#smithy(batch);
+    this.#cookingFire(batch);
+    this.#craftCorner(batch);
+    this.#jetty(batch);
+    this.scene.add(batch.build());
+    this.#flax();
+    return this;
+  }
+
+  add(obj) {
+    this.items.push(obj);
+    return obj;
+  }
+
+  // Interactables within r of a point.
+  near(x, z, r) {
+    return this.items.filter((o) => !o.hidden && Math.hypot(o.x - x, o.z - z) < r + (o.r || 0));
+  }
+
+  update(dt) {
+    Fire.tick(dt);
+    fishingRings.tick(dt);
+    for (const f of this.fires) f.update(dt);
+    const now = performance.now() / 1000;
+    for (const r of this.rocks) if (r.depleted && now >= r.respawnAt) this.setRock(r, false);
+    for (const f of this.flaxPlants || []) if (f.picked && now >= f.respawnAt) this.#setFlax(f, false);
+  }
+
+  // ------------------------------------------------------------------ mine
+  #mine() {
+    const T = this.world.terrain;
+    const rnd = rng(31);
+    // A quarry floor below the hill: rocks scattered on the gentler ground.
+    const kinds = ['copper', 'copper', 'copper', 'tin', 'tin', 'tin', 'clay', 'clay', 'iron', 'iron', 'iron', 'iron', 'coal', 'coal', 'coal', 'copper', 'tin'];
+    const cx = MINE_ENTRANCE.x + 16, cz = MINE_ENTRANCE.z + 10;
+    const placed = [];
+    for (const kind of kinds) {
+      let x, z, tries = 0;
+      do {
+        const a = rnd() * Math.PI * 2, d = 4 + Math.sqrt(rnd()) * 16;
+        x = cx + Math.cos(a) * d;
+        z = cz + Math.sin(a) * d;
+        tries++;
+      } while (tries < 60 && (T.normalAt(x, z).y < 0.9 || placed.some((p) => Math.hypot(p[0] - x, p[1] - z) < 3.2)));
+      placed.push([x, z]);
+      this.#rock(kind, x, T.heightAt(x, z), z, rnd);
+    }
+    // All boulders in one mesh; each rock keeps its own (merged) ore.
+    const bodies = this.rockBodies.map((m) => {
+      m.updateMatrixWorld(true);
+      return m.geometry.clone().applyMatrix4(m.matrixWorld);
+    });
+    const all = new THREE.Mesh(mergeGeometries(bodies), this.rockMat);
+    all.castShadow = all.receiveShadow = true;
+    this.scene.add(all);
+    for (const m of this.rockBodies) m.parent.remove(m);
+    this.mineCentre = { x: cx, z: cz };
+  }
+
+  #rock(kind, x, y, z, rnd) {
+    const def = ROCKS[kind];
+    const s = 0.75 + rnd() * 0.35;
+    const g = new THREE.Group();
+    g.position.set(x, y - 0.15, z);
+    g.rotation.y = rnd() * Math.PI * 2;
+    const body = new THREE.Mesh(boulder(s, rnd), this.rockMat);
+    g.add(body);
+    (this.rockBodies ??= []).push(body);
+    // Ore shows as nuggets set into the upper surface.
+    const veins = new THREE.Group();
+    const oreMat = new THREE.MeshStandardMaterial({ color: def.color, roughness: kind === 'clay' ? 0.85 : 0.45, metalness: ['copper', 'tin', 'iron'].includes(kind) ? 0.6 : 0 });
+    const n = kind === 'clay' ? 5 : 11;
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * Math.PI * 2, el = 0.2 + rnd() * 0.85;
+      const dir = new THREE.Vector3(Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el));
+      const nug = new THREE.Mesh(new THREE.IcosahedronGeometry((kind === 'clay' ? 0.19 : 0.085) * s * (0.6 + rnd() * 0.8), 0), oreMat);
+      // Sit each nugget on the boulder's surface, half sunk in.
+      nug.position.copy(dir).multiply(new THREE.Vector3(0.95 * s, 0.62 * s, 0.95 * s)).add(new THREE.Vector3(0, 0.3 * s, 0));
+      nug.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+      nug.scale.set(1.3, 0.55, 1);
+      nug.lookAt(nug.position.clone().multiplyScalar(2));
+      nug.updateMatrix();
+      veins.add(nug);
+    }
+    const merged = new THREE.Mesh(mergeGeometries(veins.children.map((n) => n.geometry.clone().applyMatrix4(n.matrix))), oreMat);
+    merged.castShadow = true;
+    g.add(merged);
+    this.scene.add(g);
+    this.world.colliders.addCircle(x, z, 0.85 * s, y - 1, y + 1.2 * s);
+    const rock = this.add({ kind: 'rock', rock: kind, def, x, y: y + 0.6 * s, z, r: 1.0 * s, h: 1.4 * s, reach: 2.2 + s, group: g, veins: merged, depleted: false });
+    this.rocks.push(rock);
+  }
+
+  setRock(r, depleted, respawn = 5) {
+    r.depleted = depleted;
+    r.veins.visible = !depleted;
+    r.respawnAt = performance.now() / 1000 + respawn;
+  }
+
+  // ------------------------------------------------------------------ fishing
+  #fishing() {
+    const T = this.world.terrain;
+    const spots = [];
+    // Net fishing along the lake's north shore, near the jetty.
+    for (let a = -2.2; a <= -0.9; a += 0.26) {
+      for (let d = LAKE.r * 0.5; d < LAKE.r * 1.3; d += 0.5) {
+        const x = LAKE.x + Math.cos(a) * d, z = LAKE.z + Math.sin(a) * d;
+        if (T.heightAt(x, z) > -0.75) {
+          // Step back into the water a little.
+          const bx = LAKE.x + Math.cos(a) * (d - 2.5), bz = LAKE.z + Math.sin(a) * (d - 2.5);
+          spots.push(['net', bx, bz]);
+          break;
+        }
+      }
+    }
+    // Fly fishing on the river: find stretches with a bank to stand on.
+    for (const t of [0.34, 0.42, 0.5, 0.6, 0.76]) {
+      const i = Math.floor(t * (RIVER.length - 1));
+      const [ax, az] = RIVER[i], [bx, bz] = RIVER[i + 1];
+      const dx = bx - ax, dz = bz - az, l = Math.hypot(dx, dz);
+      const nx = -dz / l, nz = dx / l;
+      // Walk from mid-channel toward the west bank until the water is shallow.
+      for (let d = 0; d < 12; d += 0.4) {
+        const x = ax + nx * -d, z = az + nz * -d;
+        if (T.heightAt(x, z) > -0.7) {
+          spots.push(['fly', ax + nx * -(d - 1.8), az + nz * -(d - 1.8)]);
+          break;
+        }
+      }
+    }
+    for (const [method, x, z] of spots) {
+      const def = FISHING[method];
+      const rings = fishingRings(this.scene, x, z);
+      this.spots.push(this.add({ kind: 'fish', method, def, x, y: 0.2, z, r: 1.3, h: 0.8, reach: 5.5, rings }));
+    }
+  }
+
+  // ------------------------------------------------------------------ smithy
+  #smithy(batch) {
+    const a = (12 * Math.PI) / 180, d = 25;
+    const x = C.x + Math.cos(a) * d, z = C.z + Math.sin(a) * d;
+    const rot = Math.atan2(C.x - x, C.z - z);
+    const spec = { x, z, rot, w: 6, d: 6, floors: 1, style: 'stone', open: ['s'], seed: 404, chimney: 1 };
+    const info = buildHouse(this.kit, batch, this.world.colliders, spec, VILLAGE.y);
+    const place = { ...spec, ...info };
+    const at = (lx, lz) => {
+      const c = Math.cos(rot), s = Math.sin(rot);
+      return [x + lx * c + lz * s, z - lx * s + lz * c];
+    };
+    // Posts at the open corners hold up the roof.
+    for (const sx of [-1, 1]) {
+      const [px, pz] = at(sx * 2.9, 2.9);
+      batch.add('Corner_Exterior_Wood', px, VILLAGE.y, pz, rot);
+      this.world.colliders.addCircle(px, pz, 0.18, VILLAGE.y - 1, VILLAGE.y + 3);
+    }
+    // Furnace against the back wall.
+    const [fx, fz] = at(-1.2, -1.9);
+    this.#furnace(fx, fz, rot);
+    // Anvil in the middle, tools and a water barrel.
+    const [ax, az] = at(0.9, 0.4);
+    batch.add('Anvil_Log', ax, VILLAGE.y, az, rot + 0.3);
+    this.world.colliders.addCircle(ax, az, 0.45, VILLAGE.y - 1, VILLAGE.y + 1);
+    this.add({ kind: 'station', station: 'anvil', name: 'Anvil', x: ax, y: VILLAGE.y + 0.8, z: az, r: 0.6, h: 1.1, reach: 2.4 });
+    const [wx, wz] = at(2.1, -1.8);
+    batch.add('Whetstone', wx, VILLAGE.y, wz, rot + Math.PI);
+    const [bx, bz] = at(2.3, 1.6);
+    batch.add('Barrel', bx, VILLAGE.y, bz, 0);
+    this.world.colliders.addCircle(bx, bz, 0.38, VILLAGE.y - 1, VILLAGE.y + 1);
+    const [sx, sz] = at(-2.3, 1.2);
+    batch.add('WeaponStand', sx, VILLAGE.y, sz, rot + Math.PI / 2);
+    this.places = { ...(this.places || {}), smithy: place };
+  }
+
+  #furnace(x, z, rot) {
+    const brick = findMaterial(this.kit, 'MI_Brick') || this.rockMat;
+    const g = new THREE.Group();
+    g.position.set(x, VILLAGE.y, z);
+    g.rotation.y = rot;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.5, 1.3), brick);
+    body.position.y = 0.75;
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.6, 1.6, 8), brick);
+    top.position.set(0, 2.2, -0.15);
+    const mouth = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.5), new THREE.MeshStandardMaterial({ color: 0x220800, emissive: 0xff5a10, emissiveIntensity: 2.2 }));
+    mouth.position.set(0, 0.55, 0.652);
+    g.add(body, top, mouth);
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    this.scene.add(g);
+    const fire = new Fire(this.scene, 0, 0, 0, { size: 0.45 });
+    g.add(fire.group);
+    fire.group.position.set(0, 0.32, 0.45);
+    this.fires.push(fire);
+    this.world.colliders.addBox(x, z, 0.95, 0.7, rot, VILLAGE.y - 1, VILLAGE.y + 3);
+    this.add({ kind: 'station', station: 'furnace', name: 'Furnace', x, y: VILLAGE.y + 1.0, z, r: 1.0, h: 2.4, reach: 2.8 });
+  }
+
+  // ------------------------------------------------------------------ cooking fire
+  #cookingFire(batch) {
+    const a = (40 * Math.PI) / 180, d = 19;
+    const x = C.x + Math.cos(a) * d, z = C.z + Math.sin(a) * d;
+    const y = VILLAGE.y;
+    const stones = new THREE.Group();
+    stones.position.set(x, y, z);
+    const rnd = rng(12);
+    for (let i = 0; i < 10; i++) {
+      const t = (i / 10) * Math.PI * 2;
+      const s = new THREE.Mesh(boulder(0.2 + rnd() * 0.06, rnd), this.rockMat);
+      s.position.set(Math.cos(t) * 0.75, 0.05, Math.sin(t) * 0.75);
+      s.castShadow = true;
+      stones.add(s);
+    }
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.9 });
+    for (let i = 0; i < 4; i++) {
+      const l = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.9, 7), logMat);
+      l.rotation.set(Math.PI / 2 - 0.35, (i / 4) * Math.PI * 2, 0);
+      l.position.y = 0.18;
+      stones.add(l);
+    }
+    // A spit over the fire.
+    for (const sx of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.2, 6), logMat);
+      post.position.set(sx * 0.85, 0.6, 0);
+      stones.add(post);
+    }
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.9, 6), logMat);
+    bar.rotation.z = Math.PI / 2;
+    bar.position.y = 1.15;
+    stones.add(bar);
+    this.scene.add(stones);
+    const fire = new Fire(this.scene, x, y + 0.12, z, { size: 0.8 });
+    this.fires.push(fire);
+    this.world.colliders.addCircle(x, z, 0.85, y - 1, y + 0.6);
+    this.add({ kind: 'station', station: 'fire', name: 'Cooking fire', x, y: y + 0.5, z, r: 0.9, h: 1.2, reach: 2.6 });
+    // Logs stacked nearby.
+    batch.add('Crate_Wooden', x + 1.9, y, z - 0.6, 0.4);
+  }
+
+  // ------------------------------------------------------------------ crafting
+  #craftCorner(batch) {
+    const a = (-172 * Math.PI) / 180, d = 16.5;
+    const x = C.x + Math.cos(a) * d, z = C.z + Math.sin(a) * d;
+    const y = VILLAGE.y;
+    const face = Math.atan2(C.x - x, C.z - z);
+    const along = (k) => [x + Math.cos(face) * k, z - Math.sin(face) * k];
+    const woodMat = findMaterial(this.kit, 'MI_WoodTrim') || new THREE.MeshStandardMaterial({ color: 0x6b4a2c });
+    const brick = findMaterial(this.kit, 'MI_RedBrick') || this.rockMat;
+    // Spinning wheel.
+    {
+      const [px, pz] = along(-2.6);
+      const g = new THREE.Group();
+      g.position.set(px, y, pz);
+      g.rotation.y = face + Math.PI / 2;
+      const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 6, 28), woodMat);
+      wheel.position.y = 0.85;
+      g.add(wheel);
+      for (let i = 0; i < 8; i++) {
+        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.82, 4), woodMat);
+        sp.position.y = 0.85;
+        sp.rotation.z = (i / 8) * Math.PI;
+        g.add(sp);
+      }
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.3), woodMat);
+      base.position.set(0.15, 0.32, 0);
+      g.add(base);
+      for (const sx of [-0.3, 0.55]) for (const sz of [-0.12, 0.12]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.34, 5), woodMat);
+        leg.position.set(sx, 0.16, sz);
+        g.add(leg);
+      }
+      const upright = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.62, 0.06), woodMat);
+      upright.position.set(0, 0.62, 0);
+      g.add(upright);
+      g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.scene.add(g);
+      this.spinWheel = wheel;
+      this.world.colliders.addCircle(px, pz, 0.5, y - 1, y + 1.3);
+      this.add({ kind: 'station', station: 'wheel', name: 'Spinning wheel', x: px, y: y + 0.8, z: pz, r: 0.6, h: 1.3, reach: 2.4 });
+    }
+    // Potter's wheel.
+    {
+      const [px, pz] = along(0);
+      const g = new THREE.Group();
+      g.position.set(px, y, pz);
+      const table = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.06, 20), woodMat);
+      table.position.y = 0.62;
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8), woodMat);
+      stem.position.y = 0.31;
+      const kick = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.07, 20), woodMat);
+      kick.position.y = 0.08;
+      const lump = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshStandardMaterial({ color: 0x8a6446, roughness: 0.5 }));
+      lump.scale.y = 0.7;
+      lump.position.y = 0.7;
+      g.add(table, stem, kick, lump);
+      g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.scene.add(g);
+      this.world.colliders.addCircle(px, pz, 0.45, y - 1, y + 0.9);
+      this.add({ kind: 'station', station: 'potter', name: "Potter's wheel", x: px, y: y + 0.6, z: pz, r: 0.5, h: 1.0, reach: 2.3 });
+    }
+    // Kiln: a brick dome with a glowing mouth.
+    {
+      const [px, pz] = along(2.9);
+      const g = new THREE.Group();
+      g.position.set(px, y, pz);
+      g.rotation.y = face;
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(1.05, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), brick);
+      dome.scale.y = 1.25;
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.12, 0.35, 20), brick);
+      base.position.y = 0.17;
+      dome.position.y = 0.33;
+      const mouth = new THREE.Mesh(new THREE.CircleGeometry(0.34, 16, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0x220800, emissive: 0xff5a10, emissiveIntensity: 1.8 }));
+      mouth.position.set(0, 0.36, 1.04);
+      const flue = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.55, 10), brick);
+      flue.position.y = 1.72;
+      g.add(dome, base, mouth, flue);
+      g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      this.scene.add(g);
+      const fire = new Fire(this.scene, 0, 0, 0, { size: 0.35, light: true });
+      g.add(fire.group);
+      fire.group.position.set(0, 0.36, 0.85);
+      this.fires.push(fire);
+      this.world.colliders.addCircle(px, pz, 1.1, y - 1, y + 2);
+      this.add({ kind: 'station', station: 'kiln', name: 'Pottery kiln', x: px, y: y + 1.0, z: pz, r: 1.1, h: 2.0, reach: 2.9 });
+    }
+    const [wx, wz] = along(-4.8);
+    batch.add('Workbench', wx, y, wz, face + Math.PI);
+    this.world.colliders.addBox(wx, wz, 1.0, 0.5, face + Math.PI, y - 1, y + 0.9);
+    const [bx, bz] = along(4.9);
+    batch.add('Barrel', bx, y, bz, 0);
+    this.world.colliders.addCircle(bx, bz, 0.38, y - 1, y + 1);
+  }
+
+  // ------------------------------------------------------------------ jetty
+  #jetty(batch) {
+    // Planks from the end of the lake road out over the water.
+    const T = this.world.terrain;
+    const sx = -52, sz = 168;
+    const dir = new THREE.Vector2(LAKE.x - sx, LAKE.z - sz).normalize();
+    const rot = Math.atan2(dir.x, dir.y);
+    const deck = 0.55;
+    for (let i = 0; i < 7; i++) {
+      const x = sx + dir.x * (i * 2 + 1), z = sz + dir.y * (i * 2 + 1);
+      batch.add('Floor_WoodDark', x, deck, z, rot);
+      batch.add('Floor_WoodDark', x, deck - 0.03, z, rot + Math.PI);
+      for (const side of [-1, 1]) {
+        const px = x + Math.cos(rot) * side * 0.95, pz = z - Math.sin(rot) * side * 0.95;
+        const h = T.heightAt(px, pz);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, deck - h + 0.4, 6), findMaterial(this.kit, 'MI_WoodTrim'));
+        post.position.set(px, (deck + h) / 2, pz);
+        post.castShadow = true;
+        this.scene.add(post);
+      }
+    }
+    // Walkable deck (a thin box the player can stand on).
+    const len = 14;
+    const cx = sx + dir.x * (len / 2), cz = sz + dir.y * (len / 2);
+    this.world.colliders.addBox(cx, cz, 1.0, len / 2, rot, deck - 0.3, deck).noCamera = true;
+    this.jettyEnd = { x: sx + dir.x * len, z: sz + dir.y * len };
+  }
+
+  // ------------------------------------------------------------------ flax
+  #flax() {
+    const f = FARMS[1];
+    const rnd = rng(55);
+    const plants = [];
+    const c = Math.cos(f.rot), s = Math.sin(f.rot);
+    for (let row = 0; row < 7; row++)
+      for (let k = 0; k < 16; k++) {
+        const lx = -f.w / 2 + 4 + k * ((f.w - 8) / 15) + (rnd() - 0.5) * 0.8, lz = -f.d / 2 + 4 + row * ((f.d - 8) / 6) + (rnd() - 0.5) * 0.8;
+        const x = f.x + lx * c + lz * s, z = f.z - lx * s + lz * c;
+        plants.push({ x, z, y: this.world.terrain.heightAt(x, z), rot: rnd() * 6, s: 0.8 + rnd() * 0.4 });
+      }
+    // Instanced plants: a clump of stalks with blue flowers.
+    const stalk = new THREE.CylinderGeometry(0.008, 0.012, 0.9, 4);
+    stalk.translate(0, 0.45, 0);
+    const parts = [];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2, r = 0.05 + (i % 3) * 0.05;
+      parts.push(stalk.clone().rotateX(Math.sin(a) * 0.15).rotateZ(Math.cos(a) * 0.15).translate(Math.cos(a) * r, 0, Math.sin(a) * r));
+    }
+    const flowers = [];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2, r = 0.05 + (i % 3) * 0.05;
+      flowers.push(new THREE.SphereGeometry(0.035, 6, 4).translate(Math.cos(a) * (r + 0.12), 0.9, Math.sin(a) * (r + 0.12)));
+    }
+    const stalkMesh = new THREE.InstancedMesh(mergeAll(parts), new THREE.MeshStandardMaterial({ color: 0x7c9a3c, roughness: 0.8 }), plants.length);
+    const flowerMesh = new THREE.InstancedMesh(mergeAll(flowers), new THREE.MeshStandardMaterial({ color: 0x6f8fe8, roughness: 0.6 }), plants.length);
+    stalkMesh.castShadow = true;
+    this.flaxPlants = plants.map((p, i) => ({ ...p, i, picked: false }));
+    this.flaxMeshes = [stalkMesh, flowerMesh];
+    for (const p of this.flaxPlants) {
+      this.#setFlax(p, false);
+      this.add({ kind: 'flax', plant: p, x: p.x, y: p.y + 0.5, z: p.z, r: 0.4, h: 1.0, reach: 2.0, get hidden() { return p.picked; } });
+    }
+    this.scene.add(stalkMesh, flowerMesh);
+  }
+
+  #setFlax(p, picked) {
+    p.picked = picked;
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(p.x, p.y, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot), new THREE.Vector3().setScalar(picked ? 0 : p.s));
+    for (const mesh of this.flaxMeshes) {
+      mesh.setMatrixAt(p.i, m);
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+    p.respawnAt = performance.now() / 1000 + 25;
+  }
+  pickFlax(p) {
+    this.#setFlax(p, true);
+  }
+}
+
+function mergeAll(geos) {
+  const pos = [], nor = [], idx = [];
+  let base = 0;
+  for (const g of geos) {
+    const gi = g.index ? g : g.toNonIndexed();
+    pos.push(...gi.attributes.position.array);
+    nor.push(...gi.attributes.normal.array);
+    if (gi.index) idx.push(...Array.from(gi.index.array, (v) => v + base));
+    base += gi.attributes.position.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  out.setIndex(idx);
+  return out;
+}
+
+// A boulder: a squashed, lumpy icosphere.
+export function boulder(size, rnd) {
+  const g = new THREE.IcosahedronGeometry(size, 3);
+  const p = g.attributes.position, v = new THREE.Vector3();
+  const k = [rnd() * 10, rnd() * 10, rnd() * 10];
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    const n = Math.sin(v.x * 3.1 / size + k[0]) * Math.sin(v.y * 2.7 / size + k[1]) * Math.sin(v.z * 3.3 / size + k[2]);
+    const n2 = Math.sin(v.x * 9 / size + k[1]) * Math.sin(v.z * 8 / size + k[2]) * 0.3;
+    v.multiplyScalar(1 + n * 0.22 + n2 * 0.12);
+    v.y = v.y > 0 ? v.y * 0.78 : v.y * 0.5;
+    p.setXYZ(i, v.x, v.y + size * 0.3, v.z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function findMaterial(kit, name) {
+  for (const part of kit.parts.values()) {
+    let found = null;
+    part.traverse((o) => {
+      if (!found && o.isMesh) for (const m of [o.material].flat()) if (m.name === name) found = m;
+    });
+    if (found) return found;
+  }
+  return null;
+}

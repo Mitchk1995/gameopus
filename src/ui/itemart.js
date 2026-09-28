@@ -1,0 +1,735 @@
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { ITEMS } from '../game/items.js';
+
+// Small 3D models for items, built from primitives with PBR materials. The same
+// model is rendered into the inventory icon (by a little renderer of its own) and,
+// for tools and weapons, held in the character's hand. Models are built at real
+// scale in metres, with the grip at the origin for held things.
+
+const mats = new Map();
+function mat(key, make) {
+  if (!mats.has(key)) mats.set(key, make());
+  return mats.get(key);
+}
+const metal = (color) => mat(`metal${color}`, () => new THREE.MeshStandardMaterial({ color, metalness: 1, roughness: 0.32 }));
+const wood = (color = 0x6b4a2c) => mat(`wood${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.7, map: grainTexture() }));
+const leather = () => mat('leather', () => new THREE.MeshStandardMaterial({ color: 0x4a3222, roughness: 0.8 }));
+const plain = (color, roughness = 0.8, metalness = 0) => mat(`p${color}${roughness}${metalness}`, () => new THREE.MeshStandardMaterial({ color, roughness, metalness }));
+
+// Streaky grain for handles and shafts.
+let grain = null;
+function grainTexture() {
+  if (grain) return grain;
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#c8a27a';
+  g.fillRect(0, 0, 64, 256);
+  for (let i = 0; i < 90; i++) {
+    const x = Math.random() * 64, w = 0.6 + Math.random() * 2.2, a = 0.08 + Math.random() * 0.18;
+    g.fillStyle = `rgba(70,40,20,${a})`;
+    g.fillRect(x, 0, w, 256);
+  }
+  grain = new THREE.CanvasTexture(c);
+  grain.colorSpace = THREE.SRGBColorSpace;
+  grain.wrapS = grain.wrapT = THREE.RepeatWrapping;
+  return grain;
+}
+
+function mesh(geo, material, { x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = 1 } = {}) {
+  const m = new THREE.Mesh(geo, material);
+  m.position.set(x, y, z);
+  m.rotation.set(rx, ry, rz);
+  m.scale.setScalar(s);
+  return m;
+}
+
+// Seeded noise-ish displacement for lumps.
+function lumpy(radius, detail, amount, seed, squash = [1, 1, 1]) {
+  const g = new THREE.IcosahedronGeometry(radius, detail);
+  const p = g.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    const n = Math.sin(v.x * 17 + seed) * Math.cos(v.y * 13 - seed * 0.7) * Math.sin(v.z * 19 + seed * 1.3);
+    const n2 = Math.sin(v.x * 41 + seed * 2) * Math.sin(v.z * 37 - seed);
+    v.multiplyScalar(1 + n * amount + n2 * amount * 0.35);
+    p.setXYZ(i, v.x * squash[0], v.y * squash[1], v.z * squash[2]);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+// A lathe from a profile of [radius, height] points.
+function lathe(points, segs = 28) {
+  return new THREE.LatheGeometry(points.map(([r, h]) => new THREE.Vector2(r, h)), segs);
+}
+
+// ------------------------------------------------------------------ builders
+const BUILD = {
+  coins(a) {
+    const g = new THREE.Group();
+    const gold = metal(0xd8a93c);
+    const coin = new THREE.CylinderGeometry(0.03, 0.03, 0.008, 24);
+    let seed = 1;
+    const r = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+    for (let s = 0; s < 3; s++)
+      for (let k = 0; k < 4 - s; k++) g.add(mesh(coin, gold, { x: (s - 1) * 0.055 + (r() - 0.5) * 0.006, y: 0.003 + k * 0.0065, z: (r() - 0.5) * 0.012, ry: r() }));
+    g.add(mesh(coin, gold, { x: 0.02, y: 0.012, z: 0.045, rx: 0.35, rz: 0.2 }));
+    return g;
+  },
+
+  logs(a, assets) {
+    const g = new THREE.Group();
+    const bark = barkMaterial(a.bark, assets);
+    const end = ringsMaterial(a.end);
+    const geo = new THREE.CylinderGeometry(0.075, 0.08, 0.5, 14, 1);
+    for (const [x, y, z, ry] of [[-0.08, 0.08, 0, 0.1], [0.08, 0.08, 0.01, -0.08], [0, 0.215, -0.005, 0.03]]) {
+      const log = mesh(geo, [bark, end, end], { x, y, z, rx: Math.PI / 2, rz: ry });
+      g.add(log);
+    }
+    return g;
+  },
+
+  ore(a) {
+    const geo = lumpy(0.11, 3, 0.16, (a.fleck % 97) + 3, [1.15, 0.85, 1]);
+    const col = new Float32Array(geo.attributes.position.count * 3);
+    const base = new THREE.Color(a.base ?? 0x5b5650), fleck = new THREE.Color(a.fleck), v = new THREE.Vector3(), c = new THREE.Color();
+    for (let i = 0; i < geo.attributes.position.count; i++) {
+      v.fromBufferAttribute(geo.attributes.position, i);
+      const n = Math.sin(v.x * 60) * Math.sin(v.y * 55 + 1) * Math.sin(v.z * 58 + 2);
+      c.copy(base).lerp(fleck, n > 0.2 ? 0.95 : n > 0.05 ? 0.4 : 0).multiplyScalar(0.8 + 0.4 * Math.abs(Math.sin(v.x * 23 + v.z * 19)));
+      col.set([c.r, c.g, c.b], i * 3);
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: a.fleck === 0x151515 ? 0 : 0.35 });
+    return mesh(geo, m, { y: 0.09 });
+  },
+
+  clay(a) {
+    return mesh(lumpy(0.09, 3, a.soft ? 0.05 : 0.1, 5, [1.2, 0.8, 1]), plain(a.color, a.soft ? 0.45 : 0.9), { y: 0.07 });
+  },
+
+  bar(a) {
+    // An ingot: wider at the base, bevelled top.
+    const shape = new THREE.Shape();
+    shape.moveTo(-0.13, 0);
+    shape.lineTo(0.13, 0);
+    shape.lineTo(0.105, 0.06);
+    shape.lineTo(-0.105, 0.06);
+    shape.closePath();
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.07, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 2 });
+    geo.translate(0, 0, -0.035);
+    const m = new THREE.MeshStandardMaterial({ color: a.color, metalness: 1, roughness: 0.38 });
+    return mesh(geo, m, { y: 0.005 });
+  },
+
+  fish(a) {
+    const g = new THREE.Group();
+    const L = 0.34 * (a.size || 1);
+    // Body: a lathe along x, flattened sideways.
+    const prof = [];
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16;
+      prof.push([Math.sin(Math.PI * Math.pow(t, 0.8)) * 0.055 * (1 - t * 0.35) + 0.002, (t - 0.5) * L]);
+    }
+    const body = lathe(prof, 20);
+    body.rotateZ(-Math.PI / 2);
+    body.scale(1, 1, 0.55);
+    // Colour: darker back, lighter belly, speckles for trout.
+    const n = body.attributes.position.count, col = new Float32Array(n * 3);
+    const back = new THREE.Color(a.color), belly = new THREE.Color(a.belly ?? 0xdedcd0), c = new THREE.Color(), v = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      v.fromBufferAttribute(body.attributes.position, i);
+      c.copy(belly).lerp(back, THREE.MathUtils.smoothstep(v.y, -0.02, 0.03));
+      if (!a.cooked && !a.burnt && Math.sin(v.x * 190) * Math.sin(v.y * 170 + v.z * 90) > 0.85) c.multiplyScalar(0.5);
+      if (a.cooked) c.multiplyScalar(0.85 + 0.25 * Math.max(0, Math.sin(v.x * 70)));
+      col.set([c.r, c.g, c.b], i * 3);
+    }
+    body.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const skin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: a.cooked ? 0.7 : a.burnt ? 0.95 : 0.3, metalness: a.cooked || a.burnt ? 0 : 0.25 });
+    g.add(mesh(body, skin, { y: 0.06 }));
+    // Tail and fins.
+    const fin = new THREE.MeshStandardMaterial({ color: new THREE.Color(a.color).multiplyScalar(0.8), roughness: 0.6, side: THREE.DoubleSide });
+    const tail = new THREE.Shape();
+    tail.moveTo(0, 0);
+    tail.lineTo(-0.07 * (a.size || 1), 0.045);
+    tail.quadraticCurveTo(-0.05, 0, -0.07 * (a.size || 1), -0.045);
+    tail.closePath();
+    g.add(mesh(new THREE.ShapeGeometry(tail), fin, { x: -L / 2 + 0.01, y: 0.06 }));
+    const dorsal = new THREE.Shape();
+    dorsal.moveTo(-0.04, 0);
+    dorsal.quadraticCurveTo(0, 0.05, 0.03, 0);
+    dorsal.closePath();
+    g.add(mesh(new THREE.ShapeGeometry(dorsal), fin, { x: -0.01, y: 0.105 }));
+    // Eye.
+    for (const s of [-1, 1]) g.add(mesh(new THREE.SphereGeometry(0.008, 8, 6), plain(0x111111, 0.2), { x: L / 2 - 0.045, y: 0.07, z: s * 0.024 }));
+    return g;
+  },
+
+  shrimp(a) {
+    const pts = [];
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12, ang = t * Math.PI * 1.1;
+      pts.push(new THREE.Vector3(Math.cos(ang) * 0.07, 0.02 + Math.sin(ang) * 0.07, 0));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const geo = new THREE.TubeGeometry(curve, 24, 0.024, 10, false);
+    // Taper toward the tail.
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const seg = Math.floor(i / 11) / 24;
+      const k = 1 - seg * 0.55;
+      const c = curve.getPoint(seg);
+      p.setXYZ(i, c.x + (p.getX(i) - c.x) * k, c.y + (p.getY(i) - c.y) * k, c.z + (p.getZ(i) - c.z) * k);
+    }
+    geo.computeVertexNormals();
+    const g = new THREE.Group();
+    g.add(mesh(geo, plain(a.color, 0.4), { y: 0.02 }));
+    return g;
+  },
+
+  feather() {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.quadraticCurveTo(0.035, 0.08, 0.012, 0.2);
+    shape.quadraticCurveTo(0.0, 0.215, -0.012, 0.2);
+    shape.quadraticCurveTo(-0.03, 0.08, 0, 0);
+    const g = new THREE.Group();
+    const vane = new THREE.MeshStandardMaterial({ color: 0xece8e0, roughness: 0.9, side: THREE.DoubleSide });
+    for (const [x, rz] of [[-0.03, 0.5], [0.02, -0.25], [0.06, 0.15]]) {
+      const f = new THREE.Group();
+      f.add(mesh(new THREE.ShapeGeometry(shape, 8), vane));
+      f.add(mesh(new THREE.CylinderGeometry(0.002, 0.003, 0.24, 5), plain(0xcfc6b5, 0.6), { y: 0.1 }));
+      f.position.set(x, 0.005, 0);
+      f.rotation.set(-Math.PI / 2 + 0.15, 0, rz);
+      g.add(f);
+    }
+    return g;
+  },
+
+  flax() {
+    const g = new THREE.Group();
+    const stalk = plain(0x8a9a4a, 0.8), flower = plain(0x6f8fd8, 0.6);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2, r = 0.012 * (i % 3);
+      const s = new THREE.Group();
+      s.add(mesh(new THREE.CylinderGeometry(0.003, 0.004, 0.32, 5), stalk, { y: 0.16 }));
+      s.add(mesh(new THREE.SphereGeometry(0.012, 8, 6), flower, { y: 0.325 }));
+      s.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+      s.rotation.set(Math.sin(a) * 0.12, 0, Math.cos(a) * 0.12);
+      g.add(s);
+    }
+    g.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.02, 10), plain(0xb09a6a, 0.9), { y: 0.1 }));
+    g.rotation.z = Math.PI / 2.3;
+    g.position.y = 0.03;
+    return g;
+  },
+
+  string() {
+    const pts = [];
+    for (let i = 0; i <= 120; i++) {
+      const t = i / 120, a = t * Math.PI * 2 * 5;
+      const r = 0.07 + Math.sin(t * 40) * 0.004;
+      pts.push(new THREE.Vector3(Math.cos(a) * r, 0.01 + t * 0.03 + Math.sin(a * 3) * 0.003, Math.sin(a) * r));
+    }
+    return mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 400, 0.0045, 5, false), plain(0xe6dcc0, 0.75));
+  },
+
+  pot(a) {
+    const geo = lathe([[0.001, 0], [0.06, 0], [0.085, 0.04], [0.095, 0.09], [0.08, 0.14], [0.055, 0.17], [0.06, 0.19], [0.064, 0.195], [0.052, 0.195], [0.05, 0.175], [0.07, 0.14], [0.084, 0.09], [0.075, 0.04], [0.05, 0.01], [0.001, 0.01]]);
+    return mesh(geo, plain(a.color, a.fired ? 0.55 : 0.95));
+  },
+
+  bowl(a) {
+    const geo = lathe([[0.001, 0], [0.05, 0], [0.055, 0.008], [0.1, 0.05], [0.115, 0.075], [0.108, 0.078], [0.093, 0.05], [0.05, 0.016], [0.001, 0.016]]);
+    return mesh(geo, plain(a.color, a.fired ? 0.55 : 0.95));
+  },
+
+  shafts() {
+    const g = new THREE.Group();
+    const geo = new THREE.CylinderGeometry(0.007, 0.007, 0.36, 6);
+    for (let i = 0; i < 6; i++) g.add(mesh(geo, wood(0xc8a57a), { x: (i % 3 - 1) * 0.012, y: 0.008 + Math.floor(i / 3) * 0.009, z: (i % 2) * 0.004, rz: Math.PI / 2, ry: (i - 3) * 0.03 }));
+    return g;
+  },
+
+  arrow(a) {
+    const g = new THREE.Group();
+    const one = () => {
+      const r = new THREE.Group();
+      r.add(mesh(new THREE.CylinderGeometry(0.0065, 0.0065, 0.42, 6), wood(0xc8a57a), { y: 0.21 }));
+      const vane = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.9, side: THREE.DoubleSide });
+      const fl = new THREE.Shape();
+      fl.moveTo(0, 0);
+      fl.lineTo(0.026, 0.02);
+      fl.lineTo(0.026, 0.085);
+      fl.lineTo(0, 0.1);
+      for (let k = 0; k < 3; k++) r.add(mesh(new THREE.ShapeGeometry(fl), vane, { y: 0.015, ry: (k / 3) * Math.PI * 2 }));
+      if (a.tip) r.add(mesh(new THREE.ConeGeometry(0.017, 0.055, 4), metal(a.tip), { y: 0.445 }));
+      return r;
+    };
+    for (let i = 0; i < 3; i++) {
+      const r = one();
+      r.rotation.set(0, 0, -Math.PI / 2);
+      r.position.set(-0.21, 0.012 + i * 0.004, (i - 1) * 0.03);
+      r.rotation.y = (i - 1) * 0.12;
+      g.add(r);
+    }
+    return g;
+  },
+
+  tips(a) {
+    const g = new THREE.Group();
+    for (let i = 0; i < 5; i++) g.add(mesh(new THREE.ConeGeometry(0.014, 0.05, 4), metal(a.color), { x: Math.cos(i * 2.4) * 0.03, y: 0.012, z: Math.sin(i * 2.4) * 0.03, rz: Math.PI / 2, ry: i * 1.3 }));
+    return g;
+  },
+
+  bow(a) {
+    // Grip at the origin, limbs up and down (y), curving back.
+    const L = 0.62 * (a.len || 1);
+    const pts = [];
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20 * 2 - 1;
+      pts.push(new THREE.Vector3(0, t * L, -(t * t) * 0.11 * (a.strung ? 1 : 0.35) + Math.abs(t) * 0.0));
+    }
+    const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.017, 7, false);
+    // Taper toward the tips.
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i), k = 1 - Math.abs(y / L) * 0.55;
+      const cz = -Math.pow(y / L, 2) * 0.11 * (a.strung ? 1 : 0.35);
+      p.setX(i, p.getX(i) * k);
+      p.setZ(i, cz + (p.getZ(i) - cz) * k);
+    }
+    geo.computeVertexNormals();
+    const g = new THREE.Group();
+    g.add(mesh(geo, wood(a.color)));
+    g.add(mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.12, 8), leather(), {}));
+    if (a.strung) g.add(mesh(new THREE.CylinderGeometry(0.003, 0.003, L * 2 - 0.02, 4), plain(0xefe8d2, 0.7), { z: -0.108 }));
+    return g;
+  },
+
+  axe(a) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.014, 0.017, 0.62, 8), wood(0x6b4a2c), { y: 0.2 }));
+    const head = new THREE.Shape();
+    head.moveTo(-0.02, -0.03);
+    head.lineTo(0.05, -0.03);
+    head.quadraticCurveTo(0.13, -0.08, 0.14, -0.09);
+    head.quadraticCurveTo(0.12, 0.02, 0.14, 0.11);
+    head.quadraticCurveTo(0.12, 0.09, 0.05, 0.04);
+    head.lineTo(-0.02, 0.04);
+    head.lineTo(-0.035, 0.005);
+    head.closePath();
+    const hg = new THREE.ExtrudeGeometry(head, { depth: 0.024, bevelEnabled: true, bevelThickness: 0.005, bevelSize: 0.005, bevelSegments: 1 });
+    hg.translate(0, 0, -0.012);
+    hg.scale(1.35, 1.35, 1);
+    g.add(mesh(hg, metal(a.color), { y: 0.46 }));
+    return g;
+  },
+
+  pickaxe(a) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.014, 0.017, 0.64, 8), wood(0x6b4a2c), { y: 0.21 }));
+    const pts = [];
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12 * 2 - 1;
+      pts.push(new THREE.Vector3(t * 0.2, -t * t * 0.05, 0));
+    }
+    const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.026, 6, false);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), k = 1 - Math.pow(Math.abs(x) / 0.2, 2) * 0.8;
+      const cy = -Math.pow(x / 0.2, 2) * 0.05;
+      p.setY(i, cy + (p.getY(i) - cy) * k);
+      p.setZ(i, p.getZ(i) * k);
+    }
+    geo.computeVertexNormals();
+    g.add(mesh(geo, metal(a.color), { y: 0.5 }));
+    g.add(mesh(new THREE.BoxGeometry(0.045, 0.05, 0.04), metal(a.color), { y: 0.5 }));
+    return g;
+  },
+
+  hammer() {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.34, 8), wood(0x6b4a2c), { y: 0.1 }));
+    g.add(mesh(new THREE.BoxGeometry(0.11, 0.045, 0.045), metal(0x7c7f86), { y: 0.28 }));
+    return g;
+  },
+
+  knife() {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.011, 0.012, 0.1, 8), wood(0x5a3a22), { y: 0.02 }));
+    const b = new THREE.Shape();
+    b.moveTo(-0.012, 0);
+    b.lineTo(0.012, 0);
+    b.lineTo(0.01, 0.11);
+    b.quadraticCurveTo(0.0, 0.14, -0.012, 0.15);
+    b.closePath();
+    const bg = new THREE.ExtrudeGeometry(b, { depth: 0.003, bevelEnabled: false });
+    bg.translate(0, 0, -0.0015);
+    g.add(mesh(bg, metal(0xb9c0c6), { y: 0.07 }));
+    return g;
+  },
+
+  net() {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.01, 0.012, 0.5, 8), wood(0x7a5634), { y: 0.1 }));
+    g.add(mesh(new THREE.TorusGeometry(0.12, 0.008, 6, 24), wood(0x7a5634), { y: 0.47, rx: Math.PI / 2 }));
+    const net = new THREE.MeshStandardMaterial({ color: 0xd8ceb0, roughness: 0.9, wireframe: true });
+    g.add(mesh(new THREE.SphereGeometry(0.118, 10, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), net, { y: 0.47 }));
+    return g;
+  },
+
+  rod() {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.007, 0.016, 1.1, 8), wood(0x8a6a3e), { y: 0.45 }));
+    g.add(mesh(new THREE.CylinderGeometry(0.0015, 0.0015, 0.9, 3), plain(0xdedad0, 0.6), { y: 0.55, z: 0.02, rx: 0.03 }));
+    g.add(mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.16, 8), leather(), { y: 0.02 }));
+    g.add(mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.02, 14), metal(0x8c8f94), { y: 0.14, z: 0.03, rx: Math.PI / 2 }));
+    return g;
+  },
+
+  dagger(a) {
+    return blade(a, 0.2, 0.024, 0.09, false);
+  },
+  sword(a) {
+    return blade(a, 0.62, 0.028, 0.16, false);
+  },
+  scimitar(a) {
+    return blade(a, 0.58, 0.034, 0.15, true);
+  },
+
+  med_helm(a) {
+    // A nasal helm: a slightly pointed skull cap raised on a riveted brow band, with a
+    // ridge from brow to nape and a long nose guard.
+    const g = new THREE.Group();
+    const m = metal(a.color), dark = metal(new THREE.Color(a.color).multiplyScalar(0.72).getHex());
+    const cap = lathe([[0.001, 0.25], [0.012, 0.247], [0.04, 0.228], [0.07, 0.2], [0.095, 0.162], [0.11, 0.12], [0.117, 0.08], [0.119, 0.045]], 40);
+    cap.scale(1, 1, 1.13);
+    g.add(mesh(cap, m));
+    const band = lathe([[0.121, 0.012], [0.125, 0.016], [0.126, 0.05], [0.123, 0.056], [0.119, 0.056]], 40);
+    band.scale(1, 1, 1.13);
+    g.add(mesh(band, dark));
+    for (let i = 0; i < 16; i++) {
+      const t = (i / 16) * Math.PI * 2;
+      g.add(mesh(new THREE.SphereGeometry(0.0065, 6, 4), m, { x: Math.cos(t) * 0.127, y: 0.034, z: Math.sin(t) * 0.1435 }));
+    }
+    // Ridge over the crown.
+    const ridge = new THREE.TorusGeometry(0.2, 0.009, 5, 30, Math.PI);
+    g.add(mesh(ridge, dark, { y: 0.045, ry: Math.PI / 2, s: 1 }));
+    g.children[g.children.length - 1].scale.set(0.62, 1.02, 0.7);
+    // Nose guard, flaring at the end.
+    const nasal = new THREE.Shape();
+    nasal.moveTo(-0.012, 0.05);
+    nasal.lineTo(0.012, 0.05);
+    nasal.lineTo(0.009, -0.045);
+    nasal.lineTo(0.016, -0.07);
+    nasal.lineTo(-0.016, -0.07);
+    nasal.lineTo(-0.009, -0.045);
+    nasal.closePath();
+    const ng = new THREE.ExtrudeGeometry(nasal, { depth: 0.006, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.002, bevelSegments: 1 });
+    g.add(mesh(ng, m, { y: 0.0, z: 0.139, rx: -0.08 }));
+    return g;
+  },
+
+  full_helm(a) {
+    // A great helm: flat-sided with a domed top, an eye slit, breaths on the right
+    // cheek, a reinforcing cross over the face and banded edges.
+    const g = new THREE.Group();
+    const m = metal(a.color), dark = metal(new THREE.Color(a.color).multiplyScalar(0.72).getHex());
+    const shell = lathe([[0.001, 0.25], [0.04, 0.246], [0.08, 0.23], [0.108, 0.2], [0.121, 0.16], [0.124, 0.1], [0.124, -0.06], [0.121, -0.12], [0.117, -0.15], [0.112, -0.15], [0.116, -0.12], [0.119, -0.06], [0.119, 0.1], [0.116, 0.16], [0.103, 0.195], [0.001, 0.2]], 44);
+    shell.scale(1, 1, 1.1);
+    g.add(mesh(shell, m));
+    for (const [y0, y1] of [[0.085, 0.105], [-0.155, -0.13]]) {
+      const b = lathe([[0.125, y0], [0.129, y0 + 0.004], [0.129, y1 - 0.004], [0.125, y1]], 44);
+      b.scale(1, 1, 1.1);
+      g.add(mesh(b, dark));
+    }
+    // Eye slit: a dark band across the front, broken by the cross.
+    const slitMat = plain(0x050505, 0.95);
+    for (const side of [-1, 1]) {
+      const slit = new THREE.CylinderGeometry(0.1255, 0.1255, 0.02, 20, 1, true, side > 0 ? 0.08 : -1.1, 1.02);
+      slit.scale(1, 1, 1.1);
+      g.add(mesh(slit, slitMat, { y: 0.058 }));
+    }
+    g.add(mesh(new THREE.BoxGeometry(0.02, 0.29, 0.012), dark, { y: -0.005, z: 0.137 }));
+    // Breaths.
+    for (let r = 0; r < 3; r++)
+      for (let c = 0; c < 3; c++) {
+        const t = -0.35 - c * 0.13;
+        g.add(mesh(new THREE.SphereGeometry(0.0055, 6, 4), slitMat, { x: Math.sin(t) * -0.126, y: -0.02 - r * 0.028, z: Math.cos(t) * 0.1375 }));
+      }
+    for (let i = 0; i < 18; i++) {
+      const t = (i / 18) * Math.PI * 2;
+      g.add(mesh(new THREE.SphereGeometry(0.0055, 6, 4), m, { x: Math.cos(t) * 0.13, y: 0.095, z: Math.sin(t) * 0.143 }));
+    }
+    return g;
+  },
+
+  kiteshield(a) {
+    const s = new THREE.Shape();
+    s.moveTo(0, -0.32);
+    s.quadraticCurveTo(0.2, -0.05, 0.19, 0.2);
+    s.quadraticCurveTo(0.1, 0.25, 0, 0.26);
+    s.quadraticCurveTo(-0.1, 0.25, -0.19, 0.2);
+    s.quadraticCurveTo(-0.2, -0.05, 0, -0.32);
+    const geo = new THREE.ExtrudeGeometry(s, { depth: 0.02, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.012, bevelSegments: 2, curveSegments: 16 });
+    // Curve it around the arm.
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setZ(i, p.getZ(i) - Math.pow(p.getX(i) / 0.2, 2) * 0.05);
+    geo.computeVertexNormals();
+    const g = new THREE.Group();
+    g.add(mesh(geo, metal(a.color)));
+    g.add(mesh(new THREE.SphereGeometry(0.045, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), metal(new THREE.Color(a.color).multiplyScalar(0.85).getHex()), { y: 0.02, z: 0.02, rx: Math.PI / 2 }));
+    return g;
+  },
+
+  chainbody(a) {
+    return torso(a, chainMaterial(a.color));
+  },
+  platebody(a) {
+    const g = torso(a, metal(a.color));
+    const m = metal(new THREE.Color(a.color).multiplyScalar(0.76).getHex());
+    // Lames around the belly and a raised centre ridge.
+    for (const [y, r] of [[0.04, 0.143], [0.1, 0.147], [0.16, 0.157]]) {
+      const lame = new THREE.TorusGeometry(r, 0.007, 5, 32);
+      lame.scale(1, 0.68, 1);
+      g.add(mesh(lame, m, { y, rx: Math.PI / 2 }));
+    }
+    g.add(mesh(new THREE.BoxGeometry(0.012, 0.3, 0.02), m, { y: 0.24, z: 0.122, rx: -0.12 }));
+    return g;
+  },
+  platelegs(a) {
+    const g = new THREE.Group();
+    const m = metal(a.color);
+    for (const s of [-1, 1]) {
+      const leg = new THREE.Group();
+      leg.add(mesh(lathe([[0.06, 0], [0.058, 0.18], [0.07, 0.27], [0.082, 0.42], [0.09, 0.5]], 18), m));
+      leg.add(mesh(new THREE.SphereGeometry(0.05, 14, 10), metal(new THREE.Color(a.color).multiplyScalar(0.82).getHex()), { y: 0.24, z: 0.035 }));
+      for (const y of [0.1, 0.36]) leg.add(mesh(new THREE.TorusGeometry(y < 0.2 ? 0.061 : 0.078, 0.006, 5, 20), metal(new THREE.Color(a.color).multiplyScalar(0.75).getHex()), { y, rx: Math.PI / 2 }));
+      leg.position.x = s * 0.1;
+      leg.rotation.z = s * 0.05;
+      g.add(leg);
+    }
+    const waist = lathe([[0.2, 0.47], [0.205, 0.53], [0.19, 0.58], [0.001, 0.58]], 24);
+    waist.scale(1, 1, 0.7);
+    g.add(mesh(waist, m));
+    return g;
+  },
+
+  bones() {
+    const g = new THREE.Group();
+    const bone = plain(0xe7dfc8, 0.7);
+    for (const [x, rz] of [[-0.02, 0.4], [0.03, -0.3]]) {
+      const b = new THREE.Group();
+      b.add(mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.22, 8), bone));
+      for (const e of [-1, 1]) for (const k of [-1, 1]) b.add(mesh(new THREE.SphereGeometry(0.02, 8, 6), bone, { x: k * 0.012, y: e * 0.11 }));
+      b.position.set(x, 0.022, 0);
+      b.rotation.set(Math.PI / 2, 0, rz);
+      g.add(b);
+    }
+    return g;
+  },
+};
+
+function blade(a, len, width, guard, curved) {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.12, 8), leather(), { y: 0.0 }));
+  g.add(mesh(new THREE.SphereGeometry(0.022, 10, 8), metal(new THREE.Color(a.color).multiplyScalar(0.8).getHex()), { y: -0.07 }));
+  g.add(mesh(new THREE.BoxGeometry(guard, 0.02, 0.03), metal(new THREE.Color(a.color).multiplyScalar(0.85).getHex()), { y: 0.065 }));
+  const s = new THREE.Shape();
+  s.moveTo(-width, 0);
+  s.lineTo(width, 0);
+  if (curved) {
+    s.quadraticCurveTo(width * 1.6, len * 0.6, width * 0.2 + 0.05, len);
+    s.quadraticCurveTo(-width * 0.2, len * 0.55, -width, 0);
+  } else {
+    s.lineTo(width * 0.8, len * 0.85);
+    s.lineTo(0, len);
+    s.lineTo(-width * 0.8, len * 0.85);
+    s.closePath();
+  }
+  const geo = new THREE.ExtrudeGeometry(s, { depth: 0.004, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.004, bevelSegments: 1, curveSegments: 10 });
+  geo.translate(0, 0, -0.002);
+  g.add(mesh(geo, metal(a.color), { y: 0.075 }));
+  return g;
+}
+
+function torso(a, material) {
+  const g = new THREE.Group();
+  const body = lathe([[0.14, 0], [0.15, 0.08], [0.16, 0.2], [0.18, 0.32], [0.17, 0.38], [0.08, 0.42], [0.001, 0.42]], 28);
+  body.scale(1, 1, 0.68);
+  g.add(mesh(body, material));
+  for (const s of [-1, 1]) {
+    g.add(mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.18, 12), material, { x: s * 0.2, y: 0.31, rz: s * 0.5 }));
+    g.add(mesh(new THREE.SphereGeometry(0.075, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), material, { x: s * 0.17, y: 0.37 }));
+  }
+  return g;
+}
+
+function chainMaterial(color) {
+  return mat(`chain${color}`, () => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#222';
+    g.fillRect(0, 0, 64, 64);
+    g.strokeStyle = '#ddd';
+    g.lineWidth = 2;
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) {
+        g.beginPath();
+        g.arc(x * 8 + (y % 2) * 4 + 4, y * 8 + 4, 3.2, 0, Math.PI * 2);
+        g.stroke();
+      }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(6, 4);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return new THREE.MeshStandardMaterial({ color, map: t, metalness: 1, roughness: 0.45 });
+  });
+}
+
+// Bark textures are handed over once loaded (see setBarkTextures), so icons drawn
+// straight away already have them.
+const BARK = {};
+export function setBarkTextures(map) {
+  Object.assign(BARK, map);
+}
+function barkMaterial(kind) {
+  return mat(`bark${kind}`, () => {
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
+    if (BARK[kind]) {
+      const c = BARK[kind].clone();
+      c.repeat.set(1.5, 1);
+      c.needsUpdate = true;
+      m.map = c;
+    }
+    return m;
+  });
+}
+
+function ringsMaterial(color) {
+  return mat(`rings${color}`, () => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const base = new THREE.Color(color);
+    g.fillStyle = `#${base.getHexString()}`;
+    g.fillRect(0, 0, 64, 64);
+    for (let r = 4; r < 32; r += 3 + Math.random() * 2) {
+      g.strokeStyle = `rgba(90,55,25,${0.25 + Math.random() * 0.2})`;
+      g.lineWidth = 1;
+      g.beginPath();
+      g.arc(32, 32, r, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.strokeStyle = 'rgba(60,35,15,0.9)';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(32, 32, 30.5, 0, Math.PI * 2);
+    g.stroke();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.8 });
+  });
+}
+
+// ------------------------------------------------------------------ public
+export function buildItem(id, assets) {
+  const def = ITEMS[id];
+  const make = BUILD[def?.art?.kind];
+  const g = new THREE.Group();
+  if (!make) {
+    g.add(mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), plain(0xff00ff)));
+    return g;
+  }
+  g.add(make(def.art, assets));
+  g.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+  return g;
+}
+
+// How each kind sits in its icon: rotation of the model, and a tilt of the camera.
+const POSE = {
+  sword: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
+  dagger: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
+  scimitar: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
+  axe: { rz: -Math.PI / 4, ry: -0.4 },
+  pickaxe: { rz: -Math.PI / 4, ry: -0.3 },
+  hammer: { rz: -Math.PI / 4, ry: -0.3 },
+  knife: { rz: -Math.PI / 4, ry: -0.3 },
+  rod: { rz: -Math.PI / 4, ry: -0.3 },
+  net: { rz: -Math.PI / 4, ry: -0.3 },
+  bow: { ry: -Math.PI / 2 + 0.25, rx: -0.75 },
+  kiteshield: { ry: 0.35, rx: -0.1 },
+  med_helm: { ry: 0.6, rx: 0.15 },
+  full_helm: { ry: 0.6, rx: 0.15 },
+  chainbody: { ry: 0.3 },
+  platebody: { ry: 0.3 },
+  platelegs: { ry: 0.3 },
+};
+
+// Renders item icons with a small renderer of its own, lit like a shop display.
+export class IconStudio {
+  constructor(assets, environment) {
+    this.assets = assets;
+    this.size = 96;
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(this.size, this.size, false);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
+    this.scene = new THREE.Scene();
+    if (environment) {
+      const pm = new THREE.PMREMGenerator(this.renderer);
+      this.scene.environment = pm.fromEquirectangular(environment).texture;
+      this.scene.environmentIntensity = 0.9;
+      pm.dispose();
+    }
+    const key = new THREE.DirectionalLight(0xfff4e6, 2.4);
+    key.position.set(1.5, 2.5, 2);
+    const rim = new THREE.DirectionalLight(0xcfe0ff, 1.2);
+    rim.position.set(-2, 1, -1.5);
+    this.scene.add(key, rim, new THREE.HemisphereLight(0xffffff, 0x3a3226, 0.6));
+    this.camera = new THREE.PerspectiveCamera(26, 1, 0.01, 20);
+    this.cache = new Map();
+  }
+
+  // A data URL of the item's icon (drawn once, then cached).
+  icon(id) {
+    if (this.cache.has(id)) return this.cache.get(id);
+    const model = buildItem(id, this.assets);
+    const kind = ITEMS[id]?.art?.kind;
+    const pose = POSE[kind] || {};
+    const holder = new THREE.Group();
+    holder.add(model);
+    model.rotation.set(pose.rx || 0, pose.ry || 0, pose.rz || 0);
+    this.scene.add(holder);
+    // Frame the model: centre it and back the camera off to fit.
+    const box = new THREE.Box3().setFromObject(holder);
+    const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    holder.position.sub(c);
+    const r = Math.max(size.x, size.y, size.z) * 0.62;
+    const dir = new THREE.Vector3(0.35, 0.55, 1).normalize();
+    this.camera.position.copy(dir.multiplyScalar(r / Math.tan((this.camera.fov * Math.PI) / 360)));
+    this.camera.lookAt(0, 0, 0);
+    this.renderer.render(this.scene, this.camera);
+    const url = this.renderer.domElement.toDataURL('image/png');
+    this.scene.remove(holder);
+    this.cache.set(id, url);
+    return url;
+  }
+
+  // Redraws everything (after textures finish loading).
+  refresh() {
+    this.cache.clear();
+  }
+}

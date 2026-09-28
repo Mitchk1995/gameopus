@@ -15,7 +15,7 @@ const SPECIES = {
   pine: { presets: ['Pine Medium', 'Pine Large'], scale: [0.2, 0.25], trunk: 0.45 },
   bush: { presets: ['Bush 1', 'Bush 2'], scale: [0.06, 0.08], trunk: 0 },
 };
-const NEAR = 48, MID = 150;
+const NEAR = 40, MID = 150;
 const BARK = ['oak', 'birch', 'pine', 'willow'];
 const LEAVES = ['ash', 'aspen', 'oak', 'pine'];
 
@@ -56,8 +56,10 @@ export class Forest {
     const opts = loadPreset(preset);
     opts.seed = seed * 7919;
     // Near detail: the preset, a little lighter.
-    for (const k of Object.keys(opts.branch.sections)) opts.branch.sections[k] = Math.max(1, Math.round(opts.branch.sections[k] * 0.8));
-    for (const k of Object.keys(opts.branch.segments)) opts.branch.segments[k] = Math.min(opts.branch.segments[k], 6);
+    for (const k of Object.keys(opts.branch.sections)) opts.branch.sections[k] = Math.max(1, Math.round(opts.branch.sections[k] * 0.65));
+    for (const k of Object.keys(opts.branch.segments)) opts.branch.segments[k] = Math.min(opts.branch.segments[k], k === '0' ? 7 : 5);
+    opts.leaves.count = Math.max(1, Math.round(opts.leaves.count * 0.75));
+    opts.leaves.size *= 1.12;
     const near = new Tree();
     near.loadFromJson(opts);
     // Mid detail: fewer, bigger leaf cards and thinner branch meshes.
@@ -202,11 +204,17 @@ export class Forest {
       return m;
     };
     v.meshes = {
-      nearB: make(v.near.branches, v.barkMat, true),
-      nearL: make(v.near.leaves, v.leafMat, true),
+      nearB: make(v.near.branches, v.barkMat, false),
+      nearL: make(v.near.leaves, v.leafMat, false),
       midB: make(v.mid.branches, v.barkMat, false),
       midL: make(v.mid.leaves, v.leafMat, false),
+      // Near trees cast their shadows with the lighter mid-detail geometry: these
+      // copies live on layer 1, which only the sun's shadow camera renders.
+      shadowB: make(v.mid.branches, v.barkMat, true),
+      shadowL: make(v.mid.leaves, v.leafMat, true),
     };
+    v.meshes.shadowB.layers.set(1);
+    v.meshes.shadowL.layers.set(1);
     const imp = v.impostor;
     const quad = new THREE.PlaneGeometry(imp.width, imp.top - imp.bottom);
     quad.translate(0, (imp.top + imp.bottom) / 2, 0);
@@ -234,30 +242,47 @@ export class Forest {
     this.m4 = new THREE.Matrix4();
   }
 
-  // Sort trees into near / mid / far instance buffers around the viewer.
-  update(dt, viewer) {
+  // Sort trees into near / mid / far instance buffers around the camera, leaving out
+  // trees outside the view (except close ones, whose shadows can still fall in view).
+  // Re-sorted when the camera moves or turns enough to matter.
+  update(dt, camera) {
     this.time.value += dt;
-    if (viewer.distanceToSquared(this.lastUpdate) < 9) return;
-    this.lastUpdate.copy(viewer);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    const pos = camera.position;
+    this.lastQuat ??= new THREE.Quaternion(0, 0, 0, 0);
+    const turned = 1 - Math.abs(this.lastQuat.dot(camera.quaternion)) > 0.0004;
+    if (pos.distanceToSquared(this.lastUpdate) < 1 && !turned) return;
+    this.lastUpdate.copy(pos);
+    this.lastQuat.copy(camera.quaternion);
+    camera.updateMatrixWorld();
+    this.frustum ??= new THREE.Frustum();
+    this.pv ??= new THREE.Matrix4();
+    this.frustum.setFromProjectionMatrix(this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    const sphere = this.sphere ??= new THREE.Sphere();
     for (const v of this.variants) {
       const M = v.meshes;
-      M.nearB.count = M.nearL.count = M.midB.count = M.midL.count = M.far.count = 0;
+      M.nearB.count = M.nearL.count = M.midB.count = M.midL.count = M.far.count = M.shadowB.count = M.shadowL.count = 0;
       for (const t of v.trees) {
         if (t.felled) continue;
-        const d = Math.hypot(t.x - viewer.x, t.z - viewer.z);
-        q.setFromAxisAngle(up, t.rot);
-        p.set(t.x, t.y, t.z);
-        s.setScalar(t.scale);
-        m.compose(p, q, s);
+        const d = Math.hypot(t.x - pos.x, t.z - pos.z);
+        t.matrix ??= new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot), new THREE.Vector3().setScalar(t.scale));
+        // Close trees throw shadows even when out of view.
+        if (d < NEAR * 0.8) {
+          M.shadowB.setMatrixAt(M.shadowB.count++, t.matrix);
+          M.shadowL.setMatrixAt(M.shadowL.count++, t.matrix);
+        }
+        if (d > 22) {
+          sphere.center.set(t.x, t.y + v.height * t.scale * 0.5, t.z);
+          sphere.radius = v.height * t.scale * 0.62;
+          if (!this.frustum.intersectsSphere(sphere)) continue;
+        }
         if (d < NEAR) {
-          M.nearB.setMatrixAt(M.nearB.count++, m);
-          M.nearL.setMatrixAt(M.nearL.count++, m);
+          M.nearB.setMatrixAt(M.nearB.count++, t.matrix);
+          M.nearL.setMatrixAt(M.nearL.count++, t.matrix);
         } else if (d < MID) {
-          M.midB.setMatrixAt(M.midB.count++, m);
-          M.midL.setMatrixAt(M.midL.count++, m);
+          M.midB.setMatrixAt(M.midB.count++, t.matrix);
+          M.midL.setMatrixAt(M.midL.count++, t.matrix);
         } else {
-          M.far.setMatrixAt(M.far.count++, m);
+          M.far.setMatrixAt(M.far.count++, t.matrix);
         }
       }
       for (const mesh of Object.values(M)) mesh.instanceMatrix.needsUpdate = true;

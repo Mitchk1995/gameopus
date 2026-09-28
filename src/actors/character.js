@@ -71,11 +71,16 @@ export class CharacterFactory {
     for (const p of head) attach(p.mesh, p.geometry);
     for (const g of extras) g.scene.traverse((o) => o.isSkinnedMesh && attach(o, o.geometry));
 
+    root.updateMatrixWorld(true);
     root.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = true;
       o.receiveShadow = true;
-      o.frustumCulled = false;
+      // Cull by a generous sphere around the bind pose, so animation can't escape it.
+      if (o.isSkinnedMesh) {
+        o.computeBoundingSphere();
+        o.boundingSphere.radius = Math.max(o.boundingSphere.radius * 1.6, 1.2);
+      }
       if (spec.tint && o.material?.name?.includes(spec.tintMaterial || 'Ranger')) {
         o.material = o.material.clone();
         o.material.color.multiply(new THREE.Color(spec.tint));

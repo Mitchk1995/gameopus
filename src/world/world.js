@@ -72,7 +72,7 @@ export class World {
     this.sky.update(camera, focus);
     this.terrain.update(camera);
     this.water.update(dt);
-    this.forest.update(dt, camera.position);
+    this.forest.update(dt, camera);
     for (const u of this.updaters) u(dt, camera, focus);
   }
 }

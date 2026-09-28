@@ -7,6 +7,7 @@ import { CharacterFactory } from './actors/character.js';
 import { Player } from './actors/player.js';
 import { CameraRig } from './actors/camera-rig.js';
 import { Hud } from './ui/hud.js';
+import { Game } from './game/game.js';
 import { SPAWN } from './world/map.js';
 
 // Headless tests (#test) step the game by hand, since software GL renders slowly.
@@ -16,7 +17,7 @@ const app = document.getElementById('app');
 const { renderer, scene, camera } = createRenderer(app);
 const assets = new Assets();
 const hud = new Hud();
-assets.onProgress = (f) => hud.progress(f);
+assets.onProgress = (f) => hud.progress(f * 0.9);
 
 async function start() {
   const world = await new World({ renderer, scene, assets }).load();
@@ -32,20 +33,33 @@ async function start() {
   const rig = new CameraRig(camera, world);
   rig.yaw = SPAWN.facing + Math.PI;
 
-  let paused = !TEST;
-  if (TEST) input.locked = true;
-  input.onLockChange = (locked) => {
-    paused = !locked;
-    hud.setPaused(paused, 'Continue');
+  const game = new Game({ renderer, scene, camera, world, player, rig, hero, input, hud, assets, factory });
+  await game.init();
+  window.__game = Object.assign(game, { ready: true });
+
+  if (TEST) {
+    input.locked = true;
+    input.lock = input.unlock = () => {};
+  }
+  // Paused only when the mouse is free and no game window explains why.
+  let paused = false;
+  const setPaused = (p) => {
+    if (p === paused) return;
+    paused = p;
+    hud.setPaused(p, 'Continue');
   };
   hud.playButton.addEventListener('click', () => input.lock());
-  renderer.domElement.addEventListener('click', () => paused && input.lock());
-
-  const game = { renderer, scene, camera, world, player, rig, hero, input, hud, factory, ready: true };
-  window.__game = game;
+  renderer.domElement.addEventListener('click', () => {
+    if (game.uiOpen) game.closeAll();
+    if (!input.locked) input.lock();
+  });
 
   game.tick = (dt) => {
-    if (!paused) player.update(dt, rig.yaw);
+    setPaused(!TEST && !input.locked && !game.uiOpen);
+    if (!paused) {
+      game.update(dt);
+      player.update(dt, rig.yaw);
+    }
     rig.update(dt, input, player.pos, { sprinting: player.gait === 'Sprint_Loop' });
     hero.update(dt);
     hero.root.visible = rig.cur > 0.75;
@@ -64,7 +78,7 @@ async function start() {
     const n = Math.round(seconds * 60);
     for (let i = 0; i < n; i++) {
       game.tick(1 / 60);
-      world.forest.update(1 / 60, camera.position);
+      world.forest.update(1 / 60, camera);
     }
     game.draw(1 / 60);
     return { x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2), state: player.state, gait: player.gait };
@@ -75,6 +89,7 @@ async function start() {
     game.frame(0);
     return;
   }
+  paused = true;
   hud.setPaused(true, 'Enter the world');
   const timer = new THREE.Timer();
   renderer.setAnimationLoop((t) => {

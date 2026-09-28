@@ -8,7 +8,7 @@ import { WORLD } from './map.js';
 // and part around the player's legs.
 
 const SIZE = 56;            // side of the wrapped square, metres
-const COUNT = 30000;        // tufts
+const COUNT = 26000;        // tufts
 const FADE = [18, 27];      // blades shrink away between these distances
 
 export class Grass {

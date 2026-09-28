@@ -129,8 +129,54 @@ export class Village {
         batch.add('Lantern_Wall', p.x, y + 0.9, p.z, h.rot);
       }
     }
-    // A hay cart by the east road.
-    this.#prop(batch, 'Prop_Wagon', C.x + 26, C.z + 3, 1.2);
+    // A hay cart by the south road.
+    this.#prop(batch, 'Prop_Wagon', C.x - 14, C.z + 33, 0.35);
+    this.#interiors(batch, y);
+  }
+
+  // Counters, furniture and a ceiling in the buildings you can walk into.
+  #interiors(batch, y) {
+    const put = (place, name, lx, lz, turn = 0, dy = 0, solid = true) => {
+      const p = this.at(place, lx, lz);
+      if (solid) this.#prop(batch, name, p.x, p.z, place.rot + turn, { y: y + dy });
+      else batch.add(name, p.x, y + dy, p.z, place.rot + turn);
+    };
+    const ceiling = (place) => {
+      for (let ix = 0; ix < place.w / 2; ix++)
+        for (let iz = 0; iz < place.d / 2; iz++) {
+          const p = this.at(place, -place.w / 2 + 1 + ix * 2, -place.d / 2 + 1 + iz * 2);
+          batch.add('Floor_WoodDark', p.x, y + STOREY - 0.02, p.z, place.rot);
+          batch.add('Floor_WoodDark', p.x, y + 0.012, p.z, place.rot);
+        }
+    };
+    const bank = this.places.bank;
+    ceiling(bank);
+    put(bank, 'Table_Large', 0, -1.4);
+    put(bank, 'Chest_Armature', -2.6, -3.1, Math.PI, 0.36);
+    put(bank, 'Cabinet', 2.6, -3.35, 0);
+    put(bank, 'Bookcase_2', 3.4, -1.0, -Math.PI / 2);
+    put(bank, 'Coin_Pile_2', -0.6, -1.45, 0.3, 0.81, false);
+    put(bank, 'Coin_Pile', 0.7, -1.3, -0.5, 0.81, false);
+    put(bank, 'CandleStick_Triple', 0.1, -1.6, 0, 0.81, false);
+    put(bank, 'CandleStick_Stand', -3.3, 2.9, 0);
+    const store = this.places.store;
+    ceiling(store);
+    put(store, 'Table_Large', 0, -1.0);
+    put(store, 'Shelf_Small_Bottles', 1.8, -3.72, 0, 1.2, false);
+    put(store, 'Shelf_Simple', -1.2, -3.72, 0, 1.4, false);
+    put(store, 'Barrel_Apples', -2.3, 2.8, 0);
+    put(store, 'Crate_Wooden', 2.3, 3.0, 0.4);
+    put(store, 'Bag', 2.2, 1.6, 0.8);
+    put(store, 'Pot_1_Lid', -0.5, -1.05, 0.2, 0.81, false);
+    put(store, 'Bottle_1', 0.6, -0.9, 0, 0.81, false);
+    const inn = this.places.inn;
+    ceiling(inn);
+    put(inn, 'Table_Large', 0.4, -1.0, Math.PI / 2);
+    put(inn, 'Bench', -0.9, -1.0, Math.PI / 2);
+    put(inn, 'Bench', 1.7, -1.0, -Math.PI / 2);
+    put(inn, 'Barrel_Holder', 2.8, -4.9, 0);
+    put(inn, 'Mug', 0.4, -0.6, 0, 0.81, false);
+    put(inn, 'Mug', 0.2, -1.6, 1, 0.81, false);
   }
 
   // Debug: a row of parts, for learning which way pieces face.
