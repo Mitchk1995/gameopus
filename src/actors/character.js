@@ -122,6 +122,7 @@ export class Character {
     this.clips = clips;
     this.mixer = new THREE.AnimationMixer(root);
     this.actions = new Map();
+    this.marked = new Map();
     this.current = null;
     this.mixer.addEventListener('finished', (e) => this.onFinished?.(e.action.getClip().name));
   }
@@ -150,7 +151,17 @@ export class Character {
     return next;
   }
 
+  // Poses laid over the animation after it ran (a swing, the bow's aim, a chest lean) mark
+  // the bones they change first. The mixer only rewrites a bone whose animated value moved,
+  // so a bone with a steady rotation would keep the layer's leftover and get it added
+  // again next frame; putting the marked bones back before each update stops that.
+  mark(bone) {
+    if (!this.marked.has(bone)) this.marked.set(bone, bone.quaternion.clone());
+  }
+
   update(dt) {
+    for (const [bone, q] of this.marked) bone.quaternion.copy(q);
+    this.marked.clear();
     this.mixer.update(dt);
   }
 }
