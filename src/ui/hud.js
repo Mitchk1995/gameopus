@@ -10,9 +10,10 @@ const el = (tag, cls, html) => {
 const CONTROLS = [
   ['W A S D', 'Move'], ['Mouse', 'Look'],
   ['Shift', 'Sprint'], ['Space', 'Roll'],
+  ['LMB', 'Attack (chain 3)'], ['F', 'Heavy attack'],
+  ['RMB', 'Block, tap to parry'], ['Q', 'Lock on'],
   ['E', 'Use / talk'], ['Tab', 'Pack'],
-  ['K', 'Skills'], ['Z', 'Walk toggle'],
-  ['Wheel', 'Zoom'], ['Esc', 'Free the mouse'],
+  ['K', 'Skills'], ['Esc', 'Free the mouse'],
 ];
 
 // The screen overlay: loading, the pause card, crosshair and the "E to ..." prompt.

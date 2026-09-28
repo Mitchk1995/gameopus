@@ -6,6 +6,8 @@ import { TICK, TREES, SPECIES_TREE, FISHING, COOKING, SMELTING, SMITHING, FLETCH
 import { Panels } from '../ui/panels.js';
 import { Menus, Talk } from '../ui/menus.js';
 import { Minimap } from '../ui/minimap.js';
+import { Fight } from './fight.js';
+import { Audio } from '../engine/audio.js';
 import { icon } from '../ui/icons.js';
 import { IconStudio, buildItem, setBarkTextures } from '../ui/itemart.js';
 import { Resources } from '../world/resources.js';
@@ -26,6 +28,8 @@ export class Game {
     Object.assign(this, ctx);
     this.activity = null;
     this.time = 0;
+    this.timeScale = 1;
+    this.audio = new Audio();
     this.saveTimer = 0;
     this.target = null;
     this.npcs = [];
@@ -61,6 +65,9 @@ export class Game {
     this.#stations();
     this.minimap = new Minimap({ world, markers: () => this.#markers() });
     this.#vitals();
+    this.fight = new Fight(this);
+    await this.fight.init();
+    this.state.skills.listeners.add(({ after, before }) => after > before && this.audio.play('levelup'));
     this.#hand();
     this.#showHeld();
     // Put the player back where they left off.
@@ -70,6 +77,19 @@ export class Game {
     this.panels.message('Welcome to Ashford. Tab opens your pack, E uses what you look at.', 'game');
     addEventListener('beforeunload', () => this.save());
     document.addEventListener('visibilitychange', () => document.hidden && this.save());
+  }
+
+  // Slows the simulation for a moment of real time (hit-stop, parries, perfect dodges).
+  slow(scale, seconds) {
+    this.fx = { scale, left: seconds };
+  }
+
+  // Called with real time each frame; returns the scale for the simulation.
+  timeStep(realDt) {
+    if (!this.fx) return 1;
+    this.fx.left -= realDt;
+    if (this.fx.left <= 0) this.fx = null;
+    return this.fx ? this.fx.scale : 1;
   }
 
   save() {
@@ -137,7 +157,9 @@ export class Game {
     }
     for (const n of this.npcs) n.update(dt, this.player);
     this.resources.update(dt);
+    this.fight.update(dt);
     this.minimap.update(this.player, this.rig.yaw);
+    this.audio.setListener(this.player.pos.x, this.player.pos.z, this.rig.yaw);
     this.#updateFalling(dt);
     this.saveTimer += dt;
     this.state.played += dt;
@@ -157,6 +179,7 @@ export class Game {
     }
     out.push(...this.resources.near(P.x, P.z, 8));
     for (const n of this.npcs) if (n.pos.distanceTo(P) < 8) out.push(n.target);
+    out.push(...this.fight.groundTargets(P.x, P.z, 4));
     return out;
   }
 
@@ -199,6 +222,7 @@ export class Game {
       case 'flax': return { verb: 'Pick', noun: 'Flax' };
       case 'npc': return { verb: t.npc.def.verb || 'Talk to', noun: t.npc.name };
       case 'station': return { verb: t.verb || 'Use', noun: t.name };
+      case 'item': return { verb: 'Take', noun: `${ITEMS[t.item.id].name}${t.item.n > 1 ? ` (${t.item.n})` : ''}` };
       default: return null;
     }
   }
@@ -212,6 +236,7 @@ export class Game {
       case 'flax': return this.#pickFlax(t);
       case 'npc': return this.#talkTo(t.npc);
       case 'station': return this.#station(t);
+      case 'item': return this.fight.take(t.item);
     }
   }
 
@@ -246,6 +271,7 @@ export class Game {
     this.#begin(t, {
       clip: 'TreeChopping_Loop', interval: TICK * 4, tool: axe, speed: 1.1,
       tick: () => {
+        this.audio.play('chop', t);
         if (!this.state.inv.room(def.log)) {
           this.panels.message('Your pack is too full to hold any more logs.', 'bad');
           return this.stop();
@@ -272,6 +298,7 @@ export class Game {
     this.#begin(r, {
       clip: 'OverhandThrow', interval: TICK * Math.max(3, 6 - power), tool: pick, speed: 0.9,
       tick: () => {
+        this.audio.play('mine', r);
         if (r.depleted) return this.stop();
         if (!this.state.inv.room(def.ore)) {
           this.panels.message('Your pack is too full to hold any more ore.', 'bad');
@@ -296,6 +323,7 @@ export class Game {
     this.#begin(s, {
       clip: def.tool === 'net' ? 'Fixing_Kneeling' : 'Idle_Torch_Loop', interval: TICK * 5, tool,
       tick: () => {
+        if (Math.random() < 0.5) this.audio.play('splash', s, 0.6);
         const options = def.catches.filter((c) => this.state.skills.level('fishing') >= c.level).reverse();
         if (def.bait && !this.state.inv.has(def.bait)) {
           this.panels.message(`You have run out of ${ITEMS[def.bait].name.toLowerCase()}s.`, 'bad');
@@ -363,6 +391,7 @@ export class Game {
     this.falling = this.falling || [];
     this.falling.push({ pivot, t: 0, tree, stump, respawn: def.respawn[0] + Math.random() * (def.respawn[1] - def.respawn[0]) });
     this.panels.message('The tree falls.');
+    this.audio.play('chop', tree, 1.4);
   }
 
   #stump(tree) {
@@ -459,6 +488,7 @@ export class Game {
       clip, interval: TICK * ticks, tool, ticksFirst: 1,
       tick: () => {
         if (!can() || made >= qty) return this.stop();
+        this.audio.play(r.cook ? 'sizzle' : skill === 'smithing' && tool === 'hammer' ? 'hammer' : skill === 'smithing' ? 'fire' : 'click', target);
         for (const [id, n] of needs) this.state.inv.remove(id, n);
         made++;
         if (r.cook) {

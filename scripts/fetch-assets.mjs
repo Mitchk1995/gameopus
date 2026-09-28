@@ -149,8 +149,14 @@ async function quaternius() {
   await mergeKit(pFiles, path.join(OUT, 'kits/props.glb'), { tex: 1024 });
 
   const best = await unpack('bestiary-dungeon-monsters-kit');
-  for (const m of ['Imp', 'Puglin'])
+  for (const m of ['Imp', 'Puglin']) {
     await optimize(await findFile(best, `${m}.glb`), path.join(OUT, `monsters/${m.toLowerCase()}.glb`), { tex: 1024 });
+    // The other two colourings, for tougher variants.
+    for (const k of [2, 3]) {
+      const tex = await findFile(best, `T_${m}_BaseColor_${k}.png`);
+      await sharp(tex).resize(1024, 1024).webp({ quality: 88 }).toFile(path.join(OUT, `monsters/${m.toLowerCase()}_${k}.webp`));
+    }
+  }
 }
 
 // ---------------------------------------------------------------- Poly Haven (CC0)

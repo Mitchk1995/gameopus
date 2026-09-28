@@ -35,8 +35,18 @@ export class CameraRig {
 
   update(dt, input, target, { sprinting = false } = {}) {
     const turn = SENS * this.sensitivity;
-    this.yaw -= input.dx * turn;
-    this.pitch = Math.min(PITCH[1], Math.max(PITCH[0], this.pitch - input.dy * turn));
+    if (this.lockTarget) {
+      // Locked on: keep the target ahead, a little below the horizon.
+      const dx = this.lockTarget.x - target.x, dz = this.lockTarget.z - target.z;
+      let d = Math.atan2(-dx, -dz) - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw += d * (1 - Math.exp(-9 * dt));
+      const wantPitch = Math.min(0.25, Math.max(-0.6, Math.atan2(this.lockTarget.y - (target.y + this.height), Math.hypot(dx, dz)) - 0.14));
+      this.pitch += (wantPitch - this.pitch) * (1 - Math.exp(-6 * dt));
+    } else {
+      this.yaw -= input.dx * turn;
+      this.pitch = Math.min(PITCH[1], Math.max(PITCH[0], this.pitch - input.dy * turn));
+    }
     if (input.wheel) this.dist = Math.min(ZOOM[1], Math.max(ZOOM[0], this.dist * (1 + input.wheel * 0.12)));
 
     // Follow the feet, smoothing height changes from steps and slopes.

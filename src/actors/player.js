@@ -81,6 +81,91 @@ export class Player {
     this.yaw = Math.atan2(x - this.pos.x, z - this.pos.z);
   }
 
+  // ---------------------------------------------------------------- combat
+  // A swing: the clip plays at the move's speed, the body lunges forward with the
+  // animator's root motion until the blade connects, and onHit fires at that moment.
+  startAttack(move, onHit) {
+    if (this.state === 'act') this.stopAction();
+    this.state = 'attack';
+    this.stateTime = 0;
+    this.move = move;
+    this.onHit = onHit;
+    this.hitDone = false;
+    this.lungeDone = 0;
+    this.vel.set(0, 0, 0);
+    const a = this.char.play(move.clip, { loop: false, speed: move.speed, fade: 0.08, restart: true });
+    this.clipLength = a.getClip().duration;
+  }
+
+  get attackPhase() {
+    if (this.state !== 'attack') return null;
+    const t = this.stateTime * this.move.speed;
+    return { t, afterHit: this.hitDone, canChain: this.hitDone && t >= this.move.hit + (this.move.next ?? 0.1) };
+  }
+
+  startBlock(shield) {
+    if (this.state === 'act') this.stopAction();
+    this.state = 'block';
+    this.stateTime = 0;
+    this.blockClip = shield ? 'Idle_Shield_Loop' : 'Sword_Block';
+    this.char.play(this.blockClip, { loop: !!shield, speed: shield ? 1 : 1.6, fade: 0.08, restart: true });
+  }
+
+  endBlock() {
+    if (this.state !== 'block') return;
+    this.state = 'move';
+    this.gait = null;
+  }
+
+  hurt(heavy, fromYaw) {
+    if (this.state === 'dead') return;
+    if (this.state === 'act') this.stopAction();
+    this.state = 'hurt';
+    this.stateTime = 0;
+    this.hurtFor = heavy ? 0.75 : 0.32;
+    this.char.play(heavy ? 'Hit_Knockback' : 'Hit_Chest', { loop: false, fade: 0.05, restart: true, speed: heavy ? 1.1 : 1.2 });
+    this.knock = heavy && fromYaw !== undefined ? { dir: new THREE.Vector3(Math.sin(fromYaw), 0, Math.cos(fromYaw)), left: 1.6 } : null;
+  }
+
+  die() {
+    if (this.state === 'act') this.stopAction();
+    this.state = 'dead';
+    this.stateTime = 0;
+    this.vel.set(0, 0, 0);
+    this.char.play('Death01', { loop: false, fade: 0.1, restart: true });
+  }
+
+  revive() {
+    this.state = 'move';
+    this.gait = null;
+    this.char.play('Idle_Loop', { fade: 0 });
+  }
+
+  #attackStep(dt) {
+    const m = this.move, t = this.stateTime * m.speed;
+    // Lunge with the clip's root motion, scaled to the move's reach, up to the hit.
+    const curve = rootMotion.clips[m.clip];
+    if (curve && m.lunge && t <= m.hit + 0.05) {
+      const total = curve[Math.min(curve.length - 1, Math.round((m.hit + 0.05) * rootMotion.hz))] || 1;
+      const f = Math.min(curve.length - 1, t * rootMotion.hz), i = Math.floor(f);
+      const at = curve[i] + ((curve[Math.min(i + 1, curve.length - 1)] - curve[i]) * (f - i));
+      const want = (at / Math.max(0.01, total)) * m.lunge;
+      const step = Math.max(0, want - this.lungeDone);
+      this.lungeDone += step;
+      this.pos.x += Math.sin(this.yaw) * step;
+      this.pos.z += Math.cos(this.yaw) * step;
+    }
+    if (!this.hitDone && t >= m.hit) {
+      this.hitDone = true;
+      this.onHit?.(m);
+    }
+    const end = m.end ?? this.clipLength * 0.92;
+    if (t >= end) {
+      this.state = 'move';
+      this.gait = null;
+    }
+  }
+
   update(dt, camYaw) {
     this.stateTime += dt;
     const input = this.input;
@@ -100,13 +185,38 @@ export class Player {
       } else if (moving && !a.locked) this.stopAction();
     }
 
-    if (this.state === 'move' && input.hit('Space') && this.grounded) this.#startRoll(moving ? wish : null);
+    // Rolling is allowed from moving, blocking, and the tail end of a swing.
+    const canRoll = this.state === 'move' || this.state === 'block' || (this.state === 'attack' && this.hitDone && this.stateTime * this.move.speed > this.move.hit + 0.08);
+    if (canRoll && input.hit('Space') && this.grounded && (this.canRoll?.() ?? true)) this.#startRoll(moving ? wish : null);
+    if (this.state === 'attack' && moving && this.hitDone && this.stateTime * this.move.speed > this.move.hit + 0.28) {
+      this.state = 'move';
+      this.gait = null;
+    }
+    if (this.state === 'hurt' && this.stateTime >= this.hurtFor) {
+      this.state = 'move';
+      this.gait = null;
+    }
 
     const prev = this._prev || (this._prev = new THREE.Vector3());
     prev.copy(this.pos);
     let target = 0;
     if (this.state === 'roll') this.#rollStep(dt);
-    else if (this.state === 'move') {
+    else if (this.state === 'attack') this.#attackStep(dt);
+    else if (this.state === 'block') {
+      // Shuffle while guarding, facing stays put.
+      const k = 1 - Math.exp(-14 * dt);
+      this.vel.x += (wish.x * 1.4 - this.vel.x) * k;
+      this.vel.z += (wish.z * 1.4 - this.vel.z) * k;
+      if (this.blockClip === 'Sword_Block') {
+        const a = this.char.current;
+        if (a && a.time > 0.32) a.paused = true;
+      }
+    } else if (this.state === 'hurt' && this.knock) {
+      const step = Math.min(this.knock.left, dt * 4);
+      this.pos.addScaledVector(this.knock.dir, step);
+      this.knock.left -= step;
+      if (this.knock.left <= 0) this.knock = null;
+    } else if (this.state === 'move') {
       target = moving ? (this.walking ? SPEED.walk : input.down('ShiftLeft') || input.down('ShiftRight') ? SPEED.sprint : SPEED.jog) : 0;
       // Shallow water slows you down.
       const depth = this.world.waterDepth(this.pos.x, this.pos.z);
@@ -121,7 +231,7 @@ export class Player {
       this.vel.z *= Math.exp(-20 * dt);
     }
 
-    if (this.state !== 'roll') {
+    if (this.state === 'move' || this.state === 'block' || this.state === 'act') {
       this.pos.x += this.vel.x * dt;
       this.pos.z += this.vel.z * dt;
     }

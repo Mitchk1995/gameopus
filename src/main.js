@@ -71,14 +71,19 @@ async function start() {
     if (!input.locked) input.lock();
   });
 
+  // Sound can only start after the player does something.
+  for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => game.audio.unlock(), { passive: true });
+
   game.tick = (dt) => {
     setPaused(!TEST && !input.locked && !game.uiOpen);
+    // Hit-stop and slow motion scale the simulation, not the camera.
+    const sdt = dt * game.timeStep(dt);
     if (!paused) {
-      game.update(dt);
-      player.update(dt, rig.yaw);
+      game.update(sdt);
+      player.update(sdt, rig.yaw);
     } else game.minimap.update(player, rig.yaw);
     rig.update(dt, input, player.pos, { sprinting: player.gait === 'Sprint_Loop' });
-    hero.update(dt);
+    hero.update(sdt);
     hero.root.visible = rig.cur > 0.75;
     input.endFrame();
   };
@@ -89,6 +94,11 @@ async function start() {
   game.frame = (dt) => {
     game.tick(dt);
     game.draw(dt);
+  };
+  // Simulates some seconds at 60 Hz without drawing (for headless tests).
+  game.sim = (seconds) => {
+    const n = Math.max(1, Math.round(seconds * 60));
+    for (let i = 0; i < n; i++) game.tick(1 / 60);
   };
   // Simulates some seconds at 60 Hz, then draws once (for headless tests).
   game.run = (seconds) => {
