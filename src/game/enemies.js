@@ -1,45 +1,40 @@
 import * as THREE from 'three';
 import { MONSTERS, ELITE_FIRST, ELITE_TITLE, ELITE_AFFIXES } from '../content/monsters.js';
 import { buildMonster } from './monsterModels.js';
+import { enhance } from '../art/enhance.js';
 import { SpatialHash } from '../core/spatial.js';
 import { pick, randInt, weighted, clamp } from '../core/rng.js';
 import { dreadMods } from '../content/dread.js';
 
 const CAP = 420;
+const STRIDE = { husk: 1.3, skitter: 0.8, brute: 2.3, wisp: 2 };
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ');
 const _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color();
 
-function gaitMaterial(mat, def, timeU) {
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = timeU;
-    sh.vertexShader = `attribute float aPhase;\nuniform float uTime;\n${sh.vertexShader}`.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-      {
-        float legW = clamp(1.0 - position.y / ${def.legH.toFixed(2)}, 0.0, 1.0);
-        float side = position.x > 0.0 ? 0.0 : 3.14159;
-        transformed.z += sin(uTime * ${def.gait.toFixed(2)} + aPhase + side) * legW * ${def.gaitAmt.toFixed(2)};
-        transformed.x += sin(uTime * ${(def.gait * 0.5 + 1.3).toFixed(2)} + aPhase) * 0.035 * position.y;
-      }`,
-    );
-  };
-}
+// Surface look per monster family: texture, glow in the texture's cracks/veins, brightness.
+const SKINS = {
+  husk: { tex: 'skin', glow: [1.6, 0.5, 0.1], boost: 2.3 },
+  skitter: { tex: 'chitin', glow: [1.4, 0.5, 0.1], boost: 3.2 },
+  brute: { tex: 'hide', glow: [1.8, 0.5, 0.12], boost: 2.6 },
+  wisp: { tex: 'robe', glow: null, boost: 1.4 },
+};
 
 export class Enemies {
   constructor(game) {
     this.game = game;
     this.list = [];
     this.hash = new SpatialHash(2.5);
-    this.timeU = { value: 0 };
     this.meshes = {};
     this.nextId = 1;
     for (const [id, def] of Object.entries(MONSTERS)) {
-      const { geo, glow } = buildMonster(def.model);
+      const { geo, glow, rig } = buildMonster(def.model);
       geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(new Float32Array(CAP), 1));
-      const body = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 });
+      geo.setAttribute('aAnim', new THREE.InstancedBufferAttribute(new Float32Array(CAP * 4), 4));
+      const skin = SKINS[id];
+      const body = new THREE.MeshStandardMaterial({ vertexColors: true, color: new THREE.Color().setScalar(skin.boost), roughness: 1, metalness: 0.05 });
       const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(...glow) });
-      gaitMaterial(body, def, this.timeU);
-      gaitMaterial(glowMat, def, this.timeU);
+      enhance(body, { tex: skin.tex, scale: 1.6, bump: 1.2, glow: skin.glow && new THREE.Color(...skin.glow), rim: 0.4, ao: 0.9, aoMin: 0.5, rig, rigId: id });
+      enhance(glowMat, { rig, rigId: id });
       const mesh = new THREE.InstancedMesh(geo, [body, glowMat], CAP);
       mesh.castShadow = true;
       mesh.frustumCulled = false;
@@ -91,7 +86,12 @@ export class Enemies {
       x, z, vx: 0, vz: 0,
       face: Math.random() * Math.PI * 2,
       radius: def.radius * (opts.elite === 'rare' ? 1.4 : opts.elite ? 1.2 : 1),
-      scale: opts.elite === 'rare' ? 1.4 : opts.elite ? 1.22 : 1,
+      scale: (opts.elite === 'rare' ? 1.4 : opts.elite ? 1.22 : 1) * (opts.elite ? 1 : 0.92 + Math.random() * 0.16),
+      shade: 0.86 + Math.random() * 0.28,
+      walk: Math.random() * 10,
+      mv: 0,
+      strikeT: 0,
+      hitT: 0,
       maxHp: def.hp * hpMult * eliteHp,
       damage: def.damage * dmgMult * (opts.elite === 'rare' ? 1.6 : opts.elite ? 1.4 : 1),
       speed: def.speed * (0.9 + Math.random() * 0.2),
@@ -158,7 +158,6 @@ export class Enemies {
   update(dt) {
     const g = this.game;
     const p = g.player;
-    this.timeU.value = g.time;
 
     // Director ---------------------------------------------------------
     const alive = this.list.length;
@@ -230,6 +229,7 @@ export class Enemies {
         else { mx = -nz * 0.6; mz = nx * 0.6; }
         if (e.atkCd <= 0 && dist < def.range * 1.3 && e.spawnT >= 1) {
           e.atkCd = def.cooldown * (0.8 + Math.random() * 0.4);
+          e.strikeT = 1;
           g.projectiles.enemyBolt(e, nx, nz);
         }
       } else {
@@ -276,8 +276,15 @@ export class Enemies {
         }
       }
       const spd = e.speed * slow * (e.spawnT < 1 ? 0 : 1);
+      const ox0 = e.x, oz0 = e.z;
       e.x += (mx * spd + sx * 4 + e.vx) * dt;
       e.z += (mz * spd + sz * 4 + e.vz) * dt;
+      // Animation drivers: stride phase from distance walked, smoothed move amount.
+      const stepped = Math.hypot(e.x - ox0, e.z - oz0);
+      e.walk += (stepped / (STRIDE[e.typeId] * e.scale)) * Math.PI * 2;
+      e.mv += (Math.min(1, stepped / dt / Math.max(0.1, def.speed)) - e.mv) * Math.min(1, dt * 8);
+      e.strikeT = Math.max(0, e.strikeT - dt * 2.8);
+      e.hitT = Math.max(0, e.hitT - dt);
       const kd = Math.exp(-8 * dt);
       e.vx *= kd; e.vz *= kd;
       // Don't overlap the player.
@@ -298,8 +305,14 @@ export class Enemies {
     this.#render();
   }
 
+  // Art tools: push the current state to the GPU without simulating.
+  debugRender() {
+    this.#render();
+  }
+
   #strike(e, dist) {
     const g = this.game, p = g.player;
+    e.strikeT = 1;
     if (e.def.behavior === 'slam') {
       const r = e.def.reach * e.scale;
       const cx = e.x + Math.sin(e.face) * 1.2, cz = e.z + Math.cos(e.face) * 1.2;
@@ -324,21 +337,23 @@ export class Enemies {
       let y = 0, sc = e.scale, lean = 0, tilt = 0;
       if (e.def.float) y = 0.25 + Math.sin(t * 2 + e.phase) * 0.15;
       if (e.spawnT < 1) y -= (1 - e.spawnT) * 2.2 * sc;
-      if (e.windup > 0) lean = -0.35 * Math.min(1, e.windup / e.def.windup);
-      else if (e.atkCd > e.def.cooldown - 0.2) lean = 0.4;
+      const wind = e.windup > 0 ? 1 - e.windup / e.def.windup : 0;
+      lean = -0.18 * wind + 0.3 * e.strikeT - e.hitT * 2.5;
+      if (e.typeId === 'skitter') lean = -0.5 * wind + 0.45 * e.strikeT - e.hitT * 2;
       if (e.dead) {
         const k = e.dying / 0.45;
         sc *= 1 - k * 0.5;
         y -= k * 0.6;
         tilt = k * 1.2;
       }
-      _e.set(lean + tilt, e.face, Math.sin(t * 5 + e.phase) * 0.04);
+      const roll = e.typeId === 'brute' ? Math.sin(e.walk) * 0.07 * e.mv : Math.sin(t * 5 + e.phase) * 0.03;
+      _e.set(lean + tilt, e.face, roll);
       _q.setFromEuler(_e);
       _p.set(e.x, y, e.z);
       _s.set(sc, sc * (1 + Math.sin(t * 6 + e.phase) * 0.03), sc);
       _m.compose(_p, _q, _s);
       mesh.setMatrixAt(i, _m);
-      const f = e.flash > 0 ? 1 + e.flash * 25 : 1;
+      const f = (e.flash > 0 ? 1 + e.flash * 25 : 1) * e.shade;
       let r = e.tint[0] * f, gg = e.tint[1] * f, b = e.tint[2] * f;
       if (e.slowT > 0) { r *= 0.6; gg *= 0.9; b *= 1.8; }
       if (e.burnT > 0) { r *= 1.5; gg *= 0.9; b *= 0.6; }
@@ -346,6 +361,8 @@ export class Enemies {
       _c.setRGB(r, gg, b);
       mesh.setColorAt(i, _c);
       mesh.geometry.attributes.aPhase.array[i] = e.phase;
+      const an = mesh.geometry.attributes.aAnim.array, j = i * 4;
+      an[j] = e.walk; an[j + 1] = e.mv; an[j + 2] = wind * wind * (3 - 2 * wind); an[j + 3] = e.strikeT;
     }
     for (const id in this.meshes) {
       const mesh = this.meshes[id];
@@ -353,6 +370,7 @@ export class Enemies {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.geometry.attributes.aPhase.needsUpdate = true;
+      mesh.geometry.attributes.aAnim.needsUpdate = true;
     }
   }
 }

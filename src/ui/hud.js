@@ -55,7 +55,9 @@ export class HUD {
     this.skills = el('div', 'skills');
     this.skillEls = {};
     for (const [id, key] of [['cleave', 'LMB'], ['bolt', 'RMB'], ['dash', 'SPACE'], ['nova', 'Q'], ['potion', 'R']]) {
-      const s = el('div', 'skill', `<span class="ico">${SKILL_ICONS[id]}</span><span class="key">${key}</span><div class="cd"></div><span class="req">Lv ${SKILL_BY_ID[id].level}</span>`);
+      const art = game.art?.skillIcon(id);
+      const ico = art ? `<img class="art" src="${art}" alt="" draggable="false">` : SKILL_ICONS[id];
+      const s = el('div', 'skill', `<span class="ico">${ico}</span><span class="key">${key}</span><div class="cd"></div><span class="req">Lv ${SKILL_BY_ID[id].level}</span>`);
       s.title = SKILL_BY_ID[id].name;
       this.skillEls[id] = s;
       this.skills.append(s);
@@ -159,7 +161,9 @@ export class HUD {
 
   lootToast(item, isNew) {
     const r = RARITY[item.rarity];
-    this.toast(`<span style="color:${r.css}">${item.name}</span>${isNew ? ' — <b>new discovery</b>' : ''}`, isNew ? 'discover' : '');
+    const art = this.game.art?.icon(item);
+    const pic = art ? `<img class="tico ${item.rarity}" src="${art}" alt="">` : '';
+    this.toast(`${pic}<span style="color:${r.css}">${item.name}</span>${isNew ? ' — <b>new discovery</b>' : ''}`, isNew ? 'discover' : '');
   }
 
   setRhythm(count, n) {
@@ -194,9 +198,9 @@ export class HUD {
       n.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%) scale(${sc})`;
     }
 
-    this.life.querySelector('.liquid').style.transform = `scaleY(${Math.max(0, p.life / s.life)})`;
+    this.life.style.setProperty('--fill', Math.max(0, p.life / s.life).toFixed(3));
     this.life.querySelector('.v').textContent = `${Math.max(0, Math.ceil(p.life))}`;
-    this.mana.querySelector('.liquid').style.transform = `scaleY(${Math.max(0, p.mana / s.mana)})`;
+    this.mana.style.setProperty('--fill', Math.max(0, p.mana / s.mana).toFixed(3));
     this.mana.querySelector('.v').textContent = `${Math.floor(p.mana)}`;
     this.xp.firstChild.style.transform = `scaleX(${p.xp / xpForLevel(p.level)})`;
     this.lvl.textContent = `Level ${p.level}`;

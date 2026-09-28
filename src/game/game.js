@@ -18,6 +18,8 @@ import { BIOMES, biomeForDepth } from '../content/biomes.js';
 import { UNIQUES } from '../content/uniques.js';
 import { SLOTS } from '../content/bases.js';
 import { generateItem } from './items.js';
+import { ArtStudio } from '../art/studio.js';
+import { tickEnhance } from '../art/enhance.js';
 import { SettingsUI, applySettings, DEFAULT_SETTINGS } from '../ui/settings.js';
 import { DREAD_TIERS, DREAD_UNLOCK_DEPTH, dreadName, dreadMods } from '../content/dread.js';
 
@@ -75,6 +77,7 @@ export class Game {
     this.state = 'title';
     this.debug = location.hash === '#debug';
 
+    this.art = new ArtStudio();
     this.powers = new PowerSystem(this);
     this.world = new World(this);
     this.fx = new FX(this);
@@ -203,7 +206,7 @@ export class Game {
     const s = this.#overlay('title', `
       <div class="tag">A descent without end</div>
       <h1>Hollowreach</h1>
-      <div class="tag" style="letter-spacing:.14em">${returning ? `Level ${this.save.level} · deepest depth ${this.save.deepest}` : 'The kingdom fell upward into the dark'}</div>
+      <div class="tag sub">${returning ? `Level ${this.save.level} · deepest depth ${this.save.deepest}` : 'The kingdom fell upward into the dark'}</div>
       <div class="picker"></div>
       <button class="go" type="button">${returning ? 'Descend again' : 'Descend'}</button>
       <div class="keys">
@@ -258,8 +261,6 @@ export class Game {
     this.actions.reset();
     this.loot.reset();
     this.player.reset();
-    this.player.model.body.rotation.x = 0;
-    this.player.model.body.position.y = 0;
     this.depth = 1;
     this.runTime = 0;
     this.kills = 0;
@@ -307,6 +308,7 @@ export class Game {
 
     this.#camera(real);
     this.particles.update(this.state === 'play' && !paused ? dt : this.state === 'title' ? real : 0);
+    tickEnhance(this.time);
     const gu = this.gfx.grade.uniforms;
     this.damagePulse = Math.max(0, this.damagePulse - real * 1.4);
     const lowLife = this.player.life / this.player.stats.life < 0.3 && !this.player.dead ? 0.35 + Math.sin(this.time * 6) * 0.15 : 0;
@@ -322,12 +324,8 @@ export class Game {
     this.time += dt;
     this.world.update(dt, 0, 0, this.time);
     this.fx.update(dt);
-    this.player.model.root.position.set(0, 0, 0);
-    this.player.model.root.rotation.y = 0.5;
-    const t = this.player.model;
-    t.body.position.y = Math.sin(this.time * 2) * 0.012;
-    this.world.torch.position.set(0, 3.4, 0.6);
-    this.world.torch.intensity = 48 + Math.sin(this.time * 11) * 3;
+    this.player.facing = 0.5;
+    this.player.idle(dt);
   }
 
   update(dt) {
@@ -367,6 +365,12 @@ export class Game {
 
   #camera(dt) {
     const p = this.player;
+    if (this.camOverride) {
+      const c = this.camOverride; // inspection camera used by the art tools
+      this.camera.position.set(c[0], c[1], c[2]);
+      this.camera.lookAt(c[3], c[4], c[5]);
+      return;
+    }
     const title = this.state === 'title';
     // On the title screen the hero stands off to the right, clear of the menu.
     const tx = title ? -5.5 + Math.sin(this.time * 0.1) * 1.5 : p.x + (this.aim.x - p.x) * 0.08;

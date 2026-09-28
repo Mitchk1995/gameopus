@@ -13,6 +13,7 @@ export const BIOMES = [
     torch: 0xff9a50,
     crystal: [0.3, 2.6, 3.2],
     groundTint: [1.0, 0.95, 0.9],
+    motes: [1.0, 0.5, 0.18],
     monsters: { husk: 55, skitter: 30, wisp: 10, brute: 5 },
   },
   {
@@ -27,6 +28,7 @@ export const BIOMES = [
     torch: 0xffb070,
     crystal: [0.6, 2.2, 4.5],
     groundTint: [0.78, 0.88, 1.05],
+    motes: [0.55, 0.7, 0.9],
     monsters: { husk: 40, skitter: 25, wisp: 20, brute: 15 },
   },
   {
@@ -41,6 +43,7 @@ export const BIOMES = [
     torch: 0xff8a70,
     crystal: [3.6, 0.8, 4.2],
     groundTint: [0.95, 0.82, 1.0],
+    motes: [0.75, 0.4, 1.0],
     monsters: { husk: 30, skitter: 30, wisp: 25, brute: 15 },
   },
   {
@@ -55,6 +58,7 @@ export const BIOMES = [
     torch: 0xffa050,
     crystal: [4.5, 1.4, 0.3],
     groundTint: [1.08, 0.86, 0.75],
+    motes: [1.3, 0.5, 0.12],
     monsters: { husk: 35, skitter: 35, wisp: 10, brute: 20 },
   },
 ];

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createKit } from '../art/kit.js';
+import { buildItemModel, bake, disposeModel } from '../art/items3d.js';
 import { generateItem, rollRarity, isUnique } from './items.js';
 import { RARITY } from '../content/bases.js';
 import { UNIQUE_BY_ID } from '../content/uniques.js';
@@ -26,41 +27,36 @@ const BEAM_FRAG = /* glsl */ `
     gl_FragColor = vec4(uColor * core * fade * flick, 1.0);
   }`;
 
-function itemGeometries() {
-  const nx = (g) => { g = g.index ? g.toNonIndexed() : g; g.deleteAttribute('uv'); return g; };
-  const blade = new THREE.BoxGeometry(0.1, 0.02, 0.95); blade.translate(0, 0, 0.35);
-  const guard = new THREE.BoxGeometry(0.34, 0.05, 0.06);
-  const grip = new THREE.BoxGeometry(0.05, 0.05, 0.25); grip.translate(0, 0, -0.15);
-  const helm = new THREE.SphereGeometry(0.26, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-  const chest = new THREE.BoxGeometry(0.5, 0.18, 0.55);
-  const glove = new THREE.BoxGeometry(0.24, 0.12, 0.32);
-  const boot1 = new THREE.BoxGeometry(0.2, 0.3, 0.18); boot1.translate(0, 0.15, 0);
-  const boot2 = new THREE.BoxGeometry(0.2, 0.1, 0.34); boot2.translate(0, 0.05, 0.1);
-  const amuletRing = new THREE.TorusGeometry(0.17, 0.02, 6, 20); amuletRing.rotateX(Math.PI / 2);
-  const gem = new THREE.OctahedronGeometry(0.09); gem.translate(0, 0.02, 0.18);
-  const ring = new THREE.TorusGeometry(0.12, 0.04, 8, 20); ring.rotateX(Math.PI / 2);
-  return {
-    weapon: mergeGeometries([blade, guard, grip].map(nx)),
-    helm: nx(helm),
-    chest: nx(chest),
-    gloves: nx(glove),
-    boots: mergeGeometries([boot1, boot2].map(nx)),
-    amulet: mergeGeometries([amuletRing, gem].map(nx)),
-    ring: nx(ring),
-  };
-}
+// How each slot lies on the floor: [scale, rotX, rotZ, height].
+const LIE = {
+  weapon: [0.72, -Math.PI / 2, 0, 0.06],
+  helm: [0.85, 0.35, 0.25, 0.2],
+  chest: [0.72, -Math.PI / 2 + 0.25, 0, 0.14],
+  gloves: [0.95, -1.25, 0.2, 0.08],
+  boots: [0.95, 0, 0.15, 0.02],
+  amulet: [0.95, -Math.PI / 2, 0, 0.04],
+  ring: [1.3, -Math.PI / 2 + 0.2, 0, 0.06],
+};
 
 export class Loot {
   constructor(game) {
     this.game = game;
     this.items = [];
     this.pickups = [];
-    this.geos = itemGeometries();
-    this.mats = {};
+    this.kit = createKit(game.gfx.env, { roughAdd: 0.2 });
+    // A soft rarity-colored glint under every drop so it reads on the dark floor.
+    this.glintGeo = new THREE.CircleGeometry(0.7, 24);
+    this.glintGeo.rotateX(-Math.PI / 2);
+    this.glintMats = {};
     for (const [r, def] of Object.entries(RARITY)) {
-      const [cr, cg, cb] = def.hdr;
-      const k = r === 'magic' ? 0.12 : r === 'rare' ? 0.15 : 0.35;
-      this.mats[r] = new THREE.MeshStandardMaterial({ color: 0x8a8480, metalness: 0.85, roughness: 0.3, envMap: game.gfx.env, emissive: new THREE.Color(cr * k, cg * k, cb * k) });
+      this.glintMats[r] = new THREE.ShaderMaterial({
+        uniforms: { uColor: { value: new THREE.Color(...def.hdr).multiplyScalar(0.12) } },
+        vertexShader: 'varying vec2 vP; void main(){ vP = position.xz / 0.7; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform vec3 uColor; varying vec2 vP; void main(){ float r = length(vP); gl_FragColor = vec4(uColor * pow(max(0.0, 1.0 - r), 2.0), 1.0); }',
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+      });
     }
     this.beamTime = { value: 0 };
     this.beamMats = {};
@@ -160,15 +156,20 @@ export class Loot {
   dropItem(item, x, z) {
     const g = this.game;
     const r = item.rarity;
-    const mesh = new THREE.Mesh(this.geos[item.slot], this.mats[r]);
-    mesh.scale.setScalar(0.95);
-    mesh.castShadow = true;
+    const mesh = new THREE.Group();
+    const model = bake(buildItemModel(item, this.kit));
+    const lie = LIE[item.slot];
+    model.scale.setScalar(lie[0]);
+    mesh.add(model);
     g.scene.add(mesh);
+    const glint = new THREE.Mesh(this.glintGeo, this.glintMats[r]);
+    glint.renderOrder = 4;
+    g.scene.add(glint);
     const a = Math.random() * Math.PI * 2;
     const big = isUnique(item);
     const s = 1.5 + Math.random() * 2;
     const it = {
-      item, mesh, x, z, y: 1,
+      item, mesh, model, glint, lie, yaw: Math.random() * Math.PI * 2, x, z, y: 1,
       vx: Math.cos(a) * s, vz: Math.sin(a) * s, vy: big ? 13 : 7,
       landed: false, t: 0, beam: null, glow: null,
       label: g.hud.createLootLabel(item, () => { g.player.moveTarget = { x: it.x, z: it.z }; }),
@@ -198,6 +199,8 @@ export class Loot {
   #removeItem(it) {
     const g = this.game;
     g.scene.remove(it.mesh);
+    g.scene.remove(it.glint);
+    disposeModel(it.model);
     if (it.beam) g.scene.remove(it.beam);
     it.glow && (it.glow.active = false, it.glow.mesh.visible = false);
     it.label.remove();
@@ -228,8 +231,16 @@ export class Loot {
         }
         if (isUnique(it.item) && Math.random() < 0.8) { const c = RARITY[it.item.rarity].hdr; P.spawn(it.x, it.y, it.z, 0, 0, 0, 0.5, 0.4, c[0] * 0.5, c[1] * 0.5, c[2] * 0.5); }
       }
-      it.mesh.position.set(it.x, it.y + (it.landed ? Math.sin(g.time * 2 + i) * 0.04 + 0.08 : 0), it.z);
-      it.mesh.rotation.set(it.landed ? 0.25 : it.t * 8, g.time * (it.landed ? 0.8 : 5), 0);
+      if (it.landed) {
+        it.mesh.position.set(it.x, it.lie[3], it.z);
+        it.mesh.rotation.set(0, it.yaw, 0);
+        it.model.rotation.set(it.lie[1], 0, it.lie[2]);
+      } else {
+        it.mesh.position.set(it.x, it.y, it.z);
+        it.mesh.rotation.set(it.t * 7, it.t * 5, 0);
+      }
+      it.glint.position.set(it.x, 0.03, it.z);
+      it.glint.visible = it.landed;
       if (it.beam) {
         it.beam.position.set(it.x, 0, it.z);
         const h = it.landed ? Math.min(1, (it.beam.scale.y + dt * 2.5)) : 0.01;

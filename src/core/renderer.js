@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { dungeonEnv } from '../art/envs.js';
 
 // Runs right after the scene render, before bloom:
 // 1. Replaces any NaN/Inf pixel with black. A single bad pixel otherwise gets
@@ -81,9 +81,8 @@ export function createRenderer(container) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x06070b);
   scene.fog = new THREE.FogExp2(0x06070b, 0.03);
-  // A faint room reflection so metal reads as metal instead of black.
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  // Torchlit vault reflections so metal reads as metal instead of black.
+  const env = dungeonEnv(renderer);
   const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 1, 170);
 
   const composer = new EffectComposer(renderer);

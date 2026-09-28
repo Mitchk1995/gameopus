@@ -50,6 +50,7 @@ export class Combat {
     const g = this.game;
     e.hp -= amt;
     e.flash = crit ? 0.14 : 0.08;
+    if (!small) e.hitT = crit ? 0.14 : 0.09;
     if (!silent) g.hud.damageNumber(e.x, 1.7 * e.scale, e.z, amt, crit, small ? 'small' : element);
     const c = ELEMENT_COLOR[element] || ELEMENT_COLOR.physical;
     if (!small) g.particles.burst(e.x, 1.0 * e.scale, e.z, crit ? 14 : 6, crit ? 7 : 4, c, 0.35, crit ? 0.35 : 0.25, 5, 2);

@@ -1,90 +1,118 @@
 import * as THREE from 'three';
 import { computeStats } from './stats.js';
-import { RARITY } from '../content/bases.js';
 import { angleDiff, damp, clamp } from '../core/rng.js';
 import { SKILLS, SKILL_BY_ID } from '../content/skills.js';
+import { createKit } from '../art/kit.js';
+import { buildItemModel, bake, disposeModel, cowl } from '../art/items3d.js';
 
 export const xpForLevel = (L) => Math.floor(70 * Math.pow(1.34, L - 1) + 30 * L);
 
-function buildModel(env) {
+// A jointed hero: pelvis > spine > chest > neck > head, hips > knees > ankles,
+// shoulders > elbows > hands. Animated procedurally every frame in #animate.
+function buildModel(kit) {
   const root = new THREE.Group();
-  const armor = new THREE.MeshStandardMaterial({ color: 0x4a4e5a, metalness: 0.75, roughness: 0.38, envMap: env, envMapIntensity: 0.9 });
-  const armorDark = new THREE.MeshStandardMaterial({ color: 0x24252c, metalness: 0.6, roughness: 0.5, envMap: env, envMapIntensity: 0.7 });
-  const cloth = new THREE.MeshStandardMaterial({ color: 0x5c1a17, roughness: 0.9, side: THREE.DoubleSide });
-  const leather = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 });
+  root.scale.setScalar(1.08);
+  const mats = {
+    armor: kit.metal('steel'),
+    dark: kit.metal('iron'),
+    trim: kit.metal('bronze'),
+    cloth: kit.cloth(0x5a1612),
+    leather: kit.leather(0x4a2c1a),
+  };
   const eyeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 3.5, 4.5) });
-  const M = (geo, mat, x = 0, y = 0, z = 0) => {
+  const J = (parent, x, y, z, order) => {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    if (order) g.rotation.order = order;
+    parent.add(g);
+    return g;
+  };
+  const M = (parent, geo, mat, x = 0, y = 0, z = 0, o = {}) => {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
+    if (o.r) m.rotation.set(...o.r);
+    if (o.s) m.scale.set(...o.s);
     m.castShadow = true;
+    parent.add(m);
     return m;
   };
+  const cap = (r, l) => new THREE.CapsuleGeometry(r, l, 4, 12);
+  const dome = (r) => new THREE.SphereGeometry(r, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55);
 
-  const body = new THREE.Group();
-  root.add(body);
+  const body = J(root, 0, 0, 0);
+  const pelvis = J(body, 0, 0.92, 0);
 
   const legs = [];
   for (const side of [1, -1]) {
-    const hip = new THREE.Group();
-    hip.position.set(side * 0.15, 0.82, 0);
-    const leg = M(new THREE.CapsuleGeometry(0.11, 0.52, 3, 8), armorDark, 0, -0.38, 0);
-    const boot = M(new THREE.BoxGeometry(0.2, 0.14, 0.32), leather, 0, -0.76, 0.05);
-    hip.add(leg, boot);
-    body.add(hip);
-    legs.push(hip);
+    const hip = J(pelvis, side * 0.13, -0.02, 0);
+    M(hip, cap(0.1, 0.24), mats.dark, 0, -0.2, 0);
+    const knee = J(hip, 0, -0.42, 0);
+    M(knee, dome(0.075), mats.armor, 0, 0.0, 0.06, { r: [Math.PI / 2 + 0.3, 0, 0] });
+    M(knee, cap(0.085, 0.22), mats.armor, 0, -0.19, 0);
+    const ankle = J(knee, 0, -0.4, 0);
+    const boot = M(ankle, new THREE.SphereGeometry(0.11, 16, 12), mats.leather, 0, -0.03, 0.05, { s: [0.9, 0.6, 1.5] });
+    legs.push({ hip, knee, ankle, boot });
   }
-  const torso = M(new THREE.CapsuleGeometry(0.28, 0.42, 4, 12), armor, 0, 1.18, 0);
-  torso.scale.set(1.05, 1, 0.78);
-  const belt = M(new THREE.TorusGeometry(0.27, 0.05, 6, 16), leather, 0, 0.92, 0);
-  belt.rotation.x = Math.PI / 2;
-  belt.scale.set(1.05, 0.8, 1);
-  const shoulderL = M(new THREE.SphereGeometry(0.2, 12, 8), armor, 0.36, 1.45, 0);
-  const shoulderR = M(new THREE.SphereGeometry(0.2, 12, 8), armor, -0.36, 1.45, 0);
-  shoulderL.scale.set(1.1, 0.75, 1);
-  shoulderR.scale.set(1.1, 0.75, 1);
-  const hood = M(new THREE.ConeGeometry(0.26, 0.6, 10), cloth, 0, 1.86, -0.03);
-  const face = M(new THREE.SphereGeometry(0.17, 10, 8), new THREE.MeshBasicMaterial({ color: 0x020203 }), 0, 1.7, 0.07);
-  const eyes = [M(new THREE.SphereGeometry(0.03, 6, 4), eyeMat, 0.06, 1.72, 0.22), M(new THREE.SphereGeometry(0.03, 6, 4), eyeMat, -0.06, 1.72, 0.22)];
-  const cloak = M(new THREE.CylinderGeometry(0.3, 0.56, 1.25, 12, 3, true, Math.PI * 0.55, Math.PI * 0.9), cloth, 0, 1.0, -0.02);
-  const cloakPivot = new THREE.Group();
-  cloakPivot.position.set(0, 1.55, 0);
-  cloak.position.set(0, -0.6, 0);
-  cloakPivot.add(cloak);
-  body.add(torso, belt, shoulderL, shoulderR, hood, face, ...eyes, cloakPivot);
+  M(pelvis, new THREE.TorusGeometry(0.26, 0.045, 8, 22), mats.leather, 0, 0.02, 0, { r: [Math.PI / 2, 0, 0], s: [1.05, 0.8, 1] });
+  M(pelvis, new THREE.BoxGeometry(0.09, 0.07, 0.03), mats.trim, 0, 0.02, 0.22);
+  M(pelvis, new THREE.BoxGeometry(0.1, 0.11, 0.07), mats.leather, 0.2, -0.04, 0.12, { r: [0, -0.5, 0] });
+  const tabF = J(pelvis, 0, -0.02, 0.2);
+  M(tabF, new THREE.PlaneGeometry(0.24, 0.42), mats.cloth, 0, -0.21, 0);
+  const tabB = J(pelvis, 0, -0.02, -0.19);
+  M(tabB, new THREE.PlaneGeometry(0.24, 0.42), mats.cloth, 0, -0.21, 0, { r: [0, Math.PI, 0] });
 
-  // Sword arm (character's right = -x when facing +z).
-  const armR = new THREE.Group();
-  armR.position.set(-0.38, 1.4, 0);
-  armR.rotation.order = 'YXZ';
-  armR.add(M(new THREE.CapsuleGeometry(0.085, 0.42, 3, 8), armor, 0, -0.3, 0));
-  const sword = new THREE.Group();
-  sword.position.set(0, -0.6, 0);
-  const bladeMat = new THREE.MeshStandardMaterial({ color: 0xb0b6c0, metalness: 0.95, roughness: 0.18, envMap: env, envMapIntensity: 1.2 });
-  const runeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 1.5, 1.6) });
-  const blade = M(new THREE.BoxGeometry(0.09, 1.15, 0.025), bladeMat, 0, -0.72, 0);
-  const rune = M(new THREE.BoxGeometry(0.022, 0.95, 0.03), runeMat, 0, -0.68, 0);
-  const guard = M(new THREE.BoxGeometry(0.32, 0.06, 0.08), armorDark, 0, -0.12, 0);
-  const grip = M(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6), leather, 0, 0, 0);
-  const pommel = M(new THREE.SphereGeometry(0.05, 8, 6), armor, 0, 0.12, 0);
-  sword.add(blade, rune, guard, grip, pommel);
-  armR.add(sword);
+  const spine = J(pelvis, 0, 0.06, 0, 'YXZ');
+  const chest = J(spine, 0, 0.28, 0, 'YXZ');
+  const torso = M(chest, cap(0.26, 0.28), kit.chain(), 0, -0.02, 0, { s: [1.05, 1, 0.78] });
+  const plate = M(chest, new THREE.SphereGeometry(0.3, 22, 14, 0, Math.PI, 0.35, Math.PI * 0.5), mats.armor, 0, 0.0, 0.02, { s: [1, 1.15, 0.72] });
+  for (const side of [1, -1]) {
+    M(chest, dome(0.2), mats.armor, side * 0.36, 0.2, 0, { r: [0, 0, -side * 0.45], s: [1.1, 0.9, 1] });
+    M(chest, dome(0.17), mats.armor, side * 0.41, 0.12, 0, { r: [0, 0, -side * 0.75], s: [1.05, 0.85, 0.95] });
+    M(chest, new THREE.TorusGeometry(0.19, 0.015, 6, 20), mats.trim, side * 0.37, 0.19, 0, { r: [Math.PI / 2, -side * 0.45, 0] });
+  }
 
-  const armL = new THREE.Group();
-  armL.position.set(0.38, 1.4, 0);
-  armL.rotation.order = 'YXZ';
-  armL.add(M(new THREE.CapsuleGeometry(0.085, 0.42, 3, 8), armor, 0, -0.3, 0));
-  const handGlow = M(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.2, 5) }), 0, -0.62, 0);
+  const neck = J(chest, 0, 0.3, 0, 'YXZ');
+  const head = J(neck, 0, 0.14, 0.02, 'YXZ');
+  const hood = new THREE.Group();
+  head.add(hood);
+  const cowlModel = bake(cowl(kit, mats.cloth, kit.cloth(0x2a0c0a)));
+  cowlModel.scale.setScalar(0.74);
+  cowlModel.position.set(0, -0.03, 0.0);
+  hood.add(cowlModel);
+  M(head, new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshBasicMaterial({ color: 0x020203 }), 0, -0.03, 0.04);
+  M(head, new THREE.SphereGeometry(0.028, 6, 4), eyeMat, 0.06, -0.01, 0.18);
+  M(head, new THREE.SphereGeometry(0.028, 6, 4), eyeMat, -0.06, -0.01, 0.18);
+  const helmMount = J(head, 0, 0.0, -0.02);
+
+  const capeGeo = new THREE.PlaneGeometry(0.62, 1.2, 4, 10);
+  capeGeo.translate(0, -0.6, 0);
+  const cape = M(chest, capeGeo, mats.cloth, 0, 0.24, -0.2);
+  const capeBase = Float32Array.from(capeGeo.attributes.position.array);
+
+  // arms[0] = left (+x, casting hand), arms[1] = right (-x, sword hand)
+  const arms = [];
+  for (const side of [1, -1]) {
+    const shoulder = J(chest, side * 0.37, 0.16, 0, 'YXZ');
+    M(shoulder, cap(0.075, 0.16), mats.dark, 0, -0.13, 0);
+    const elbow = J(shoulder, 0, -0.3, 0, 'YXZ');
+    M(elbow, new THREE.CylinderGeometry(0.082, 0.07, 0.2, 12), mats.armor, 0, -0.11, 0);
+    const hand = J(elbow, 0, -0.26, 0, 'YXZ');
+    M(hand, new THREE.SphereGeometry(0.065, 12, 10), mats.leather, 0, 0, 0, { s: [1, 1.15, 1] });
+    arms.push({ shoulder, elbow, hand });
+  }
+  const weaponMount = J(arms[1].hand, 0, 0, 0.02);
+  weaponMount.rotation.x = Math.PI / 2; // item models point +y; this makes the blade point out of the fist
+  const handGlow = M(arms[0].hand, new THREE.SphereGeometry(0.075, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.2, 5) }), 0, -0.03, 0.04);
   handGlow.visible = false;
-  armL.add(handGlow);
-  body.add(armR, armL);
 
-  return { root, body, legs, armR, armL, sword, runeMat, cloakPivot, handGlow };
+  return { root, body, pelvis, spine, chest, neck, head, legs, arms, weaponMount, hood, helmMount, cape, capeBase, tabF, tabB, handGlow, mats, torso, plate, boots: legs.map((l) => l.boot) };
 }
 
 export class Player {
   constructor(game) {
     this.game = game;
-    this.model = buildModel(game.gfx.env);
+    this.kit = createKit(game.gfx.env, { roughAdd: 0.2 });
+    this.model = buildModel(this.kit);
     game.scene.add(this.model.root);
     this.radius = 0.45;
     this.level = game.save.level;
@@ -107,8 +135,13 @@ export class Player {
     this.walk = 0;
     this.speedNow = 0;
     this.hurtT = 0;
+    this.novaT = 0;
+    this.deathT = 0;
+    this.phase = 0;
     this.moveTarget = null;
     this.model.root.visible = true;
+    this.model.body.rotation.set(0, 0, 0);
+    this.model.body.position.set(0, 0, 0);
   }
 
   recompute() {
@@ -117,12 +150,43 @@ export class Player {
     this.stats = computeStats(this.level, eq);
     if (oldLife) this.life = Math.min(this.stats.life, this.life + Math.max(0, this.stats.life - oldLife));
     this.mana = Math.min(this.mana ?? this.stats.mana, this.stats.mana);
-    const w = eq.weapon;
-    const c = w ? RARITY[w.rarity].hdr : [1.5, 1.5, 1.6];
-    this.model.runeMat.color.setRGB(c[0] * 0.6, c[1] * 0.6, c[2] * 0.6);
+    this.#dressGear(eq);
     const el = this.dominantElement();
     this.slashColor = { physical: [1.7, 1.55, 1.4], fire: [3.6, 1.3, 0.25], cold: [0.8, 1.9, 3.6], lightning: [1.9, 2.0, 4.3] }[el];
     this.game.powers.rebuild(eq);
+  }
+
+  // Show equipped gear on the character: the real weapon and helm models, armor tinted by chest.
+  #dressGear(eq) {
+    const m = this.model;
+    const key = (it) => (it ? `${it.uid}` : '-');
+    const sig = `${key(eq.weapon)}|${key(eq.helm)}|${key(eq.chest)}|${key(eq.boots)}`;
+    if (sig === this.gearSig) return;
+    this.gearSig = sig;
+    for (const holder of [m.weaponMount, m.helmMount]) {
+      for (const c of [...holder.children]) { holder.remove(c); disposeModel(c); }
+    }
+    const weapon = eq.weapon || { slot: 'weapon', base: 'Rusted Blade', rarity: 'magic', uid: 'fists', affixes: [] };
+    const w = bake(buildItemModel(weapon, this.kit));
+    w.position.y = 0.17; // grip in the fist
+    w.scale.setScalar(1.0);
+    m.weaponMount.add(w);
+    m.hood.visible = !eq.helm;
+    if (eq.helm) {
+      const h = bake(buildItemModel(eq.helm, this.kit));
+      h.scale.setScalar(0.74);
+      h.position.set(0, -0.03, 0.01);
+      m.helmMount.add(h);
+    }
+    const k = this.kit;
+    const tier = (it, list) => (it ? Math.max(0, list.indexOf(it.base)) : -1);
+    const ct = tier(eq.chest, ['Padded Tunic', 'Chainmail', 'Scale Hauberk', 'Wardplate', 'Reliquary Plate', 'Starless Cuirass']);
+    const plateMat = [k.cloth(0x8a7654), k.metal('steel'), k.metal('bronze'), k.metal('steel'), k.metal('gold'), k.metal('void')][ct] || k.metal('steel');
+    m.plate.material = plateMat;
+    m.torso.material = ct === 0 ? k.cloth(0x6a5a40) : ct === 5 ? k.metal('void') : k.chain();
+    const bt = tier(eq.boots, ['Sandals', 'Leather Boots', 'Greaves', 'Ashwalkers', 'Tomb Sabatons', 'Voidtreads']);
+    const bootMat = [k.leather(0x7a5436), k.leather(0x5a3a22), k.metal('steel'), k.leather(0x1c1614), k.metal('steel'), k.metal('void')][bt] || m.mats.leather;
+    for (const b of m.boots) b.material = bootMat;
   }
 
   dominantElement() {
@@ -185,8 +249,9 @@ export class Player {
   update(dt) {
     const g = this.game, inp = g.input, s = this.stats;
     if (this.dead) {
-      this.model.body.rotation.x = damp(this.model.body.rotation.x, -Math.PI / 2, 6, dt);
-      this.model.body.position.y = damp(this.model.body.position.y, 0.2, 6, dt);
+      this.deathT = (this.deathT || 0) + dt;
+      this.speedNow = 0;
+      this.#animate(dt);
       return;
     }
     this.invuln -= dt; this.dashCd -= dt; this.novaCd -= dt; this.boltCd -= dt; this.potionCd -= dt; this.castT -= dt; this.hurtT -= dt;
@@ -223,6 +288,7 @@ export class Player {
       this.mana -= 25;
       this.novaCd = 9 * s.cdrMult;
       g.actions.nova(this.x, this.z, 6 * s.areaMult, 1.3, 'cold', { chill: 2.5, frost: true });
+      this.novaT = 0.5;
       g.audio.play('nova');
       g.shake(0.2);
       g.powers.emit('nova', { x: this.x, z: this.z });
@@ -313,43 +379,159 @@ export class Player {
     g.powers.emit('attack', ev);
   }
 
-  #animate(dt) {
+  // Cheap cloth: bend the cape back with speed and ripple it along its length.
+  #cloth(dt) {
     const m = this.model, t = this.game.time;
+    const pos = m.cape.geometry.attributes.position, base = m.capeBase;
+    this.capeLift = damp(this.capeLift ?? 0, Math.min(1, this.speedNow / 7) + (this.dashT > 0 ? 0.8 : 0), 5, dt);
+    const lift = this.capeLift;
+    for (let i = 0; i < pos.count; i++) {
+      const x = base[i * 3], y = base[i * 3 + 1];
+      const d = -y / 1.2; // 0 at the shoulders, 1 at the hem
+      const wave = Math.sin(t * (4 + lift * 6) - d * 5 + x * 3) * (0.03 + lift * 0.05) * d;
+      pos.setXYZ(i, x * (1 + d * 0.25), y + lift * d * d * 0.35, -d * d * (0.12 + lift * 0.55) - wave);
+    }
+    pos.needsUpdate = true;
+    m.cape.geometry.computeVertexNormals();
+  }
+
+  // Title screen: idle animation only.
+  idle(dt) {
+    this.speedNow = 0;
+    this.#animate(dt);
+  }
+
+  #animate(dt) {
+    const m = this.model, g = this.game, t = g.time;
     m.root.position.set(this.x, 0, this.z);
     let rot = m.root.rotation.y;
     rot += angleDiff(this.facing, rot) * (1 - Math.exp(-18 * dt));
     m.root.rotation.y = rot;
+    this.novaT = Math.max(0, (this.novaT || 0) - dt);
 
-    const moving = this.speedNow > 0.5;
-    this.walk += dt * this.speedNow * 1.6;
-    const sw = moving ? Math.sin(this.walk) : 0;
-    m.legs[0].rotation.x = damp(m.legs[0].rotation.x, sw * 0.75, 20, dt);
-    m.legs[1].rotation.x = damp(m.legs[1].rotation.x, -sw * 0.75, 20, dt);
-    m.body.position.y = moving ? Math.abs(Math.cos(this.walk)) * 0.06 : Math.sin(t * 2) * 0.012;
-    m.body.rotation.x = damp(m.body.rotation.x, this.dashT > 0 ? 0.5 : moving ? 0.12 : 0, 12, dt);
-    m.cloakPivot.rotation.x = damp(m.cloakPivot.rotation.x, -Math.min(0.9, this.speedNow * 0.06) - (this.dashT > 0 ? 0.6 : 0) + Math.sin(t * 3) * 0.04, 8, dt);
+    // Locomotion phase advances with distance so feet don't slide.
+    const amp = clamp(this.speedNow / 6.8, 0, 1);
+    this.phase = (this.phase || 0) + this.speedNow * dt * ((Math.PI * 2) / 2.1);
+    const ph = this.phase;
+    const P = {
+      pelvisY: 0.92 + 0.035 * amp * Math.cos(2 * ph) + (amp < 0.1 ? Math.sin(t * 2.2) * 0.006 : 0),
+      pelvisYaw: Math.sin(ph) * 0.12 * amp,
+      pelvisZ: 0,
+      spineX: 0.1 * amp + Math.sin(t * 2.2) * 0.012 * (1 - amp),
+      spineYaw: -Math.sin(ph) * 0.16 * amp,
+      headYaw: (1 - amp) * Math.sin(t * 0.35) * 0.3,
+      headX: 0,
+      hip: [-Math.sin(ph) * 0.6 * amp, Math.sin(ph) * 0.6 * amp],
+      knee: [0.08 + Math.pow(Math.max(0, Math.cos(ph)), 1.3) * 1.0 * amp, 0.08 + Math.pow(Math.max(0, -Math.cos(ph)), 1.3) * 1.0 * amp],
+      sh: [[Math.sin(ph) * 0.5 * amp + 0.05, 0, 0.1], [-Math.sin(ph) * 0.3 * amp - 0.15, 0, -0.12]],
+      el: [-0.25 - amp * 0.3, -0.45],
+      wr: [0, 0.95],
+    };
 
-    // Sword arm: idle low guard, or a horizontal sweep during a cleave.
+    // Sword swing: wind-up, whip through, recover.
     if (this.attackT >= 0) {
-      const k = clamp(this.attackT / 0.55, 0, 1);
-      const e = 1 - Math.pow(1 - k, 3);
-      const from = 1.7 * this.swingDir, to = -1.5 * this.swingDir;
-      m.armR.rotation.y = from + (to - from) * e;
-      m.armR.rotation.x = -1.45;
-      m.body.rotation.y = (from + (to - from) * e) * 0.25;
-    } else {
-      m.armR.rotation.y = damp(m.armR.rotation.y, 0.2, 10, dt);
-      m.armR.rotation.x = damp(m.armR.rotation.x, moving ? -0.35 - sw * 0.2 : -0.25, 10, dt);
-      m.body.rotation.y = damp(m.body.rotation.y, 0, 10, dt);
+      const k = this.attackT, d = this.swingDir;
+      const ease = (x) => 1 - Math.pow(1 - x, 3);
+      let yaw, pitch, elbow, wrist, twist;
+      if (k < 0.3) {
+        const e = ease(k / 0.3);
+        yaw = 1.55 * d * e; pitch = -0.2 - 1.1 * e; elbow = -0.45 - 0.5 * e; wrist = 0.45 + 0.5 * e; twist = 0.4 * d * e;
+      } else if (k < 0.52) {
+        const e = ease((k - 0.3) / 0.22);
+        yaw = 1.55 * d + (-1.45 * d - 1.55 * d) * e; pitch = -1.3 - 0.2 * e; elbow = -0.95 + 0.9 * e; wrist = 0.95 + 0.55 * e; twist = 0.4 * d - 0.85 * d * e;
+        P.pelvisZ = 0.12 * e;
+      } else {
+        const e = ease((k - 0.52) / 0.48);
+        yaw = -1.45 * d * (1 - e); pitch = -1.5 + 1.35 * e; elbow = -0.05 - 0.4 * e; wrist = 1.5 - 1.05 * e; twist = -0.45 * d * (1 - e);
+        P.pelvisZ = 0.12 * (1 - e);
+      }
+      P.sh[1] = [pitch, yaw, -0.1];
+      P.el[1] = elbow;
+      P.wr[1] = wrist;
+      P.spineYaw += twist;
+      P.pelvisY -= 0.04;
     }
-    const casting = this.castT > 0;
-    m.armL.rotation.x = damp(m.armL.rotation.x, casting ? -1.5 : moving ? sw * 0.5 : 0.05, 18, dt);
-    m.handGlow.visible = casting;
+    // Casting: left arm thrusts toward the aim point.
+    if (this.castT > 0) {
+      P.sh[0] = [-1.45, -0.15, 0.1];
+      P.el[0] = -0.05;
+      P.spineYaw += 0.15;
+    }
+    // Frost nova: crouch, arms flung wide.
+    if (this.novaT > 0) {
+      const k = this.novaT / 0.5;
+      P.sh[0] = [-0.3, 0, 1.3 * k];
+      P.sh[1] = [-0.3, 0, -1.3 * k];
+      P.el[0] = P.el[1] = -0.1;
+      P.pelvisY -= 0.16 * k;
+      P.spineX -= 0.2 * k;
+    }
+    // Dash: tuck and lean.
+    if (this.dashT > 0) {
+      P.spineX = 0.55;
+      P.hip = [-0.7, 0.3];
+      P.knee = [1.2, 0.9];
+      P.sh[0][0] = 0.7;
+      P.sh[1] = [0.7, 0, -0.2];
+    }
+    // Flinch when struck.
+    if (this.hurtT > 0) {
+      const k = this.hurtT / 0.25;
+      P.spineX -= 0.3 * k;
+      P.headX -= 0.25 * k;
+    }
+    // Death: knees buckle, then the body pitches forward.
+    let bodyPitch = 0, bodyDrop = 0;
+    if (this.dead) {
+      const d = this.deathT || 0;
+      const kneel = clamp(d / 0.45, 0, 1);
+      const fall = clamp((d - 0.45) / 0.55, 0, 1);
+      P.hip = [-1.4 * kneel, -1.1 * kneel];
+      P.knee = [1.9 * kneel, 1.6 * kneel];
+      P.pelvisY = 0.92 - 0.45 * kneel;
+      P.spineX = 0.35 * kneel;
+      P.sh = [[0.2, 0, 0.3], [0.2, 0, -0.3]];
+      bodyPitch = fall * fall * 1.35;
+      bodyDrop = fall * 0.12;
+    }
+
+    // Apply with smoothing (fast for the sword arm so swings stay snappy).
+    const S = (cur, target, rate) => damp(cur, target, rate, dt);
+    const fast = this.attackT >= 0 ? 40 : 14;
+    m.pelvis.position.y = S(m.pelvis.position.y, P.pelvisY, 16);
+    m.pelvis.position.z = S(m.pelvis.position.z, P.pelvisZ, 16);
+    m.pelvis.rotation.y = S(m.pelvis.rotation.y, P.pelvisYaw, 12);
+    m.spine.rotation.x = S(m.spine.rotation.x, P.spineX, 12);
+    m.spine.rotation.y = S(m.spine.rotation.y, P.spineYaw, fast);
+    m.head.rotation.y = S(m.head.rotation.y, P.headYaw, 5);
+    m.head.rotation.x = S(m.head.rotation.x, P.headX, 12);
+    m.chest.scale.y = 1 + Math.sin(t * 2.2) * 0.012 * (1 - amp);
+    for (let i = 0; i < 2; i++) {
+      const L = m.legs[i];
+      L.hip.rotation.x = S(L.hip.rotation.x, P.hip[i], 20);
+      L.knee.rotation.x = S(L.knee.rotation.x, P.knee[i], 20);
+      L.ankle.rotation.x = -(L.hip.rotation.x + L.knee.rotation.x) * 0.6;
+      const A = m.arms[i], sh = P.sh[i];
+      const rate = i === 1 ? fast : 16;
+      A.shoulder.rotation.x = S(A.shoulder.rotation.x, sh[0], rate);
+      A.shoulder.rotation.y = S(A.shoulder.rotation.y, sh[1], rate);
+      A.shoulder.rotation.z = S(A.shoulder.rotation.z, sh[2], rate);
+      A.elbow.rotation.x = S(A.elbow.rotation.x, P.el[i], rate);
+      A.hand.rotation.x = S(A.hand.rotation.x, P.wr[i], rate);
+    }
+    m.body.rotation.x = S(m.body.rotation.x, bodyPitch, 10);
+    m.body.position.y = S(m.body.position.y, -bodyDrop, 10);
+    // Tabard panels trail the legs.
+    m.tabF.rotation.x = Math.min(0, m.legs[0].hip.rotation.x, m.legs[1].hip.rotation.x) * 0.7 - amp * 0.1;
+    m.tabB.rotation.x = Math.max(0, m.legs[0].hip.rotation.x, m.legs[1].hip.rotation.x) * 0.7 + amp * 0.15;
+
+    m.handGlow.visible = this.castT > 0;
+    this.#cloth(dt);
 
     const flick = this.hurtT > 0 && Math.sin(t * 60) > 0;
     m.body.visible = !flick;
 
-    const torch = this.game.world.torch;
+    const torch = g.world.torch;
     torch.position.set(this.x, 3.4, this.z + 0.6);
     torch.intensity = 48 + Math.sin(t * 11) * 3 + Math.sin(t * 17.3) * 2;
   }
