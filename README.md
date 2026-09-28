@@ -15,6 +15,12 @@ npm run dev          # open the printed URL; edits reload live
 Click the page to capture the mouse. The controls card on the pause screen lists the keys.
 Progress saves in the browser (localStorage).
 
+## Desktop app
+
+`npm run app` builds the game and opens it in its own window (no browser bars; F11 toggles
+fullscreen). `npm run package` builds a double-clickable `release/win-unpacked/Aldermere.exe`.
+The desktop app keeps its own saves, separate from the browser's.
+
 ## Keeping in sync
 
 `npm run sync` pulls from GitHub (rebasing) and pushes local commits; add a message
