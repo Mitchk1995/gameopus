@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batcher } from './kit.js';
-import { buildHouse, rng } from './buildings.js';
+import { rng } from './buildings.js';
+import { FIRE, KILN } from './ashford.js';
 import { Fire, fishingRings } from './effects.js';
 import { ROCKS, FISHING } from '../game/content.js';
 import { VILLAGE, LAKE, RIVER, FARMS, MINE_ENTRANCE, polylineDistance } from './map.js';
@@ -12,8 +13,6 @@ import { VILLAGE, LAKE, RIVER, FARMS, MINE_ENTRANCE, polylineDistance } from './
 //
 // Each registers an interactable: { kind, x, y, z, r, h, reach, ... } that the game's
 // targeting picks from when you look at it and press E.
-
-const C = { x: VILLAGE.x, z: VILLAGE.z };
 
 export class Resources {
   constructor({ scene, assets, world, kit }) {
@@ -224,22 +223,14 @@ export class Resources {
 
   // ------------------------------------------------------------------ smithy
   #smithy(batch) {
-    const a = (12 * Math.PI) / 180, d = 25;
-    const x = C.x + Math.cos(a) * d, z = C.z + Math.sin(a) * d;
-    const rot = Math.atan2(C.x - x, C.z - z);
-    const spec = { x, z, rot, w: 6, d: 6, floors: 1, style: 'stone', open: ['s'], seed: 404, chimney: 1 };
-    const info = buildHouse(this.kit, batch, this.world.colliders, spec, VILLAGE.y);
-    const place = { ...spec, ...info };
+    // The smithy building (open front, posts at the open corners) is built with the village;
+    // this fits it out.
+    const place = this.world.village.places.smithy;
+    const { x, z, rot } = place;
     const at = (lx, lz) => {
       const c = Math.cos(rot), s = Math.sin(rot);
       return [x + lx * c + lz * s, z - lx * s + lz * c];
     };
-    // Posts at the open corners hold up the roof.
-    for (const sx of [-1, 1]) {
-      const [px, pz] = at(sx * 2.9, 2.9);
-      batch.add('Corner_Exterior_Wood', px, VILLAGE.y, pz, rot);
-      this.world.colliders.addCircle(px, pz, 0.18, VILLAGE.y - 1, VILLAGE.y + 3);
-    }
     // Furnace against the back wall.
     const [fx, fz] = at(-1.2, -1.9);
     this.#furnace(fx, fz, rot);
@@ -282,8 +273,7 @@ export class Resources {
 
   // ------------------------------------------------------------------ cooking fire
   #cookingFire(batch) {
-    const a = (40 * Math.PI) / 180, d = 19;
-    const x = C.x + Math.cos(a) * d, z = C.z + Math.sin(a) * d;
+    const x = FIRE.x, z = FIRE.z;
     const y = VILLAGE.y;
     const stones = new THREE.Group();
     stones.position.set(x, y, z);
@@ -317,22 +307,28 @@ export class Resources {
     this.fires.push(fire);
     this.world.colliders.addCircle(x, z, 0.85, y - 1, y + 0.6);
     this.add({ kind: 'station', station: 'fire', name: 'Cooking fire', x, y: y + 0.5, z, r: 0.9, h: 1.2, reach: 2.6 });
-    // Logs stacked nearby.
-    batch.add('Crate_Wooden', x + 1.9, y, z - 0.6, 0.4);
+    // A crate of split logs by the fire.
+    batch.add('Crate_Wooden', x - 1.7, y, z - 1.0, 0.4);
+    this.world.colliders.addCircle(x - 1.7, z - 1.0, 0.45, y - 1, y + 0.9);
   }
 
   // ------------------------------------------------------------------ crafting
   #craftCorner(batch) {
-    const a = (-172 * Math.PI) / 180, d = 16.5;
-    const x = C.x + Math.cos(a) * d, z = C.z + Math.sin(a) * d;
+    // The potter's open workshop stands on the west side of the square; the kiln sits in the
+    // alcove beside it.
+    const po = this.world.village.places.potter;
     const y = VILLAGE.y;
-    const face = Math.atan2(C.x - x, C.z - z);
-    const along = (k) => [x + Math.cos(face) * k, z - Math.sin(face) * k];
+    const face = po.rot;
+    const local = (lx, lz) => {
+      const c = Math.cos(po.rot), s = Math.sin(po.rot);
+      return [po.x + lx * c + lz * s, po.z - lx * s + lz * c];
+    };
+    this.places = { ...(this.places || {}), potter: po };
     const woodMat = findMaterial(this.kit, 'MI_WoodTrim') || new THREE.MeshStandardMaterial({ color: 0x6b4a2c });
     const brick = findMaterial(this.kit, 'MI_RedBrick') || this.rockMat;
     // Spinning wheel.
     {
-      const [px, pz] = along(-2.6);
+      const [px, pz] = local(-2.4, 1.0);
       const g = new THREE.Group();
       g.position.set(px, y, pz);
       g.rotation.y = face + Math.PI / 2;
@@ -364,7 +360,7 @@ export class Resources {
     }
     // Potter's wheel.
     {
-      const [px, pz] = along(0);
+      const [px, pz] = local(0.5, 1.1);
       const g = new THREE.Group();
       g.position.set(px, y, pz);
       const table = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.06, 20), woodMat);
@@ -384,10 +380,10 @@ export class Resources {
     }
     // Kiln: a brick dome with a glowing mouth.
     {
-      const [px, pz] = along(2.9);
+      const { x: px, z: pz } = KILN;
       const g = new THREE.Group();
       g.position.set(px, y, pz);
-      g.rotation.y = face;
+      g.rotation.y = KILN.rot;
       const dome = new THREE.Mesh(new THREE.SphereGeometry(1.05, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), brick);
       dome.scale.y = 1.25;
       const base = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.12, 0.35, 20), brick);
@@ -407,10 +403,10 @@ export class Resources {
       this.world.colliders.addCircle(px, pz, 1.1, y - 1, y + 2);
       this.add({ kind: 'station', station: 'kiln', name: 'Pottery kiln', x: px, y: y + 1.0, z: pz, r: 1.1, h: 2.0, reach: 2.9 });
     }
-    const [wx, wz] = along(-4.8);
-    batch.add('Workbench', wx, y, wz, face + Math.PI);
-    this.world.colliders.addBox(wx, wz, 1.0, 0.5, face + Math.PI, y - 1, y + 0.9);
-    const [bx, bz] = along(4.9);
+    const [wx, wz] = local(0.6, -3.2);
+    batch.add('Workbench', wx, y, wz, face);
+    this.world.colliders.addBox(wx, wz, 1.0, 0.5, face, y - 1, y + 0.9);
+    const [bx, bz] = local(3.0, -3.0);
     batch.add('Barrel', bx, y, bz, 0);
     this.world.colliders.addCircle(bx, bz, 0.38, y - 1, y + 1);
   }

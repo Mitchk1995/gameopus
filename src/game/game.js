@@ -901,6 +901,9 @@ export class Game {
       } else if (a.station) {
         const st = this.resources.items.find((o) => o.station === a.station);
         Object.assign(d, { x: st.x + a.dx, z: st.z + a.dz, facing: a.facing });
+      } else if (a.route) {
+        const route = a.reverse ? [...a.route].reverse() : a.route;
+        Object.assign(d, { route, x: route[0][0], z: route[0][1] });
       } else if (a.loop) {
         const [r, a0, n] = a.loop;
         const route = Array.from({ length: n }, (_, k) => [C.x + Math.cos(a0 + (k / n) * Math.PI * 2) * r, C.z + Math.sin(a0 + (k / n) * Math.PI * 2) * r]);

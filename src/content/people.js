@@ -1,9 +1,10 @@
 // The people of Ashford, as data. Each has:
 //   look       outfit, body and hair for the character factory
-//   at         where they stand: { place, x, z } inside a village building (local
-//              metres), { station, dx, dz, facing } beside a workstation,
-//              { x, z, facing } in the world, or { loop: [radius, angle, points] }
-//              for a walk around the square
+//   at         where they stand: { place, x, z } inside or beside a village building
+//              (local metres), { station, dx, dz, facing } beside a workstation,
+//              { x, z, facing } in the world, { loop: [radius, angle, points] } for a
+//              walk around the well, or { route: [[x, z], ...] } for a walk along a
+//              path (positions for the town live in src/world/ashford.js)
 //   persona    who they are, for typed chat (Claude answers in their voice)
 //   dialogue   the reply tree (see src/game/dialogue.js for the format)
 //
@@ -16,6 +17,8 @@
 // Effects: { quest: [id, stage] }, { complete: id }, { give / take: [[item, n]] },
 // { shop: id }, { bank: true }.
 
+import { PEOPLE_AT } from '../world/ashford.js';
+
 const bye = { text: 'Goodbye.', end: true };
 
 export const PEOPLE = [
@@ -23,7 +26,7 @@ export const PEOPLE = [
     id: 'aldwyn', name: 'Aldwyn', role: 'banker',
     look: { outfit: 'male_peasant', body: 'male', hair: 'hair_buzzed', beard: 'hair_beard', eyebrows: 'eyebrows_regular' },
     idle: 'Idle_FoldArms_Loop', at: { place: 'bank', x: 0, z: -2.6 },
-    persona: `Aldwyn runs the Bank of Ashford, a stone building on the north side of the square.
+    persona: `Aldwyn runs the Bank of Ashford, a stone building on the north side of the market square, at the head of Lake Street.
 Precise, dry, quietly proud that nothing has gone missing from his vaults in forty years (bar one goat, which he will not discuss further).
 Speaks formally and briefly, with a very dry wit. Keeps careful accounts of everyone's business but is discreet about it.`,
     dialogue: {
@@ -46,7 +49,7 @@ Speaks formally and briefly, with a very dry wit. Keeps careful accounts of ever
     id: 'maren', name: 'Maren', role: 'shopkeeper',
     look: { outfit: 'female_peasant', body: 'female', hair: 'hair_buns', eyebrows: 'eyebrows_female' },
     at: { place: 'store', x: 0, z: -1.9 },
-    persona: `Maren keeps the general store on the west side of the square: axes, pickaxes, hammers, knives, nets and a few weapons. She buys almost anything.
+    persona: `Maren keeps the general store on the west side of the market square: axes, pickaxes, hammers, knives, nets and a few weapons. She buys almost anything.
 Cheerful, chatty and practical, the first person newcomers ask for advice. Knows what each tool is for and where to use it.`,
     dialogue: {
       start: {
@@ -71,7 +74,7 @@ Cheerful, chatty and practical, the first person newcomers ask for advice. Knows
     id: 'brom', name: 'Brom', role: 'smith',
     look: { outfit: 'male_peasant', body: 'male', hair: 'hair_buzzed', beard: 'hair_beard', eyebrows: 'eyebrows_regular' },
     idle: 'Idle_FoldArms_Loop', at: { place: 'smithy', x: -2.0, z: -0.2 },
-    persona: `Brom is Ashford's smith: huge, soot-stained, blunt, and proud of his craft. His smithy is on the east side of the square, with a furnace and an anvil.
+    persona: `Brom is Ashford's smith: huge, soot-stained, blunt, and proud of his craft. His smithy is on the south-east corner of the market square, open to the street so passers-by can watch the forge, with a furnace and an anvil.
 He teaches anyone willing: copper and tin smelt into bronze, iron takes a steadier hand, steel needs coal as well as iron ore. Bars plus a hammer at the anvil make weapons, armour and arrowtips.
 Few words, gruff humour, soft spot for Old Tam, low opinion of Garrow's guarding. Lately furious that his iron ore carts from the quarry keep vanishing on the road.`,
     dialogue: {
@@ -122,7 +125,7 @@ Few words, gruff humour, soft spot for Old Tam, low opinion of Garrow's guarding
         ],
       },
       ledger_start: {
-        say: ['You will? Then start with Garrow. East side of the square, by the road. Leaning on something, I expect.'],
+        say: ['You will? Then start with Garrow. He stands at the east gate, where Bridge Street leaves town. Leaning on something, I expect.'],
         options: [{ text: "I'll talk to him.", end: true }],
       },
       ledger_progress: [
@@ -132,7 +135,7 @@ Few words, gruff humour, soft spot for Old Tam, low opinion of Garrow's guarding
         { if: { quest: ['ledger', 4] }, go: 'lp4' },
         { go: 'lp5' },
       ],
-      lp1: { say: ['Talked to Garrow yet? He will be by the east road, leaning.'], options: [{ text: "Let's trade.", do: { shop: 'smithy' } }, bye] },
+      lp1: { say: ['Talked to Garrow yet? He will be at the east gate, leaning.'], options: [{ text: "Let's trade.", do: { shop: 'smithy' } }, bye] },
       lp2: { say: ["The wreck's out on the east road, past the farms. See what you can find."], options: [{ text: "Let's trade.", do: { shop: 'smithy' } }, bye] },
       lp3: { say: ['Bandits? Then it is their captain you want. Mind yourself; he fights dirty.'], options: [{ text: "Let's trade.", do: { shop: 'smithy' } }, bye] },
       lp4: { say: ['Under the hill? With the goblins? My ore?', 'If my strongbox is down there, bring it back. The quarry\'s pay for the whole season is in it.'], options: [{ text: "Let's trade.", do: { shop: 'smithy' } }, bye] },
@@ -238,8 +241,8 @@ Obsessed with Old Gnasher, a pike as long as a rowboat that lives in the deep ho
   {
     id: 'ysolde', name: 'Ysolde', role: 'potter',
     look: { outfit: 'female_ranger', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female' },
-    at: { station: 'potter', dx: 1.2, dz: -1.0, facing: -0.8 },
-    persona: `Ysolde is the village potter and spinner, working at the crafting corner on the west side of the square: a spinning wheel, a potter's wheel and a kiln.
+    at: { place: 'potter', x: 2.0, z: 0.3 },
+    persona: `Ysolde is the village potter and spinner, working in the open workshop on the west side of the market square: a spinning wheel and a potter's wheel under the roof, and the kiln in the alcove beside it.
 Calm, patient, a little dreamy, speaks in unhurried sentences and notices small beautiful things.
 Crafting: dig clay at the quarry, soften it with water from the well, shape pots and bowls on the potter's wheel, fire them in the kiln. Flax from the field east of the river spins into bow string on the spinning wheel (crafting level 10).`,
     dialogue: {
@@ -253,8 +256,8 @@ Crafting: dig clay at the quarry, soften it with water from the well, shape pots
   {
     id: 'mirelle', name: 'Mirelle', role: 'mage',
     look: { outfit: 'female_peasant', body: 'female', hair: 'hair_buns', eyebrows: 'eyebrows_female', tint: 0x2e3a86, tintMaterial: 'Peasant' },
-    at: { x: -19.37, z: 22.14, facing: 1.920 },
-    persona: `Mirelle is a travelling mage who has set up a stall on the west side of Ashford's square, selling runes and staves. Quick-witted, theatrical, delighted by anyone curious about magic, and a little vain about her own spellwork.
+    at: PEOPLE_AT.mirelle,
+    persona: `Mirelle is a travelling mage who has set up a rune stall on the west side of the market aisle in Ashford's square, selling runes and staves. Quick-witted, theatrical, delighted by anyone curious about magic, and a little vain about her own spellwork.
 She teaches the four strike spells: Wind Strike (magic level 1: an air rune and a mind rune), Water Strike (level 5), Earth Strike (level 9) and Fire Strike (level 13), each hitting harder and needing more runes. With a staff in hand you gather the spell in your open hand and let it fly; a staff of air saves you the air runes.
 She thinks swords are loud and bows are fiddly. She has heard the goblins under the hill hate fire.`,
     dialogue: {
@@ -280,8 +283,8 @@ She thinks swords are loud and bows are fiddly. She has heard the goblins under 
   {
     id: 'garrow', name: 'Garrow', role: 'guard',
     look: { outfit: 'male_ranger', body: 'male', hair: 'hair_buzzed', eyebrows: 'eyebrows_regular' },
-    idle: 'Idle_FoldArms_Loop', at: { x: 22, z: 10, facing: 1.2 },
-    persona: `Garrow is Ashford's only guard, posted where the east road leaves the square. Twenty years on the job, dutiful in his own slow way, tired, defensive about how much he leans on things.
+    idle: 'Idle_FoldArms_Loop', at: PEOPLE_AT.garrow,
+    persona: `Garrow is Ashford's only guard, posted at the east gate, where Bridge Street leaves town. Twenty years on the job, dutiful in his own slow way, tired, defensive about how much he leans on things.
 Knows the roads: north-west to the quarry and mine, east over the bridge past the farms to the bandit woods, south to the lake. Bandits camp in the eastern woods under a captain with a fancy blade and a worse temper. Goblins camp in the woods north-west of the village.`,
     dialogue: {
       start: [
@@ -332,7 +335,7 @@ Knows the roads: north-west to the quarry and mine, east over the bridge past th
     id: 'bess', name: 'Bess', role: 'innkeeper',
     look: { outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female' },
     at: { place: 'inn', x: -0.9, z: -4.7 },
-    persona: `Bess keeps the Crooked Pike, the inn on the south-east side of the square. Warm, loud, quick to laugh, and the valley's best source of gossip.
+    persona: `Bess keeps the Crooked Pike, the big inn on the north-east corner of the market square, with a communal hearth out front. Warm, loud, quick to laugh, and the valley's best source of gossip.
 Sells bread and ale. Knows everyone's business and loves to share it, kindly. Has already named her inn after Old Tam's legendary fish.`,
     dialogue: {
       start: {
@@ -361,8 +364,8 @@ Sells bread and ale. Knows everyone's business and loves to share it, kindly. Ha
   {
     id: 'wenna', name: 'Wenna', role: 'villager',
     look: { outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female' },
-    at: { loop: [9, 0, 6] }, speed: 1.0,
-    persona: `Wenna is a villager who walks her rounds of the square every day, basket on her arm. Friendly, a little nosy, loves the weather and her cat.`,
+    at: { route: PEOPLE_AT.wenna.route }, speed: 1.0,
+    persona: `Wenna is a villager who walks her rounds of the market stalls every day, basket on her arm. Friendly, a little nosy, loves the weather and her cat.`,
     dialogue: {
       start: {
         say: [{ pick: ['Lovely day for it.', 'Have you seen the size of the pike in that lake? Neither have I, but Tam has. Apparently.', 'My cat caught a goblin once. Well. It caught a goblin\'s hat.'] }],
@@ -374,7 +377,7 @@ Sells bread and ale. Knows everyone's business and loves to share it, kindly. Ha
   {
     id: 'hob', name: 'Hob', role: 'villager',
     look: { outfit: 'male_peasant', body: 'male', hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular' },
-    at: { loop: [11.5, Math.PI, 7], reverse: true }, speed: 1.15,
+    at: { route: PEOPLE_AT.hob.route, reverse: PEOPLE_AT.hob.reverse }, speed: 1.15,
     persona: `Hob is a farmhand from the fields east of the river who spends more time in the village square than in the fields. Easygoing, lazy, full of opinions about everything.`,
     dialogue: {
       start: {
