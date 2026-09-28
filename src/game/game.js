@@ -239,6 +239,7 @@ export class Game {
     this.save.lifetimeKills += this.kills;
     this.persist();
     setTimeout(() => {
+      this.hud.clearAnnounce();
       const mins = Math.floor(this.runTime / 60), secs = Math.floor(this.runTime % 60).toString().padStart(2, '0');
       const s = this.#overlay('dead', `
         <div class="tag">${this.world.biome.name}</div>

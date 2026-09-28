@@ -14,7 +14,7 @@ export function createKit(env, { envScale = 1, roughAdd = 0, metalTint = 1 } = {
   const METALS = {
     steel: { tex: 'steel', color: [0.7, 0.72, 0.78], metal: 0.95, rough: 0.55 },
     silver: { tex: 'steel', color: [0.95, 0.96, 1.0], metal: 1, rough: 0.5 },
-    blade: { tex: 'steel', color: [0.9, 0.92, 0.96], metal: 0.9, rough: 0.44, bump: 0.2, scale: 1.5 },
+    blade: { tex: 'polished', color: [0.92, 0.94, 0.98], metal: 0.9, rough: 0.5, bump: 0.15, scale: 1.5 },
     iron: { tex: 'iron', color: [0.9, 0.9, 0.95], metal: 0.85, rough: 1 },
     rust: { tex: 'iron', color: [1.25, 1.0, 0.85], metal: 0.6, rough: 1.1 },
     gold: { tex: 'gold', color: [1, 1, 1], metal: 1, rough: 0.9 },

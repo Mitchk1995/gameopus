@@ -137,6 +137,17 @@ const PAINTERS = {
       p.rough = 0.2 + (brush - 0.5) * 0.14 + smudge * 0.12 + grime * 0.3;
     };
   },
+  polished: (rng, S) => {
+    // mirror-bright blade steel: long faint polishing streaks and a few soft smudges
+    const n1 = tileNoise(S, 3, rng), b1 = aniso(S, 4, 200, rng);
+    return (x, y, p) => {
+      const sm = n1(x, y), br = b1(x, y);
+      const v = 0.68 + (br - 0.5) * 0.05 + (sm - 0.5) * 0.06;
+      p.r = v * 0.98; p.g = v * 0.99; p.b = v * 1.02;
+      p.h = 0.5 + (br - 0.5) * 0.04;
+      p.rough = 0.15 + sm * 0.12 + (br - 0.5) * 0.05;
+    };
+  },
   iron: (rng, S) => {
     const n1 = tileNoise(S, 5, rng), n2 = tileNoise(S, 20, rng), n3 = tileNoise(S, 80, rng);
     return (x, y, p) => {
@@ -296,6 +307,7 @@ const PAINTERS = {
 
 const EXTRAS = {
   steel: scratches(140, 30, 0.18, 0.35),
+  polished: scratches(40, 26, 0.1, 0.12),
   iron: scratches(60, 20, 0.08, 0.3),
   gold: scratches(40, 16, 0.1, 0.2),
 };

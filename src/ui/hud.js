@@ -20,6 +20,7 @@ export class HUD {
     document.getElementById('app').appendChild(root);
 
     this.labels = el('div', 'labels');
+    this.pendingLabels = [];
     this.numbers = el('div', 'numbers');
     root.append(this.labels, this.numbers);
 
@@ -136,7 +137,27 @@ export class HUD {
       return;
     }
     if (l.hidden) l.hidden = false;
-    l.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+    this.pendingLabels.push({ l, x: sx, y: sy });
+  }
+
+  // Stack overlapping loot labels upward, nearest-the-bottom first, so every name stays readable.
+  layoutLabels() {
+    const ls = this.pendingLabels;
+    ls.sort((a, b) => b.y - a.y);
+    const placed = [];
+    const H = 22;
+    for (const it of ls) {
+      const w = it.l.labelW || (it.l.offsetWidth ? (it.l.labelW = it.l.offsetWidth) : 140);
+      let y = it.y;
+      for (let guard = 0; guard < 16; guard++) {
+        const hit = placed.find((q) => Math.abs(q.x - it.x) < (q.w + w) / 2 + 3 && y > q.y - H && y - H < q.y);
+        if (!hit) break;
+        y = hit.y - H - 1;
+      }
+      placed.push({ x: it.x, y, w });
+      it.l.style.transform = `translate(${it.x}px, ${y}px) translate(-50%, -100%)`;
+    }
+    ls.length = 0;
   }
 
   announce(title, kicker, kind) {
@@ -149,6 +170,11 @@ export class HUD {
       this.ann.querySelector('.t').textContent = kicker;
     }
     this.annT = kind === 'ascendant' ? 5 : 3.2;
+  }
+
+  clearAnnounce() {
+    this.annT = 0;
+    this.ann.classList.remove('show');
   }
 
   toast(text, kind = '') {

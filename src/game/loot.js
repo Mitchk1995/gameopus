@@ -262,6 +262,7 @@ export class Loot {
         }
       }
     }
+    g.hud.layoutLabels();
 
     // Instanced pickups.
     const counts = { gold: 0, shard: 0, orb: 0 };
