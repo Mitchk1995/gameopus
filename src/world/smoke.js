@@ -76,16 +76,16 @@ function smokeMaterial() {
         float wob = aLook.w * t;
         p.x += sin(aSeed * 41.0 + t * 4.3) * wob;
         p.z += cos(aSeed * 29.0 + t * 3.7) * wob;
-        float size = mix(aLife.z, aLife.w, sqrt(t));
+        float size = mix(aLife.z, aLife.w, pow(t, 0.75));
         vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
         float a = aSeed * 6.2831 + t * (aSeed - 0.5) * 1.6;
         vec2 c = vec2(cos(a) * aCorner.x - sin(a) * aCorner.y, sin(a) * aCorner.x + cos(a) * aCorner.y);
         mvPosition.xy += c * size;
         gl_Position = projectionMatrix * mvPosition;
         vUv = aCorner * 0.5 + 0.5;
-        vAlpha = aLook.y * smoothstep(0.0, 0.06, t) * (1.0 - smoothstep(0.3, 1.0, t));
-        // Fresh smoke is darker; it pales as it thins out.
-        vGrey = mix(aLook.x, min(1.0, aLook.x + 0.3), t);
+        vAlpha = aLook.y * smoothstep(0.0, 0.08, t) * pow(1.0 - smoothstep(0.22, 1.0, t), 1.25);
+        // Fresh smoke is darker; it pales as it thins out. Each puff a little different.
+        vGrey = mix(aLook.x, min(1.0, aLook.x + 0.3), t) * (0.88 + 0.24 * fract(aSeed * 13.7));
         #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */ `

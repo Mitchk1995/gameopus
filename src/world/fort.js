@@ -26,8 +26,8 @@ export async function buildFort(sk, sites) {
   const fort = banditFort(sk, xm);
   const goblins = goblinCamp(sk, xm);
   // Smoke from the two camps' cook fires (fight.js lights them; it makes flames but no smoke).
-  for (const c of [BANDIT_CAMP, GOBLIN_CAMP]) smoke.add(c.x, sk.ground(c.x, c.z) + 1.2, c.z, { puffs: 22, life: 14, rise: 26, size: [0.4, 5.5], grey: 0.66, opacity: 0.6, spread: 1.4, seed: c.x });
-  const trees = clearTrees(sk.world, (x, z, r) => Math.hypot(x - BANDIT_CAMP.x, z - BANDIT_CAMP.z) < 23 + r || Math.hypot(x - GOBLIN_CAMP.x, z - GOBLIN_CAMP.z) < 18.5 + r);
+  for (const c of [BANDIT_CAMP, GOBLIN_CAMP]) smoke.add(c.x, sk.ground(c.x, c.z) + 1.2, c.z, { puffs: 22, life: 14, rise: 26, size: [0.4, 5.5], grey: 0.6, opacity: 0.5, spread: 1.6, seed: c.x });
+  const trees = clearTrees(sk.world, (x, z, r) => Math.hypot(x - BANDIT_CAMP.x, z - BANDIT_CAMP.z) < CLEAR + r || Math.hypot(x - GOBLIN_CAMP.x, z - GOBLIN_CAMP.z) < 18.5 + r);
   return { ...fort, goblins, treesCleared: trees };
 }
 
@@ -94,7 +94,35 @@ function banditFort(sk, xm) {
     const [x, z] = polar(C, a, 9.6);
     bannerPole(sk, xm, x, z, Math.atan2(-Math.cos(a), -Math.sin(a)), flagTex, rnd);
   }
+  // The bandits felled the trees round their stockade for a clear field of view: stumps are left.
+  const avoid = [polar(C, west, R + 6.5), eIn];
+  let placed = 0;
+  for (let i = 0; i < 60 && placed < 16; i++) {
+    const a = rnd() * TAU, r = R + 3 + rnd() * (CLEAR - R - 4);
+    const [x, z] = polar(C, a, r);
+    const [rd, rw] = roadDistance(x, z);
+    if (rd < rw + 1.5 || avoid.some(([ax, az]) => Math.hypot(x - ax, z - az) < 6)) continue;
+    const g = sk.ground(x, z), slope = Math.abs(sk.ground(x + 1, z) - sk.ground(x - 1, z)) + Math.abs(sk.ground(x, z + 1) - sk.ground(x, z - 1));
+    if (slope > 1.2) continue;
+    stump(sk, xm, x, z, 0.22 + rnd() * 0.14, 0.3 + rnd() * 0.3, rnd);
+    placed++;
+  }
   return { x: C.x, z: C.z, R, west, east, south, tower: [tx, tz] };
+}
+
+// How far round the fort the trees were cleared.
+const CLEAR = 31;
+
+// A felled tree's stump: a short log with a sawn top and a little root flare.
+function stump(sk, xm, x, z, r, h, rnd) {
+  let g = Infinity;
+  for (const [dx, dz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) g = Math.min(g, sk.ground(x + dx, z + dz));
+  sk.begin('stump', x, z);
+  log(sk, [x, g - 0.3, z], [x, g + h, z], r * 1.25, r, xm.bark, 9);
+  const top = (sk.geo[`stumpTop${r.toFixed(3)}`] ??= new THREE.CylinderGeometry(r * 0.96, r * 0.96, 0.03, 12));
+  sk.put(top, sk.m.logEnd, x, g + h - 0.02, z, rnd() * TAU);
+  const sh = sk.colliders.addCircle(x, z, r * 1.1, g - 0.3, g + h);
+  sh.floor = true;
 }
 
 // One length of palisade: sharpened logs set in the ground, two rails binding them on the inside.
@@ -122,8 +150,10 @@ function palisadeChunk(sk, xm, C, R, a0, a1, rnd, { first, last }) {
   const p0 = polar(C, a0 + 0.004, R - 0.24), p1 = polar(C, a1 - 0.004, R - 0.24);
   for (const h of [0.95, 2.55]) log(sk, [p0[0], sk.ground(p0[0], p0[1]) + h, p0[1]], [p1[0], sk.ground(p1[0], p1[1]) + h, p1[1]], 0.075, 0.075, xm.barkDark, 6);
   const len = (a1 - a0) * R;
-  // Taller than the logs: a jump from the walkway (deck 2.2 m, jump ~1.1 m) must not carry anyone over.
-  sk.colliders.addBox(cx, cz, len / 2 + 0.02, 0.3, -am + Math.PI / 2, low - 0.5, hi + 4.4);
+  sk.colliders.addBox(cx, cz, len / 2 + 0.02, 0.3, -am + Math.PI / 2, low - 0.5, hi + 3.3);
+  // Above the points, a band only people meet: a jump from the walkway (deck 2.2 m, jump ~1.1 m)
+  // must not carry anyone over, and the camera should not bump on air over the stakes.
+  sk.colliders.addBox(cx, cz, len / 2 + 0.02, 0.3, -am + Math.PI / 2, hi + 3.3, hi + 4.4).noCamera = true;
 }
 
 // A gateway: two tall posts, a crossbeam, skulls on the posts, a banner hanging from the beam.

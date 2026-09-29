@@ -194,7 +194,8 @@ const CLASS = {
 // for the signposts. The first six keep their old indexes (the town test and the ledger quest read
 // them): 0 Quarry Road, 1 Bridge Street, 2 Lake Street, 3 farm lane, 4 farm gate track, 5 woodcutters' track.
 // `zone` deepens the cutting round a pass, so the road runs in a gorge. `grade` overrides the class's
-// steepest grade (Bridge Street climbs the fort's rise as a steep ramp instead of a trench).
+// steepest grade (Bridge Street climbs the fort's rise as a steep ramp instead of a trench); `infl` how far its
+// cutting reaches (the Yard Path's switchback runs under the headframe's yard and must not undercut it).
 const ROAD_DEFS = [
   { id: 'quarry', name: 'Quarry Road', cls: 'road', ends: ['Ashford', 'the Quarry'], way: [[-27, -22], [-29, -36], [-72, -86], [-120, -122], [-160, -140]] },
   { id: 'bridge', name: 'Bridge Street', cls: 'road', grade: 0.24, ends: ['Ashford', 'Bandit Fort'], way: [[32, 15], [50, 13], [70, 4], [110, 2], [140, 14], [162, 34], [196, 50], [230, 58], [247, 64]] },
@@ -209,7 +210,7 @@ const ROAD_DEFS = [
   // --- tracks and footpaths to the places worth walking to
   { id: 'abbey', name: 'Pilgrims\' Way', cls: 'track', ends: ['Quarry Road', 'the Abbey'], width: 2.0, way: [[-30, -38], [-24, -76], [-16, -108], [10, -124], [34, -136], [44, -147], [32, -155], [0, -160], [-30, -165], [-42, -174], [-32, -183], [0, -188], [28, -191], [40, -200], [28, -207], [0, -209], [-22, -211], [-12, -216]] },
   { id: 'goblin', name: 'Goblin Trail', cls: 'path', ends: ['Quarry Road', 'Goblin Camp'], way: [[-72, -86], [-84, -64], [-92, -50]] },
-  { id: 'headframe', name: 'Yard Path', cls: 'path', ends: ['the Quarry', 'the Headframe'], way: [[-160, -140], [-150, -150], [-152, -162], [-166, -166], [-190, -161], [-208, -161], [-214, -167], [-204, -172], [-195, -172]] },
+  { id: 'headframe', name: 'Yard Path', cls: 'path', ends: ['the Quarry', 'the Headframe'], infl: 4, way: [[-160, -140], [-150, -150], [-152, -162], [-166, -166], [-190, -159], [-209, -159], [-216, -166], [-205, -172], [-196, -172]] },
   { id: 'stones', name: 'Stones Path', cls: 'path', ends: ['Bridge Street', 'the Standing Stones'], way: [[66, 4], [68, -40], [72, -80], [74, -90]] },
   { id: 'sawmill', name: 'Mill Track', cls: 'track', ends: ['Bridge Street', 'the Sawmill'], width: 2.0, way: [[112, 3], [122, -40], [132, -100], [144, -150], [150, -164]] },
   { id: 'ridge', name: 'Ridge Track', cls: 'track', ends: ['the Sawmill', 'the Quarry Ridge'], width: 2.0, way: [[150, -190], [178, -194], [206, -200], [224, -206]] },
@@ -224,7 +225,7 @@ const ROAD_DEFS = [
 
 export const ROADS = ROAD_DEFS.map((d) => {
   const c = CLASS[d.cls];
-  return { ...d, width: d.width ?? c.width, half: d.half ?? c.half, grade: d.grade ?? c.grade, cut: c.cut, fill: c.fill, infl: c.infl, paint: c.paint, pts: curve(d.way, d.steps || 6) };
+  return { ...d, width: d.width ?? c.width, half: d.half ?? c.half, grade: d.grade ?? c.grade, cut: c.cut, fill: c.fill, infl: d.infl ?? c.infl, paint: c.paint, pts: curve(d.way, d.steps || 6) };
 });
 export const roadById = (id) => ROADS.find((r) => r.id === id);
 // The stone bridge on Bridge Street, where the road crosses the river.

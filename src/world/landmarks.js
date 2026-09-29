@@ -234,25 +234,47 @@ function rubble(sk, xm, x, z, R, H, rnd, label = 'rubble') {
   const y = sk.ground(x, z);
   sk.begin(label, x, z);
   const m = sk.m;
-  // On sloping ground the mound sits in the lowest ground under it and rises over the highest.
-  let lo = y, hi = y;
-  for (let a = 0; a < TAU; a += TAU / 8) { const g = sk.ground(x + Math.cos(a) * R, z + Math.sin(a) * R); lo = Math.min(lo, g); hi = Math.max(hi, g); }
-  const MH = +(H * 0.62 + (hi - lo)).toFixed(2), RZ = +(R * (0.8 + rnd() * 0.3)).toFixed(2), y0 = lo - 0.1;
-  // Built at its true size, so the stone keeps the kit's scale (a squashed unit dome would stretch it).
-  const mound = (sk.geo[`mound${R}|${MH}|${RZ}`] ??= new THREE.SphereGeometry(1, 12, 5, 0, TAU, 0, Math.PI / 2).scale(R, MH, RZ));
-  sk.put(mound, m.stone, x, y0, z, rnd() * TAU);
-  const n = Math.round(5 + R * R * 4);
-  for (let i = 0; i < n; i++) {
-    const a = rnd() * TAU, d = Math.sqrt(rnd()) * R * 0.85;
-    const px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
-    const w = 0.35 + rnd() * 0.4, h = 0.2 + rnd() * 0.22, dd = 0.28 + rnd() * 0.3;
-    const surf = y0 + MH * Math.sqrt(Math.max(0, 1 - (d / R) ** 2));
-    // Resting on the mound or the ground, never above the mound's top (so the heap is one pile).
-    const py = Math.min(y0 + MH - 0.05, Math.max(sk.ground(px, pz) - 0.1, surf - h * 0.45));
-    sk.put(sk.box(+w.toFixed(2), +h.toFixed(2), +dd.toFixed(2)), rnd() < 0.7 ? m.stone : m.rock, px, py, pz, rnd() * TAU, 1, 1, 1, (rnd() - 0.5) * 0.4, (rnd() - 0.5) * 0.4);
+  let lo = y;
+  for (let a = 0; a < TAU; a += TAU / 8) lo = Math.min(lo, sk.ground(x + Math.cos(a) * R, z + Math.sin(a) * R));
+  // A footing slab buried under the heap ties the blocks into one pile (it never shows).
+  sk.put(sk.box(+(R * 2).toFixed(2), 0.3, +(R * 2).toFixed(2)), m.stone, x, lo - 0.34, z, rnd() * TAU);
+  // Fallen blocks in courses: a wide bottom course on the ground, fewer and smaller above, each
+  // resting on what is under it, tipped at odd angles; small chips scattered round the foot.
+  let top = y;
+  const courses = Math.max(1, Math.round(H / 0.3));
+  let below = [];
+  for (let c = 0; c < courses; c++) {
+    const rr = R * (1 - c / (courses + 0.6)), n = Math.max(2, Math.round((rr * rr * 3.2) / (1 + c * 0.4)));
+    const here = [];
+    for (let i = 0; i < n; i++) {
+      const w = 0.42 + rnd() * 0.4 - c * 0.05, h = 0.24 + rnd() * 0.16, dd = 0.3 + rnd() * 0.28;
+      let px, pz, py;
+      if (c === 0) {
+        const a = rnd() * TAU, d = Math.sqrt(rnd()) * rr * 0.85;
+        px = x + Math.cos(a) * d; pz = z + Math.sin(a) * d;
+        if (sk.ground(px, pz) > lo + 0.08) continue; // (sloping ground: keep to the low side)
+        py = sk.ground(px, pz) - 0.1;
+      } else {
+        // Every upper block rests on one below it, a little off its centre.
+        const b = below[Math.floor(rnd() * below.length)];
+        if (!b) break;
+        px = b[0] + (rnd() - 0.5) * 0.3; pz = b[1] + (rnd() - 0.5) * 0.3;
+        if (Math.hypot(px - x, pz - z) > rr) continue;
+        py = b[2] - 0.06;
+      }
+      top = Math.max(top, py + h);
+      here.push([px, pz, py + h]);
+      sk.put(sk.box(+w.toFixed(2), +h.toFixed(2), +dd.toFixed(2)), m.stone, px, py, pz, rnd() * TAU, 1, 1, 1, (rnd() - 0.5) * 0.35, (rnd() - 0.5) * 0.35);
+    }
+    below = here;
   }
-  const top = y0 + MH + 0.22;
-  const sh = sk.colliders.addCircle(x, z, R * 0.92, y - 0.5, top);
+  for (let i = 0; i < Math.round(R * 6); i++) {
+    const a = rnd() * TAU, d = R * (0.8 + rnd() * 0.2);
+    const px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d, s = 0.14 + rnd() * 0.12;
+    if (sk.ground(px, pz) > lo + 0.04) continue;
+    sk.put(sk.box(+s.toFixed(2), +(s * 0.7).toFixed(2), +(s * 1.2).toFixed(2)), m.stone, px, sk.ground(px, pz) - 0.05, pz, rnd() * TAU, 1, 1, 1, (rnd() - 0.5) * 0.4, 0);
+  }
+  const sh = sk.colliders.addCircle(x, z, R * 0.9, y - 0.5, top);
   if (top - y <= 1.02) sh.floor = true;
 }
 
@@ -347,8 +369,8 @@ function buttress(sk, f, lx, face, base, w, rnd) {
   sk.block(f, lx, face + 0.55, w, 1.1, base + h1, m.stone);
   sk.block(f, lx, face + 0.35, w * 0.82, 0.7, base + h2, m.stone, { bottom: base + h1 - 0.02 });
   // Weatherings: stone wedges sloping away from the wall on top of each stage.
-  sk.profile(f, lx, face, base + h1 - 0.02, [[0, 0], [1.1, 0], [0.7, 0.35], [0, 0.62]], w, m.rock, { turn: -Math.PI / 2 });
-  sk.profile(f, lx, face, base + h2 - 0.02, [[0, 0], [0.7, 0], [0, 0.75]], w * 0.82, m.rock, { turn: -Math.PI / 2 });
+  sk.profile(f, lx, face, base + h1 - 0.02, [[0, 0], [1.1, 0], [0.7, 0.35], [0, 0.62]], w, m.stone, { turn: -Math.PI / 2 });
+  sk.profile(f, lx, face, base + h2 - 0.02, [[0, 0], [0.7, 0], [0, 0.75]], w * 0.82, m.stone, { turn: -Math.PI / 2 });
 }
 
 // The cloister walk's arcade: piers and round arches with a coping, running along lx at lz. Three
@@ -380,7 +402,7 @@ function fallenDrum(sk, f, base, lx, lz, yaw, rnd) {
   const y = sk.ground(x, z);
   sk.begin('abbey column drum', x, z);
   const g = (sk.geo.drum ??= new THREE.CylinderGeometry(0.42, 0.42, 1.1, 14).rotateZ(Math.PI / 2));
-  sk.put(g, sk.m.rock, x, y + 0.34, z, yaw + rnd() * 0.3);
+  sk.put(g, sk.m.stone, x, y + 0.34, z, yaw + rnd() * 0.3);
   const sh = sk.colliders.addBox(x, z, 0.55, 0.4, yaw, y - 0.3, y + 0.76);
   sh.floor = true;
 }
@@ -528,7 +550,7 @@ function beacon(sk, xm, sites, smoke, keep) {
   fire.light.distance = 16;
   fire.light.intensity = 7;
   sites.updaters.push((dt) => fire.update(dt));
-  smoke.add(L.x, dy + 2.6, L.z, { puffs: 48, life: 22, rise: 60, size: [1.2, 15], grey: 0.56, opacity: 0.8, spread: 5, seed: 3 });
+  smoke.add(L.x, dy + 2.6, L.z, { puffs: 48, life: 22, rise: 60, size: [1.0, 14], grey: 0.52, opacity: 0.76, spread: 5, seed: 3 });
   keep.push(circleOut(L.x, L.z, 14));
   return { x: L.x, z: L.z, base, top: base + TOP + 1.85, fire };
 }
@@ -628,10 +650,10 @@ function headframe(sk, xm, smoke, keep) {
   sk.put(sk.box(1.02, 0.28, 1.02), m.rock, cx, base + chH - 0.3, cz, f.yaw);
   sk.put(sk.box(0.6, 0.02, 0.6), xm.dark, cx, base + chH - 0.01, cz, f.yaw);
   sk.colliders.addBox(cx, cz, 0.55, 0.55, f.yaw, base - 0.5, base + chH);
-  smoke.add(cx, base + chH + 0.1, cz, { puffs: 44, life: 22, rise: 56, size: [0.9, 13], grey: 0.7, opacity: 0.8, spread: 4.2, seed: 7 });
+  smoke.add(cx, base + chH + 0.1, cz, { puffs: 44, life: 22, rise: 56, size: [0.8, 13], grey: 0.58, opacity: 0.76, spread: 4.2, seed: 7 });
   // --- a stack of pit props by the path, and spoil tipped over the yard's edge
-  timberStack(sk, f, base, -6.8, 4.1, xm);
-  for (const [lx, lz, R, Hh] of [[-1.6, 5.4, 1.3, 1.0], [3.4, 5.6, 1.1, 0.8]]) { const [x, z] = f.at(lx, lz); rubble(sk, xm, x, z, R, Hh, rng(lx * 100 + lz), 'spoil heap'); }
+  timberStack(sk, f, base, 2.0, 4.2, xm);
+  for (const [lx, lz, R, Hh] of [[-1.2, 4.3, 1.2, 1.0], [5.8, 4.6, 1.0, 0.8]]) { const [x, z] = f.at(lx, lz); rubble(sk, xm, x, z, R, Hh, rng(lx * 100 + lz), 'spoil heap'); }
   keep.push(circleOut(L.x, L.z, 12));
   return { x: L.x, z: L.z, base, top: wheelY + WR, chimney: [cx, base + chH, cz] };
 }
