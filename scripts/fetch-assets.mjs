@@ -1,7 +1,7 @@
 // Downloads the game's free art (CC0/MIT) and optimizes it into public/assets/.
 //   node scripts/fetch-assets.mjs [step ...]     steps: quaternius, polyhaven, trees (default: all)
 // Raw downloads are cached in .asset-cache/ (gitignored); the optimized output is committed.
-import { mkdir, readFile, writeFile, readdir, copyFile, stat } from 'node:fs/promises';
+import { mkdir, writeFile, readdir, copyFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';

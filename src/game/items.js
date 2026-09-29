@@ -61,16 +61,18 @@ for (const [metal, m] of Object.entries(METALS)) {
   add(`${metal}_arrowtips`, { name: `${cap(metal)} arrowtips`, stack: true, value: 2 * m.tier, examine: 'Arrowtips, ready for fletching.', art: { kind: 'tips', color: m.color } });
   add(`${metal}_arrow`, { name: `${cap(metal)} arrows`, stack: true, value: 3 * m.tier, equip: 'ammo', rangedStr: [7, 10, 16][m.tier - 1], req: { ranged: m.level }, examine: `Arrows with ${metal} tips.`, art: { kind: 'arrow', tip: m.color } });
 }
+// id, name, ranged level, fletching level (sets the value; the recipes are in content.js),
+// colour, length, accuracy
 const BOWS = [
-  ['shortbow', 'Shortbow', 1, 5, 0xa9855a, 0.8, 8, 'logs'],
-  ['longbow', 'Longbow', 1, 10, 0xa9855a, 1.0, 8, 'logs'],
-  ['oak_shortbow', 'Oak shortbow', 5, 20, 0x8a6236, 0.8, 14, 'oak_logs'],
-  ['oak_longbow', 'Oak longbow', 5, 25, 0x8a6236, 1.0, 14, 'oak_logs'],
-  ['pine_shortbow', 'Pine shortbow', 20, 35, 0xc9a66b, 0.8, 29, 'pine_logs'],
-  ['pine_longbow', 'Pine longbow', 20, 40, 0xc9a66b, 1.0, 29, 'pine_logs'],
+  ['shortbow', 'Shortbow', 1, 5, 0xa9855a, 0.8, 8],
+  ['longbow', 'Longbow', 1, 10, 0xa9855a, 1.0, 8],
+  ['oak_shortbow', 'Oak shortbow', 5, 20, 0x8a6236, 0.8, 14],
+  ['oak_longbow', 'Oak longbow', 5, 25, 0x8a6236, 1.0, 14],
+  ['pine_shortbow', 'Pine shortbow', 20, 35, 0xc9a66b, 0.8, 29],
+  ['pine_longbow', 'Pine longbow', 20, 40, 0xc9a66b, 1.0, 29],
 ];
-for (const [id, name, rangedLvl, fletchLvl, color, len, acc, logs] of BOWS) {
-  add(`${id}_u`, { name: `${name} (u)`, value: fletchLvl * 3, examine: 'Needs a string.', fletch: { level: fletchLvl, logs }, art: { kind: 'bow', color, len, strung: false } });
+for (const [id, name, rangedLvl, fletchLvl, color, len, acc] of BOWS) {
+  add(`${id}_u`, { name: `${name} (u)`, value: fletchLvl * 3, examine: 'Needs a string.', art: { kind: 'bow', color, len, strung: false } });
   add(id, { name, value: fletchLvl * 8, equip: 'weapon', twoHanded: true, style: 'bow', req: { ranged: rangedLvl }, bonus: { rangedAcc: acc }, speed: len > 0.9 ? 2.4 : 1.8, examine: `A ${name.toLowerCase()}.`, art: { kind: 'bow', color, len, strung: true } });
 }
 
@@ -94,7 +96,7 @@ add('knife', { name: 'Knife', value: 1, tool: 'knife', examine: 'For fletching.'
 
 // ---------------------------------------------------------------- weapons and armour
 const ARMOUR = [
-  // id, name, slot, bars, smith level offset, defence per tier, art
+  // kind, name, slot, bars, smith level offset, defence per tier
   ['dagger', 'dagger', 'weapon', 1, 0, null],
   ['sword', 'sword', 'weapon', 1, 4, null],
   ['scimitar', 'scimitar', 'weapon', 2, 5, null],

@@ -1,11 +1,5 @@
 import './hud.css';
-
-const el = (tag, cls, html) => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (html !== undefined) e.innerHTML = html;
-  return e;
-};
+import { el } from './dom.js';
 
 const CONTROLS = [
   ['W A S D', 'Move (jog)'], ['Mouse', 'Look'],
@@ -76,7 +70,6 @@ export class Hud {
     if (label) this.playButton.textContent = label;
   }
 
-  // target: { verb, noun, level?, locked? } or null
   // Aiming a bow or a staff: the ring tightens as the shot is drawn.
   setAim(a) {
     this.ring.hidden = this.ammoEl.hidden = !a;
@@ -88,6 +81,7 @@ export class Hud {
     if (this.ammoEl.textContent !== a.label) this.ammoEl.textContent = a.label;
   }
 
+  // target: { verb, noun, level? } or null
   setPrompt(target) {
     const key = target ? `${target.verb}|${target.noun}|${target.level || ''}` : '';
     if (key === this.lastPrompt) return;

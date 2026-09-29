@@ -3,14 +3,7 @@ import { ITEMS } from '../game/items.js';
 import { SKILLS, SKILL, xpForLevel, MAX_LEVEL } from '../game/skills.js';
 import { SLOTS } from '../game/state.js';
 import { icon, SKILL_COLOR } from './icons.js';
-
-const el = (tag, cls, html) => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (html !== undefined) e.innerHTML = html;
-  return e;
-};
-const fmt = (n) => n.toLocaleString('en-US');
+import { el, fmt, qtyLabel } from './dom.js';
 
 // What the collection log tracks, section by section.
 const COLLECTION = [
@@ -18,14 +11,10 @@ const COLLECTION = [
   { name: 'Bandit captain', kill: 'Bandit captain', items: ['captains_cutlass', 'pet_magpie'] },
   { name: 'Skilling pets', items: ['pet_sapling', 'pet_golem', 'pet_frogling'] },
 ];
-export function qtyLabel(n) {
-  if (n >= 10_000_000) return [`${Math.floor(n / 1_000_000)}M`, 'm'];
-  if (n >= 100_000) return [`${Math.floor(n / 1000)}K`, 'k'];
-  return [String(n), ''];
-}
 
-// The side panel (inventory / worn / skills), the tooltip and right-click menu, the
-// goal tracker with experience drops, the message log and level-up banners.
+// The side panel (inventory / worn / skills / quests / collection log), the tooltip and
+// right-click menu, the goal tracker with experience drops, the message log and level-up
+// banners.
 //
 // The game supplies behaviour through `actions`:
 //   primary(slot)            left click on an inventory slot
@@ -34,6 +23,10 @@ export function qtyLabel(n) {
 //   unequip(slotName)        click on a worn slot
 //   useOn(fromSlot, toSlot)  "Use" one item on another
 //   guide(skillId)           click on a skill
+//   pet(itemId)              click on a pet in the collection log
+//   quests(pane)             draws the quest tab into pane
+//   nextUnlock(skill, level) -> {label, level}   the goal tracker's "Next:" line
+//   unlocksAt(skill, level) -> [label]           what a level-up banner lists
 export class Panels {
   constructor({ state, studio, actions }) {
     this.state = state;
@@ -149,7 +142,7 @@ export class Panels {
       const got = sec.items.filter((id) => log[id]).length;
       const head = el('div', 'clog-head', `<span>${sec.name}</span><small>${got}/${sec.items.length}</small>`);
       box.append(head);
-      if (sec.kill) box.append(el('div', 'clog-kc', `Kills: ${(kills[sec.kill] || 0).toLocaleString('en-US')}`));
+      if (sec.kill) box.append(el('div', 'clog-kc', `Kills: ${fmt(kills[sec.kill] || 0)}`));
       const grid = el('div', 'grid');
       for (const id of sec.items) {
         const cell = el('div', `slot${log[id] ? ' full' : ''}`);

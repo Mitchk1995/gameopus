@@ -2,14 +2,7 @@ import './menus.css';
 import { ITEMS } from '../game/items.js';
 import { SKILL } from '../game/skills.js';
 import { icon, SKILL_COLOR } from './icons.js';
-import { qtyLabel } from './panels.js';
-
-const el = (tag, cls, html) => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (html !== undefined) e.innerHTML = html;
-  return e;
-};
+import { el, fmt, qtyLabel } from './dom.js';
 
 // A centred window with a title, a close button, a scrolling body and a footer.
 class Win {
@@ -121,7 +114,7 @@ export class Menus {
       const cell = el('div', 'slot full');
       const [q, cls] = qtyLabel(s.n);
       cell.innerHTML = `<img alt="${ITEMS[s.id].name}" src="${this.studio.icon(s.id)}"><span class="qty ${cls}">${q}</span>`;
-      cell.title = `${ITEMS[s.id].name} (${s.n.toLocaleString('en-US')})`;
+      cell.title = `${ITEMS[s.id].name} (${fmt(s.n)})`;
       cell.addEventListener('click', () => this.bank.onWithdraw(i, this.qty));
       cell.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -134,7 +127,7 @@ export class Menus {
   }
 
   // ------------------------------------------------------------ make
-  // recipes: [{ out, n, level, skill, needs: [[id, n]], ok, short, key }]
+  // recipes: [{ out, n, level, skill, needs: [[id, n]], locked, short }]
   openMake({ title, sub, recipes, onMake }) {
     this.kind = 'make';
     this.win.title(title, sub);
@@ -186,13 +179,13 @@ export class Menus {
       const cell = el('div', 'slot full');
       const [q, cls] = qtyLabel(s.n);
       cell.innerHTML = `<img alt="${it.name}" src="${this.studio.icon(s.id)}"><span class="qty ${cls}">${q}</span>`;
-      cell.title = `${it.name}: ${s.price.toLocaleString('en-US')} coins`;
+      cell.title = `${it.name}: ${fmt(s.price)} coins`;
       cell.addEventListener('click', () => this.shop.onBuy(s, this.qty));
       grid.append(cell);
     }
     this.win.body.innerHTML = '';
     this.win.body.append(grid);
-    this.coinsEl.textContent = `You have ${this.state.inv.count('coins').toLocaleString('en-US')} coins`;
+    this.coinsEl.textContent = `You have ${fmt(this.state.inv.count('coins'))} coins`;
   }
 
   // ------------------------------------------------------------ skill guide

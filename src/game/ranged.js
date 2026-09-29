@@ -67,12 +67,10 @@ export class Ranged {
     this.zoom = input.buttons.has(2);
     this.cool = Math.max(0, this.cool - dt);
     const free = P.state === 'move';
-    if (input.clicked.has(0) && !this.drawing && free && this.cool <= 0) {
-      if (this.#ready()) {
-        this.drawing = true;
-        this.draw = 0;
-        g.audio.play(this.style === 'bow' ? 'draw' : 'charge', P.pos, 0.7);
-      }
+    if (input.clicked.has(0) && !this.drawing && free && this.cool <= 0 && this.#ready()) {
+      this.drawing = true;
+      this.draw = 0;
+      g.audio.play(this.style === 'bow' ? 'draw' : 'charge', P.pos, 0.7);
     }
     if (this.drawing) {
       if (!free) return this.#cancel();
@@ -129,7 +127,7 @@ export class Ranged {
     const draw = this.draw;
     this.#cancel();
     this.cool = 0.3;
-    const aim = this.#aimPoint();
+    const aim = this.aimPoint();
     if (this.style === 'bow') {
       const ammo = st.equip.ammo;
       st.ammo -= 1;
@@ -139,7 +137,7 @@ export class Ranged {
         g.panels.message('You have run out of arrows.', 'bad');
       }
       st.changed('equip');
-      g.panels.renderWorn?.();
+      g.panels.renderWorn();
       const from = g.aim.nock.clone();
       const speed = ARROW_SPEED * (0.55 + 0.45 * draw);
       const to = aim.clone().sub(from);
@@ -163,16 +161,11 @@ export class Ranged {
       this.shots.push({ kind: 'spell', spell: s, pos: from, vel, life: 2.5, homing: lock, yaw: P.yaw, color: new THREE.Color(s.glow), core: new THREE.Color(s.color) });
       this.#burst(from, s.glow, 8, 1.5);
       g.audio.play('cast', P.pos);
-      g.player.flick?.();
     }
   }
 
   // Where the crosshair meets something: an enemy, a wall, the ground, or far away.
   aimPoint() {
-    return this.#aimPoint();
-  }
-
-  #aimPoint() {
     const g = this.game, f = g.fight;
     if (f.lock?.alive) return f.lock.pos.clone().setY(f.lock.pos.y + f.lock.height * 0.6);
     const cam = g.camera.position.clone(), fwd = g.rig.forward(new THREE.Vector3());

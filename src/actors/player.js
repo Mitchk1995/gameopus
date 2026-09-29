@@ -37,7 +37,6 @@ export class Player {
     this.action = null;
     this.gait = 'Idle_Loop';
     this.invulnerable = false;
-    this.moved = 0;
     this.swingMode = 'full';
     this.swingW = 0;
     this.swingIn = 0;
@@ -214,7 +213,7 @@ export class Player {
     const ahead = this.state === 'attack' ? Math.max(0, (m.lunge || 0) - this.lungeDone) : 0;
     // Tipping the spine moves the shoulder too, so settle on the angle over a few passes:
     // pose with the guess, look where the shoulder ended up, and correct.
-    let phi = 0, info = null;
+    let phi = 0;
     for (let pass = 0; pass < 3; pass++) {
       bones.forEach((b, i) => b.quaternion.copy(snap[i]));
       if (pass) tiltUpper(this.char, this.yaw, phi * this.leanW, SWING_LEAN);
@@ -225,11 +224,9 @@ export class Player {
       const p = this.aimTarget || raySphere(this.aimOrigin, this.aimDir, c, m.aimReach ?? 1.1, tmp);
       const pitch = Math.atan2(p.y - c.y, Math.max(0.4, Math.hypot(p.x - c.x, p.z - c.z)));
       phi = THREE.MathUtils.clamp(pitch - (m.aimPitch ?? 0), -0.9, 0.9);
-      info = { pitch, phi };
     }
     bones.forEach((b, i) => b.quaternion.copy(snap[i]));
     tiltUpper(this.char, this.yaw, phi * this.leanW, SWING_LEAN);
-    this.leanInfo = info;
   }
 
   get attackPhase() {
@@ -286,12 +283,8 @@ export class Player {
     // Lunge with the clip's root motion, scaled to the move's reach, up to the hit.
     const curve = rootMotion.clips[m.clip];
     if (curve && m.lunge && t <= m.hit + 0.05) {
-      const at = (x) => {
-        const f = Math.min(curve.length - 1, Math.max(0, x * rootMotion.hz)), i = Math.floor(f);
-        return curve[i] + ((curve[Math.min(i + 1, curve.length - 1)] - curve[i]) * (f - i));
-      };
-      const total = at(m.hit + 0.05) - at(from);
-      const want = total > 0.01 ? ((at(t) - at(from)) / total) * m.lunge : 0;
+      const start = travelled(curve, from), total = travelled(curve, m.hit + 0.05) - start;
+      const want = total > 0.01 ? ((travelled(curve, t) - start) / total) * m.lunge : 0;
       const step = Math.max(0, want - this.lungeDone);
       this.lungeDone += step;
       this.pos.x += Math.sin(this.yaw) * step;
@@ -363,7 +356,7 @@ export class Player {
     const prev = this._prev || (this._prev = new THREE.Vector3());
     prev.copy(this.pos);
     let target = 0;
-    if (this.state === 'roll') this.#rollStep(dt);
+    if (this.state === 'roll') this.#rollStep();
     else if (this.state === 'attack') {
       this.#attackStep(dt);
       // Swinging on the move: keep going at a reduced pace, body still facing the swing.
@@ -397,7 +390,6 @@ export class Player {
     this.#collide(prev);
     this.#fall(dt);
     const d = Math.hypot(this.pos.x - prev.x, this.pos.z - prev.z);
-    this.moved += d;
     if (this.state === 'move' || (this.state === 'attack' && this.swingMode === 'layered')) this.#animate(dt, d / Math.max(dt, 1e-4), target);
     this.#sync();
   }
@@ -433,12 +425,9 @@ export class Player {
     this.char.play(ROLL.clip, { loop: false, speed: ROLL.rate, fade: 0.08, restart: true });
   }
 
-  #rollStep(dt) {
+  #rollStep() {
     const t = this.stateTime * ROLL.rate;
-    const curve = rootMotion.clips[ROLL.clip];
-    const f = Math.min(curve.length - 1, t * rootMotion.hz);
-    const i = Math.floor(f);
-    const dist = (curve[i] + ((curve[Math.min(i + 1, curve.length - 1)] - curve[i]) * (f - i))) * ROLL.scale;
+    const dist = travelled(rootMotion.clips[ROLL.clip], t) * ROLL.scale;
     const step = dist - this.rollDone;
     this.rollDone = dist;
     this.pos.x += this.rollDir.x * step;
@@ -560,4 +549,10 @@ export class Player {
     this.char.root.position.copy(this.pos);
     this.char.root.rotation.y = this.yaw;
   }
+}
+
+// Metres a clip's root has moved forward by clip time t, from its sampled root motion.
+function travelled(curve, t) {
+  const f = Math.min(curve.length - 1, Math.max(0, t * rootMotion.hz)), i = Math.floor(f);
+  return curve[i] + (curve[Math.min(i + 1, curve.length - 1)] - curve[i]) * (f - i);
 }

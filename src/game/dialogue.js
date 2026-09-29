@@ -64,7 +64,6 @@ export class Dialogue {
     const last = this.page >= this.pages.length - 1;
     const options = last ? this.#options() : [{ label: 'Continue.', run: () => (this.page++, this.#show()) }];
     this.game.talk.show(this.npc.name, line.text, options, { kind: line.kind, onSay: this.game.chat.available ? (t) => this.#type(t) : null });
-    this.current = { text: line.text, options };
   }
 
   #options() {
