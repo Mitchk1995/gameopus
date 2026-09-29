@@ -119,6 +119,18 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   fails a piece of furniture whose parts don't touch (a hovering lantern or beam) and walls with a gap under
   them on falling ground. Kit props using the page material (`Scroll_*`, `Book_*`) fail `look.py`: leave them out.
 
+- Ashford Vale v2 (in progress, branch `world-v2`, see DESIGN.md "Ashford Vale v2" for the plan and a done/not-done
+  checklist): `src/world/map.js` is now the whole region as data: `RIM` (foot of the mountain wall), hills, `ROADS`
+  (22 roads in classes road/track/path, each with a cut-and-fill profile made on first use), `JUNCTIONS` (signpost boards
+  computed from the road graph), `EXITS` (three sealed passes, `locked: true`), `POIS` (eight flattened pads for the next
+  helper), `LANDMARKS`, `WARNINGS`, `rings(x, z)` and `biomeAt(x, z)`. `node scripts/bake-world.mjs` writes `height.bin`,
+  `ground.png` and two biome maps (`biome_a/b.png`); `node scripts/vale-plan.mjs out.jpg [--px 4 --box x0,z0,x1,z1]` draws
+  the plan (also good for zoomed hill and road crops). Structures go through `SiteKit` (`sitekit.js`, a `TownKit` with frames,
+  blocks, profiles; its audit ids start at 1e6 so they never clash with the village's) and `Sites` (`sites.js`, built after the
+  village; `bridge.js` is the first client). Roads follow `surface0` (land plus pads, before roads, river and lake), so a road
+  that climbs faster than its grade shows as a deep cutting: check `.scratch`-style profile deviations after moving waypoints.
+  The town terrace is never cut by roads (they only cut beyond 12 m outside the wall).
+
 ## Open feedback from the player (do these next)
 
 1. **Characters and buildings look textureless.** Every character and village material

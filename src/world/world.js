@@ -6,6 +6,7 @@ import { Forest } from './trees.js';
 import { Colliders } from './colliders.js';
 import { Grass } from './grass.js';
 import { Village } from './village.js';
+import { Sites } from './sites.js';
 import { WORLD } from './map.js';
 
 export const STEP = 0.45;
@@ -30,6 +31,8 @@ export class World {
     this.forest = await new Forest({ ...ctx, terrain: this.terrain }).load();
     this.grass = new Grass({ scene: this.scene, terrain: this.terrain });
     this.village = await new Village({ ...ctx, world: this }).load();
+    this.sites = await new Sites({ ...ctx, world: this }).load();
+    this.updaters.push((dt) => this.sites.update(dt));
     for (const t of this.forest.trees) {
       if (t.radius > 0.05) t.collider = this.colliders.addCircle(t.x, t.z, t.radius, t.y - 2, t.y + 40, { tree: t });
     }

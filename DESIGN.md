@@ -234,3 +234,50 @@ waystation inn, stone quarry, sawmill on the river, fishing hamlet, old battlefi
 
 **Deliberately not done here.** No new enemies (the two camps are re-dressed, not moved); no other regions
 behind the passes (they are sealed and end in rock); quests only got new geography in their text, no new steps.
+
+The real layout, drawn from the data: `docs/world/plan.jpg` (exits red, points of interest yellow, landmarks
+blue, junction posts white squares); a 3D overhead is `docs/world/overhead.jpg`.
+
+### Status (first session; the branch is a work in progress)
+
+Done and checked:
+- [x] Terrain shape in `map.js`: the rim wall (`RIM`, stepped face, spurs, named peaks), Abbey Hill, beacon knoll and
+      east ridge, fort rise, mine hill, rocky-heath bumps, marsh band; river with a real source pool at the north cliffs
+      and a course to the lake; the lake nestled against the south cliffs. Reachability by foot stays inside the wall
+      (checked in Node, `.scratch`-style flood; a proper `world.py` check is still to write).
+- [x] Road network as data (`ROADS`: 22 roads in three classes) with cut-and-fill profiles that follow the land at a gentle
+      grade, junction detection and signpost boards computed from the roads (`JUNCTIONS`), warning posts (`WARNINGS`).
+- [x] `EXITS` (north tunnel, east gatehouse, south toll bar, all `locked: true`, with notice text) and the gorge
+      carved beyond the east and south closures; `POIS` (the eight pads, flattened, each on a path); `LANDMARKS` positions.
+- [x] Biome maps baked (`biome_a.png`, `biome_b.png`) and read by the terrain shader (meadow flowers, heath stone, dark wet
+      marsh, scorched dry scrub, mossy woods, sooty mine spoil, cliff strata).
+- [x] The stone **bridge** on Bridge Street (arch, humped walkable deck, kerbs, timber rails, lamps), through `SiteKit`
+      (`sitekit.js`, `bridge.js`, `sites.js`); passes the geometry audit; `town.py` still passes.
+- [x] `scripts/vale-plan.mjs` (top-down plan, `--box`/`--px` for zoomed crops, `--ascii`).
+
+Not done yet (next steps, in this order):
+- [ ] **Closures** (`exits.js`): collapsed-tunnel portal with rubble, barred gatehouse, toll bar with hut; colliders at least
+      2.4 m tall so they can't be hopped; `world.sites.setLocked(id, on)`; notice interactables (`station: 'sign'` in
+      `game.js` `#station`, shown with `talk.show(..., { kind: 'narrate' })` like the wrecked cart). The gorges beyond the
+      east and south closures need the `w` (floor half-width) widened to about 11 m at the closure so towers stand on level ground.
+- [ ] **Signposts** (`waymarks.js`): one post per `JUNCTIONS` row using `TownKit.sign`, the `WARNINGS` posts, a cairn and name
+      board on every POI pad.
+- [ ] **Landmarks** (`landmarks.js`): abbey ruin on Abbey Hill (long south wall with pointed windows, tower stump, gable end),
+      beacon tower with a fire on the knoll, mine headframe + boiler shed + smoke plume at `LANDMARKS.headframe`,
+      lighthouse on the east shore and lantern posts along the jetty. Check by screenshot that three show from the spawn or square.
+- [ ] **Bandit fort** (palisade radius ~19 m round `BANDIT_CAMP`, west and east gates open, watch tower; `fight.js` is off limits
+      and keeps its tents and fire) and goblin camp re-dress (stake arcs, totems) in a new `fort.js`.
+- [ ] **River source** (waterfall ribbon + spray at `FALLS`), reeds in the marsh, tree kinds per ring (`forestDensity`:
+      birch groves, willows, dead pines, heath gorse), keep trees off roads/pads/closures, farm fences and fields.
+- [ ] **Mood** per ring (fog colour and distance, sun tint, exposure blended by `rings(x, z)` each frame, cheap uniforms only).
+- [ ] Minimap: roads by class, exits, POIs. Lore/people/quest text for the new geography (`lore.js`, `people.js`).
+- [ ] `tests/playtest/world.py` (first line `# ci paths=src/world/,src/content/,src/game/,public/assets/world,tests/playtest/world`):
+      reachability from the spawn to every gate, the bridge, closures, mine mouth, dungeon entrance, camps, dock and POI pads;
+      nothing reachable within 60 m of the clamp; river wet from source to lake; nothing inside roads/pads/bridge; a sign at every
+      junction; `locked` flags. Then the full regression (every `# ci` scenario, quest_*, bank_fish_cook, mage_shop, chat,
+      dungeon, ranged, magic, bow_pose, packed_page, `npm run build`, `npm run artifact`).
+- [ ] Street-level and ridge-level screenshots of each exit, landmark and the fort into `docs/world/`.
+
+Known problems to fix on the way: the south end of the lake can be walked to about 5 m past the 326 m line (the lake carve
+softens the cliff there), the east and south passes are perfectly smooth V-notches, the mountain faces show vertical
+"pleats" (add craggy noise and lean the cliff texture), meadow and dry scrub tints are too bleached in bright light.

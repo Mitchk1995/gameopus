@@ -563,7 +563,12 @@ function onBridge(x, z) {
 }
 
 function roadStamp(h, x, z) {
-  for (const e of nearRoads(x, z)) {
+  const list = nearRoads(x, z);
+  if (!list.length) return h;
+  // The town terrace is level and carries its own streets: roads only start to cut outside the walls.
+  const outside = smooth(0, 12, polyDistance(x, z, OUTLINE));
+  if (outside <= 0) return h;
+  for (const e of list) {
     const r = e.r;
     if (r.id === 'bridge' && onBridge(x, z)) continue;
     const cut = e.zone ? e.zone.cut : r.cut, infl = e.zone ? e.zone.infl : r.infl;
@@ -571,8 +576,9 @@ function roadStamp(h, x, z) {
     if (dd > infl) continue;
     // Above the road the ground is cut back; below it, banked up.
     const target = h > e.y ? smin(h, e.y + dd * cut, 1.6) : smax(h, e.y - dd * r.fill, 1.2);
-    h = mix(h, dd < 0.01 ? e.y : target, smooth(infl, infl * 0.6, dd));
-    if (dd < 0.01) h = e.y;
+    const k = outside * smooth(infl, infl * 0.6, dd);
+    h = mix(h, dd < 0.01 ? e.y : target, k);
+    if (dd < 0.01) h = mix(h, e.y, outside);
   }
   return h;
 }
