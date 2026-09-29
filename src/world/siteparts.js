@@ -172,6 +172,9 @@ export function dynamic(sk, scene, fn) {
   sk.batch = b;
   try { fn(); } finally { sk.batch = main; }
   const g = b.build();
+  // These move or go away, so the camera's triangle index (world/solids.js) must not freeze them where they
+  // start: they are left out of it, and the colliders that shut the closure stand in for them (exits.js).
+  g.traverse((o) => { if (o.isMesh) { o.userData.camSolid = false; o.userData.noCamera = true; } });
   scene.add(g);
   (sk.dynamicGroups ??= []).push(g);   // (the pieces that are not in the main batch, for anything that must know them)
   return g;

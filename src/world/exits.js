@@ -304,6 +304,9 @@ export function buildExits(sites) {
 
 // Turns the closure's toggled colliders on or off.
 const setSolid = (shapes, on) => { for (const sh of shapes) sh.removed = !on; };
+// The camera's triangle index leaves out what moves (see dynamic()), so while a closure is shut these colliders
+// stand in for its gate, portcullis, boom or rubble: the camera treats them as solid even under a real mesh.
+const stand = (shapes) => { for (const sh of shapes) sh.keepCamera = true; return shapes; };
 
 // ================================================================== NORTH: the tunnel portal
 function buildTunnel(ctx, e) {
@@ -457,6 +460,7 @@ function buildTunnel(ctx, e) {
     const [x, z] = at((lx0 + lx1) / 2, (lz0 + lz1) / 2);
     shapes.push(w.colliders.addBox(x, z, (lx1 - lx0) / 2, (lz1 - lz0) / 2, f.yaw, y0 - 1.5, y0 + top));
   }
+  stand(shapes);
   seals(ctx, f, HALF - 0.4, HALF + 28, lzM, { rise: 7 });
 
   boulders(ctx, f, [[-4.5, 8.5, 1.05], [4.7, 15.5, 1.25], [-4.7, 22, 0.95], [4.4, 5.0, 0.8]], 51, { road: e.road, avoid: [[5.2, 12.2, 1.6]] });
@@ -660,6 +664,7 @@ function buildGatehouse(ctx, e) {
     const [x, z] = at(0, lz);
     shapes.push(w.colliders.addBox(x, z, R + 0.06, thick / 2, f.yaw, yF - 0.6, yF + YS + R + 0.4));
   }
+  stand(shapes);
 
   // --- a banner from a bar on each tower front
   const redField = '#7d1e1e';
@@ -867,6 +872,7 @@ function buildToll(ctx, e) {
     const [x, z] = at(0, POLE_Z);
     shapes.push(w.colliders.addBox(x, z, POST + 0.25, 0.22, f.yaw, yF - 0.8, yF + 2.6));
   }
+  stand(shapes);
   boulders(ctx, f, [[-7.6, 8, 1.2], [7.9, 12, 1.5], [-8.4, 20, 1.0], [8.2, 26, 1.3], [-4.2, 31, 0.9]], 53, { road: e.road, avoid: [[-5.6, 3.8, 1.6]] });
 
   return {
