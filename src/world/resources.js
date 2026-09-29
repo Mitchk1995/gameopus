@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batcher } from './kit.js';
 import { buildHouse, rng } from './buildings.js';
+import { placeProp, tag, fitUV, courseGeometry } from './props.js';
 import { Fire, fishingRings } from './effects.js';
 import { ROCKS, FISHING } from '../game/content.js';
 import { VILLAGE, LAKE, RIVER, FARMS, MINE_ENTRANCE, polylineDistance } from './map.js';
@@ -83,12 +84,12 @@ export class Resources {
     }
     // All boulders in one mesh; each rock keeps its own (merged) ore.
     const bodies = this.rockBodies.map((m) => {
-      m.updateMatrixWorld(true);
+      m.parent.updateMatrixWorld(true); // the rock's group holds its position; bake the body where it stands
       return m.geometry.clone().applyMatrix4(m.matrixWorld);
     });
     const all = new THREE.Mesh(mergeGeometries(bodies), this.rockMat);
     all.castShadow = all.receiveShadow = true;
-    this.scene.add(all);
+    this.scene.add(tag(all, 'Boulders'));
     for (const m of this.rockBodies) m.parent.remove(m);
     this.mineCentre = { x: cx, z: cz };
   }
@@ -167,7 +168,7 @@ export class Resources {
     dark.position.set(x - fx * 0.35, y + 1.5, z - fz * 0.35);
     dark.rotation.y = facing;
     g.add(dark);
-    this.scene.add(g);
+    this.scene.add(tag(g, 'MineMouth'));
     // Lantern on the post.
     const lamp = new THREE.PointLight(0xffb060, 3, 7, 1.6);
     lamp.position.set(x + rx * 1.45 + fx * 0.3, y + 2.3, z + rz * 1.45 + fz * 0.3);
@@ -237,24 +238,23 @@ export class Resources {
     // Posts at the open corners hold up the roof.
     for (const sx of [-1, 1]) {
       const [px, pz] = at(sx * 2.9, 2.9);
-      batch.add('Corner_Exterior_Wood', px, VILLAGE.y, pz, rot);
+      batch.add('Corner_Exterior_Wood', px, VILLAGE.y, pz, rot, 1, { role: 'post' });
       this.world.colliders.addCircle(px, pz, 0.18, VILLAGE.y - 1, VILLAGE.y + 3);
     }
+    const env = { kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders };
     // Furnace against the back wall.
     const [fx, fz] = at(-1.2, -1.9);
     this.#furnace(fx, fz, rot);
     // Anvil in the middle, tools and a water barrel.
     const [ax, az] = at(0.9, 0.4);
-    batch.add('Anvil_Log', ax, VILLAGE.y, az, rot + 0.3);
-    this.world.colliders.addCircle(ax, az, 0.45, VILLAGE.y - 1, VILLAGE.y + 1);
+    placeProp(env, 'Anvil_Log', ax, VILLAGE.y, az, rot + 0.3);
     this.add({ kind: 'station', station: 'anvil', name: 'Anvil', x: ax, y: VILLAGE.y + 0.8, z: az, r: 0.6, h: 1.1, reach: 2.4 });
     const [wx, wz] = at(2.1, -1.8);
-    batch.add('Whetstone', wx, VILLAGE.y, wz, rot + Math.PI);
+    placeProp(env, 'Whetstone', wx, VILLAGE.y, wz, rot + Math.PI);
     const [bx, bz] = at(2.3, 1.6);
-    batch.add('Barrel', bx, VILLAGE.y, bz, 0);
-    this.world.colliders.addCircle(bx, bz, 0.38, VILLAGE.y - 1, VILLAGE.y + 1);
-    const [sx, sz] = at(-2.3, 1.2);
-    batch.add('WeaponStand', sx, VILLAGE.y, sz, rot + Math.PI / 2);
+    placeProp(env, 'Barrel', bx, VILLAGE.y, bz, 0);
+    const [sx, sz] = at(2.15, 0.0); // against the east wall, out of the smith's face
+    placeProp(env, 'WeaponStand', sx, VILLAGE.y, sz, rot + Math.PI / 2);
     this.places = { ...(this.places || {}), smithy: place };
   }
 
@@ -263,15 +263,15 @@ export class Resources {
     const g = new THREE.Group();
     g.position.set(x, VILLAGE.y, z);
     g.rotation.y = rot;
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.5, 1.3), brick);
+    const body = new THREE.Mesh(fitUV(new THREE.BoxGeometry(1.8, 1.5, 1.3), 2.2), brick);
     body.position.y = 0.75;
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.6, 1.6, 8), brick);
+    const top = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.35, 0.6, 1.6, 8), 2.2), brick);
     top.position.set(0, 2.2, -0.15);
     const mouth = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.5), new THREE.MeshStandardMaterial({ color: 0x220800, emissive: 0xff5a10, emissiveIntensity: 2.2 }));
     mouth.position.set(0, 0.55, 0.652);
     g.add(body, top, mouth);
     g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    this.scene.add(g);
+    this.scene.add(tag(g, 'Furnace'));
     const fire = new Fire(this.scene, 0, 0, 0, { size: 0.45 });
     g.add(fire.group);
     fire.group.position.set(0, 0.32, 0.45);
@@ -312,13 +312,13 @@ export class Resources {
     bar.rotation.z = Math.PI / 2;
     bar.position.y = 1.15;
     stones.add(bar);
-    this.scene.add(stones);
+    this.scene.add(tag(stones, 'CookingFire'));
     const fire = new Fire(this.scene, x, y + 0.12, z, { size: 0.8 });
     this.fires.push(fire);
-    this.world.colliders.addCircle(x, z, 0.85, y - 1, y + 0.6);
+    this.world.colliders.addCircle(x, z, 1.0, y - 1, y + 1.3);
     this.add({ kind: 'station', station: 'fire', name: 'Cooking fire', x, y: y + 0.5, z, r: 0.9, h: 1.2, reach: 2.6 });
     // Logs stacked nearby.
-    batch.add('Crate_Wooden', x + 1.9, y, z - 0.6, 0.4);
+    placeProp({ kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders }, 'Crate_Wooden', x + 1.9, y, z - 0.6, 0.4);
   }
 
   // ------------------------------------------------------------------ crafting
@@ -336,30 +336,32 @@ export class Resources {
       const g = new THREE.Group();
       g.position.set(px, y, pz);
       g.rotation.y = face + Math.PI / 2;
-      const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 6, 28), woodMat);
+      const wheel = new THREE.Mesh(fitUV(new THREE.TorusGeometry(0.42, 0.03, 6, 28), 2.2), woodMat);
       wheel.position.y = 0.85;
       g.add(wheel);
       for (let i = 0; i < 8; i++) {
-        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.82, 4), woodMat);
+        const sp = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.012, 0.012, 0.82, 4), 2.2), woodMat);
         sp.position.y = 0.85;
         sp.rotation.z = (i / 8) * Math.PI;
         g.add(sp);
       }
-      const base = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.3), woodMat);
+      const base = new THREE.Mesh(fitUV(new THREE.BoxGeometry(0.9, 0.08, 0.3), 2.2), woodMat);
       base.position.set(0.15, 0.32, 0);
       g.add(base);
       for (const sx of [-0.3, 0.55]) for (const sz of [-0.12, 0.12]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.34, 5), woodMat);
+        const leg = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.025, 0.03, 0.34, 5), 2.2), woodMat);
         leg.position.set(sx, 0.16, sz);
         g.add(leg);
       }
-      const upright = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.62, 0.06), woodMat);
+      const upright = new THREE.Mesh(fitUV(new THREE.BoxGeometry(0.06, 0.62, 0.06), 2.2), woodMat);
       upright.position.set(0, 0.62, 0);
       g.add(upright);
       g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-      this.scene.add(g);
+      this.scene.add(tag(g, 'SpinningWheel'));
       this.spinWheel = wheel;
-      this.world.colliders.addCircle(px, pz, 0.5, y - 1, y + 1.3);
+      // The frame is a long low base with the wheel standing on it: a box along the base.
+      const wr = face + Math.PI / 2, wc = Math.cos(wr), ws = Math.sin(wr);
+      this.world.colliders.addBox(px + 0.1 * wc, pz - 0.1 * ws, 0.55, 0.22, wr, y - 1, y + 1.3);
       this.add({ kind: 'station', station: 'wheel', name: 'Spinning wheel', x: px, y: y + 0.8, z: pz, r: 0.6, h: 1.3, reach: 2.4 });
     }
     // Potter's wheel.
@@ -367,52 +369,110 @@ export class Resources {
       const [px, pz] = along(0);
       const g = new THREE.Group();
       g.position.set(px, y, pz);
-      const table = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.06, 20), woodMat);
+      const table = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.34, 0.3, 0.06, 20), 2.2), woodMat);
       table.position.y = 0.62;
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8), woodMat);
+      const stem = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8), 2.2), woodMat);
       stem.position.y = 0.31;
-      const kick = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.07, 20), woodMat);
+      const kick = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.4, 0.4, 0.07, 20), 2.2), woodMat);
       kick.position.y = 0.08;
       const lump = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshStandardMaterial({ color: 0x8a6446, roughness: 0.5 }));
       lump.scale.y = 0.7;
       lump.position.y = 0.7;
       g.add(table, stem, kick, lump);
       g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-      this.scene.add(g);
-      this.world.colliders.addCircle(px, pz, 0.45, y - 1, y + 0.9);
+      this.scene.add(tag(g, 'PottersWheel'));
+      this.world.colliders.addCircle(px, pz, 0.42, y - 1, y + 0.9);
       this.add({ kind: 'station', station: 'potter', name: "Potter's wheel", x: px, y: y + 0.6, z: pz, r: 0.5, h: 1.0, reach: 2.3 });
     }
-    // Kiln: a brick dome with a glowing mouth.
+    // Kiln: a brick beehive on a stone footing, built in courses, with an arched stoking
+    // mouth in front (the fire burns in it) and a flue stack on top with an iron collar.
     {
       const [px, pz] = along(2.9);
-      const g = new THREE.Group();
-      g.position.set(px, y, pz);
-      g.rotation.y = face;
-      const dome = new THREE.Mesh(new THREE.SphereGeometry(1.05, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), brick);
-      dome.scale.y = 1.25;
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.12, 0.35, 20), brick);
-      base.position.y = 0.17;
-      dome.position.y = 0.33;
-      const mouth = new THREE.Mesh(new THREE.CircleGeometry(0.34, 16, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0x220800, emissive: 0xff5a10, emissiveIntensity: 1.8 }));
-      mouth.position.set(0, 0.36, 1.04);
-      const flue = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.55, 10), brick);
-      flue.position.y = 1.72;
-      g.add(dome, base, mouth, flue);
-      g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      this.scene.add(g);
-      const fire = new Fire(this.scene, 0, 0, 0, { size: 0.35, light: true });
-      g.add(fire.group);
-      fire.group.position.set(0, 0.36, 0.85);
-      this.fires.push(fire);
-      this.world.colliders.addCircle(px, pz, 1.1, y - 1, y + 2);
-      this.add({ kind: 'station', station: 'kiln', name: 'Pottery kiln', x: px, y: y + 1.0, z: pz, r: 1.1, h: 2.0, reach: 2.9 });
+      this.#kiln(px, pz, face, y);
     }
+    const env = { kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders };
     const [wx, wz] = along(-4.8);
-    batch.add('Workbench', wx, y, wz, face + Math.PI);
-    this.world.colliders.addBox(wx, wz, 1.0, 0.5, face + Math.PI, y - 1, y + 0.9);
+    placeProp(env, 'Workbench', wx, y, wz, face + Math.PI);
     const [bx, bz] = along(4.9);
-    batch.add('Barrel', bx, y, bz, 0);
-    this.world.colliders.addCircle(bx, bz, 0.38, y - 1, y + 1);
+    placeProp(env, 'Barrel', bx, y, bz, 0);
+  }
+
+  // The pottery kiln. Every surface is built with texture coordinates in metres (courseGeometry,
+  // fitUV), two metres to a repeat like the kit's own walls, so the bricks are brick-sized
+  // everywhere: no stretched sphere-map.
+  #kiln(px, pz, face, y) {
+    const kit = this.kit;
+    const brick = findMaterial(kit, 'MI_RedBrick') || this.rockMat;
+    const stone = findMaterial(kit, 'MI_UnevenBrick') || this.rockMat;
+    const wood = findMaterial(kit, 'MI_WoodTrim') || new THREE.MeshStandardMaterial({ color: 0x6b4a2c });
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2b2725, metalness: 0.8, roughness: 0.55 });
+    const g = new THREE.Group();
+    g.position.set(px, y, pz);
+    g.rotation.y = face;
+    const mesh = (geo, mat) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.castShadow = m.receiveShadow = true;
+      g.add(m);
+      return m;
+    };
+    // Stone footing.
+    const FOOT = 0.26, R0 = 1.12;
+    mesh(courseGeometry([[1.34, 0], [1.34, FOOT], [R0, FOOT]], { segments: 40, tile: 2.0 }), stone);
+    // The dome: a tall beehive, one course of brick every ~0.11 m.
+    const H = 1.55, T = 0.93, COURSES = 14;
+    const radiusAt = (t) => R0 * Math.sqrt(1 - Math.pow(t, 2.2));
+    const prof = [];
+    for (let j = 0; j <= COURSES; j++) {
+      const t = (j / COURSES) * T;
+      prof.push([radiusAt(t), FOOT + t * H]);
+    }
+    const [rTop, yTop] = prof[prof.length - 1];
+    // A shelf at the top for the flue to stand on, then the flue and its collar.
+    prof.push([0.34, yTop], [0.31, yTop + 0.06]);
+    mesh(courseGeometry(prof, { segments: 40, tile: 2.0 }), brick);
+    const flueTop = yTop + 0.85;
+    mesh(courseGeometry([[0.31, yTop], [0.29, flueTop], [0.29, flueTop], [0.37, flueTop], [0.37, flueTop + 0.1], [0.33, flueTop + 0.1]], { segments: 24, tile: 2.0 }), brick);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.33, 20), new THREE.MeshBasicMaterial({ color: 0x080606 }));
+    hole.rotation.x = -Math.PI / 2;
+    hole.position.y = flueTop + 0.095;
+    g.add(hole);
+    // Iron bands hooped round the dome.
+    for (const t of [0.22, 0.55]) {
+      const band = new THREE.Mesh(new THREE.TorusGeometry(radiusAt(t) + 0.012, 0.028, 6, 44), iron);
+      band.rotation.x = Math.PI / 2;
+      band.position.y = FOOT + t * H;
+      band.castShadow = true;
+      g.add(band);
+    }
+    // The stoking mouth: an arched brick surround standing out from the dome, with the fire inside.
+    const outer = new THREE.Shape();
+    outer.moveTo(-0.6, 0);
+    outer.lineTo(-0.3, 0);
+    outer.lineTo(-0.3, 0.4);
+    outer.absarc(0, 0.4, 0.3, Math.PI, 0, true);
+    outer.lineTo(0.3, 0);
+    outer.lineTo(0.6, 0);
+    outer.lineTo(0.6, 0.5);
+    outer.absarc(0, 0.5, 0.6, 0, Math.PI, false);
+    outer.lineTo(-0.6, 0);
+    const arch = mesh(fitUV(new THREE.ExtrudeGeometry(outer, { depth: 0.72, bevelEnabled: false, curveSegments: 12 }), 2.0), brick);
+    arch.position.set(0, FOOT, 0.6);
+    // The dark, glowing back of the mouth, just in front of the dome wall.
+    const back = new THREE.Shape();
+    back.moveTo(-0.3, 0);
+    back.lineTo(0.3, 0);
+    back.lineTo(0.3, 0.4);
+    back.absarc(0, 0.4, 0.3, 0, Math.PI, false);
+    const glow = new THREE.Mesh(new THREE.ShapeGeometry(back, 12), new THREE.MeshStandardMaterial({ color: 0x220800, emissive: 0xff5a10, emissiveIntensity: 1.6, side: THREE.DoubleSide }));
+    glow.position.set(0, FOOT, 1.0);
+    g.add(glow);
+    this.scene.add(tag(g, 'Kiln'));
+    const fire = new Fire(this.scene, 0, 0, 0, { size: 0.32, light: true });
+    g.add(fire.group);
+    fire.group.position.set(0, FOOT + 0.02, 1.16);
+    this.fires.push(fire);
+    this.world.colliders.addCircle(px, pz, 1.3, y - 1, y + flueTop + 0.1);
+    this.add({ kind: 'station', station: 'kiln', name: 'Pottery kiln', x: px, y: y + 1.0, z: pz, r: 1.1, h: 2.0, reach: 2.9 });
   }
 
   // ------------------------------------------------------------------ jetty
@@ -430,10 +490,11 @@ export class Resources {
       for (const side of [-1, 1]) {
         const px = x + Math.cos(rot) * side * 0.95, pz = z - Math.sin(rot) * side * 0.95;
         const h = T.heightAt(px, pz);
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, deck - h + 0.4, 6), findMaterial(this.kit, 'MI_WoodTrim'));
+        const post = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.09, 0.1, deck - h + 0.4, 6), 2.2), findMaterial(this.kit, 'MI_WoodTrim'));
         post.position.set(px, (deck + h) / 2, pz);
         post.castShadow = true;
-        this.scene.add(post);
+        this.scene.add(tag(post, 'JettyPost'));
+        this.world.colliders.addCircle(px, pz, 0.11, h - 0.4, deck + 0.2);
       }
     }
     // Walkable deck (a thin box the player can stand on).

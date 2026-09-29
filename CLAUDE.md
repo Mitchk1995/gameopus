@@ -64,6 +64,20 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   instant, ease-out is smooth. `tests/playtest/camera.py` checks it numerically. Known gap: with a
   wall right behind the player the camera comes all the way in to the head and the hero hides.
 
+- Building quality (done): `src/world/props.js` holds the real solid shape of every prop that matters
+  (`SOLIDS`: a stall is a counter block plus posts, a bench is a jumpable slab, a lantern is a lamp on
+  a bracket) and `placeProp` places a prop with its colliders; use it for anything new (walk-through
+  props are a bug). Shapes flagged `floor` are standable (tops up to about 1 m are jumpable). Procedural
+  meshes get world-scale UVs (`fitUV`, `courseGeometry`, 2 m per repeat like the kit) and call `tag()` so
+  the audit sees them. Houses (`buildings.js`) put windows in every other bay, mirrored about the door,
+  stacked per floor; shutters only on the front, all alike. Doors (`doors.js`) are scaled to their frame,
+  solid when shut, swing on E; bank, store and inn doors start open, private houses stay shut and answer
+  a knock. `tests/playtest/geometry.py` (+ `geometry_helpers.js`, in CI via its `# ci` first line) is
+  the automatic geometry audit: floating, clipping, door fit, collider coverage both ways, window
+  density, texture stretch, plus a canary that must catch deliberately broken pieces. It scans whatever
+  the world and dungeon contain (Batcher logs, tagged meshes, `colliders.doors/buildings`), so new
+  props are checked for free; a FAIL line names the piece and its position.
+
 ## Open feedback from the player (do these next)
 
 1. **Characters and buildings look textureless.** Every character and village material

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { Kit, Batcher } from './kit.js';
 import { buildHouse, rng, STOREY } from './buildings.js';
+import { placeProp, tag, fitUV } from './props.js';
+import { Door } from './doors.js';
 import { VILLAGE } from './map.js';
 
 // Ashford: the village at the heart of the valley. Buildings stand in a ring around
@@ -31,6 +33,7 @@ export class Village {
     this.world = world;
     this.places = {};
     this.interactables = [];
+    this.doors = [];
   }
 
   async load() {
@@ -47,12 +50,20 @@ export class Village {
       const place = { ...spec, ...info };
       if (b.id !== 'house') this.places[b.id] = place;
       if (b.id === 'house') (this.places.houses ??= []).push(place);
+      // Hang the doors (public ones start open; the interactable list picks them up in game.js).
+      for (const def of info.doors) this.doors.push(new Door({ kit: this.kit, scene: this.scene, colliders: this.world.colliders, def: { ...def, id: b.id } }));
     }
+
     this.#square(batch, y);
     this.#dressing(batch, y);
     this.mesh = batch.build();
     this.scene.add(this.mesh);
     return this;
+  }
+
+  // Doors swing on the game's own clock (game.js calls this each tick).
+  update(dt) {
+    for (const d of this.doors) d.update(dt);
   }
 
   // Local-to-world for a building: a point in its footprint frame.
@@ -61,15 +72,10 @@ export class Village {
     return out.set(place.x + lx * c + lz * s, VILLAGE.y, place.z - lx * s + lz * c);
   }
 
-  #prop(batch, name, x, z, rot = 0, { y = VILLAGE.y, solid = true, r = null } = {}) {
-    batch.add(name, x, y, z, rot);
-    if (!solid) return;
-    const b = this.kit.bounds(name);
-    const hx = (b.max.x - b.min.x) / 2, hz = (b.max.z - b.min.z) / 2;
-    const cx = (b.max.x + b.min.x) / 2, cz = (b.max.z + b.min.z) / 2;
-    const c = Math.cos(rot), s = Math.sin(rot);
-    if (r) this.world.colliders.addCircle(x, z, r, y - 0.5, y + b.max.y);
-    else this.world.colliders.addBox(x + cx * c + cz * s, z - cx * s + cz * c, hx, hz, rot, y - 0.5, y + b.max.y);
+  // A kit prop standing on the village ground (or at `y`), with its solid shapes from props.js.
+  // `solid: false` is for clutter that sits on something (goods, mugs); those get no collider.
+  #prop(batch, name, x, z, rot = 0, { y = VILLAGE.y, solid = true } = {}) {
+    return placeProp({ kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders }, name, x, y, z, rot, { solid });
   }
 
   // The square: a well at the centre, market stalls, benches and a notice board.
@@ -87,12 +93,8 @@ export class Village {
       const x = C.x + Math.cos(t) * r, z = C.z + Math.sin(t) * r;
       const rot = Math.atan2(C.x - x, C.z - z);
       this.#prop(batch, name, x, z, rot);
-      // Goods on the counter.
-      for (let k = 0; k < 3; k++) {
-        const g = ['FarmCrate_Apple', 'FarmCrate_Carrot', 'Barrel_Apples', 'Bag', 'Vase_4'][Math.floor(rnd() * 5)];
-        const off = (k - 1) * 0.55;
-        batch.add(g, x + Math.cos(rot) * off - Math.sin(rot) * 0.15, y + (g.startsWith('FarmCrate') ? 0.95 : 0), z - Math.sin(rot) * off - Math.cos(rot) * 0.15, rot + (rnd() - 0.5) * 0.4);
-      }
+      this.#goods(batch, x, z, rot, y, rng(Math.round(a * 31 + 900)));
+      for (let k = 0; k < 6; k++) rnd(); // keeps the scatter below where it was
     }
     for (const a of [50, 115, -130]) {
       const t = (a * Math.PI) / 180, r = 12.5;
@@ -107,13 +109,36 @@ export class Village {
     }
   }
 
+  // Goods laid out along a stall's counter: left to right in the space the counter has, each one
+  // resting on the top (0.83 m up) with its footprint inside the counter, none overlapping.
+  #goods(batch, x, z, rot, y, rnd) {
+    const COUNTER = { top: 0.83, half: 0.92, depth: 0.42 };
+    const pool = ['FarmCrate_Apple', 'FarmCrate_Carrot', 'FarmCrate_Apple', 'Bag', 'Vase_4', 'Pot_1', 'Bucket_Wooden_1', 'FarmCrate_Carrot'];
+    let cursor = -COUNTER.half + 0.08;
+    const c = Math.cos(rot), s = Math.sin(rot);
+    for (let k = 0; k < 5; k++) {
+      const name = pool[Math.floor(rnd() * pool.length)];
+      const turn = (rnd() - 0.5) * 0.3;
+      const b = this.kit.bounds(name);
+      const tc = Math.cos(turn), ts = Math.sin(turn);
+      const hx = (b.max.x - b.min.x) / 2, hz = (b.max.z - b.min.z) / 2;
+      const ex = Math.abs(tc) * hx + Math.abs(ts) * hz, ez = Math.abs(ts) * hx + Math.abs(tc) * hz;
+      const mx = (b.max.x + b.min.x) / 2, mz = (b.max.z + b.min.z) / 2;
+      if (cursor + 2 * ex > COUNTER.half - 0.06) continue;
+      const lx = cursor + ex - (mx * tc + mz * ts);
+      const lz = Math.max(-COUNTER.depth + ez + 0.03, Math.min(COUNTER.depth - ez - 0.03, 0.02 + (rnd() - 0.5) * 0.1)) - (-mx * ts + mz * tc);
+      cursor += 2 * ex + 0.06;
+      this.#prop(batch, name, x + lx * c + lz * s, z - lx * s + lz * c, rot + turn, { y: y + COUNTER.top - b.min.y, solid: false });
+    }
+  }
+
   // Around the buildings: lanterns, barrels, crates, fences, a cart.
   #dressing(batch, y) {
     const rnd = rng(9);
     for (const h of [...(this.places.houses || []), this.places.store, this.places.inn]) {
       // A barrel or crate beside the door, a bench under a window.
       const side = rnd() < 0.5 ? -1 : 1;
-      const p = this.at(h, side * (h.w / 2 - 0.6), h.d / 2 + 0.7);
+      const p = this.at(h, side * (h.w / 2 - 0.6), h.d / 2 + 0.8);
       this.#prop(batch, rnd() < 0.6 ? 'Barrel' : 'Crate_Wooden', p.x, p.z, rnd() * 6, { r: 0.42 });
       if (rnd() < 0.6) {
         const q = this.at(h, -side * (h.w / 2 - 1.4), h.d / 2 + 0.55);
@@ -125,8 +150,10 @@ export class Village {
       const h = this.places[id];
       const door = h.openings[0];
       for (const s of [-1, 1]) {
-        const p = this.at(h, door.lx + s * 1.0, h.d / 2 + 0.12);
-        batch.add('Lantern_Wall', p.x, y + 0.9, p.z, h.rot);
+        // Screwed to the wall (its plate flush with the plaster) with the lamp hanging at chest height,
+        // where you can walk into it: it has a collider.
+        const p = this.at(h, door.lx + s * 1.0, h.d / 2 + 0.04);
+        this.#prop(batch, 'Lantern_Wall', p.x, p.z, h.rot, { y: y + 0.9 });
       }
     }
     // A hay cart by the south road.
@@ -155,7 +182,7 @@ export class Village {
     const bank = this.places.bank;
     ceiling(bank);
     put(bank, 'Table_Large', 0, -1.4);
-    put(bank, 'Chest_Armature', -2.6, -3.1, Math.PI, 0.36);
+    put(bank, 'Chest_Armature', -2.6, -3.1, Math.PI);
     put(bank, 'Cabinet', 2.6, -3.35, 0);
     put(bank, 'Bookcase_2', 3.4, -1.0, -Math.PI / 2);
     put(bank, 'Coin_Pile_2', -0.6, -1.45, 0.3, 0.81, false);
@@ -168,7 +195,7 @@ export class Village {
     put(store, 'Shelf_Small_Bottles', 1.8, -3.72, 0, 1.2, false);
     put(store, 'Shelf_Simple', -1.2, -3.72, 0, 1.4, false);
     put(store, 'Barrel_Apples', -2.3, 2.8, 0);
-    put(store, 'Crate_Wooden', 2.3, 3.0, 0.4);
+    put(store, 'Crate_Wooden', 2.0, 3.0, 0.4);
     put(store, 'Bag', 2.2, 1.6, 0.8);
     put(store, 'Pot_1_Lid', -0.5, -1.05, 0.2, 0.81, false);
     put(store, 'Bottle_1', 0.6, -0.9, 0, 0.81, false);
@@ -205,13 +232,13 @@ function wellMesh(kit) {
   const g = new THREE.Group();
   const stoneMat = findMaterial(kit, 'MI_UnevenBrick') || new THREE.MeshStandardMaterial({ color: 0x8a8580 });
   const woodMat = findMaterial(kit, 'MI_WoodTrim') || new THREE.MeshStandardMaterial({ color: 0x6b4a2f });
-  const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.2, 0.9, 20, 1, true), stoneMat);
+  const ring = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(1.15, 1.2, 0.9, 20, 1, true), 2.0), stoneMat);
   ring.position.y = 0.45;
-  const inner = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.9, 20, 1, true), stoneMat);
+  const inner = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.9, 0.9, 0.9, 20, 1, true), 2.0), stoneMat);
   inner.position.y = 0.45;
   inner.material = stoneMat.clone();
   inner.material.side = THREE.BackSide;
-  const lip = new THREE.Mesh(new THREE.TorusGeometry(1.03, 0.16, 8, 24), stoneMat);
+  const lip = new THREE.Mesh(fitUV(new THREE.TorusGeometry(1.03, 0.16, 8, 24), 2.0), stoneMat);
   lip.rotation.x = Math.PI / 2;
   lip.position.y = 0.92;
   const water = new THREE.Mesh(new THREE.CircleGeometry(0.9, 20), new THREE.MeshStandardMaterial({ color: 0x0b1a1c, roughness: 0.05 }));
@@ -219,15 +246,15 @@ function wellMesh(kit) {
   water.position.y = 0.3;
   g.add(ring, inner, lip, water);
   for (const s of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.1, 0.16), woodMat);
+    const post = new THREE.Mesh(fitUV(new THREE.BoxGeometry(0.16, 2.1, 0.16), 2.2), woodMat);
     post.position.set(s * 1.05, 1.05, 0);
     g.add(post);
   }
-  const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.3, 8), woodMat);
+  const axle = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.07, 0.07, 2.3, 8), 2.2), woodMat);
   axle.rotation.z = Math.PI / 2;
   axle.position.y = 1.75;
   g.add(axle);
-  const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 1.7, 0.8, 4, 1), findMaterial(kit, 'MI_RoundTiles') || woodMat);
+  const roof = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.02, 1.7, 0.8, 4, 1), 4.3), findMaterial(kit, 'MI_RoundTiles') || woodMat);
   roof.rotation.y = Math.PI / 4;
   roof.scale.set(1, 1, 0.75);
   roof.position.y = 2.45;
@@ -244,7 +271,7 @@ function wellMesh(kit) {
       o.receiveShadow = true;
     }
   });
-  return g;
+  return tag(g, 'Well');
 }
 
 function findMaterial(kit, name) {

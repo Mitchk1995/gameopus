@@ -217,6 +217,7 @@ export class Game {
     if (this.realm === 'world') {
       for (const n of this.npcs) n.update(dt, this.player);
       this.resources.update(dt);
+      this.world.village.update(dt);
     }
     this.fight.update(dt);
     this.pets.update(dt, this.player);
@@ -518,6 +519,14 @@ export class Game {
     // The well wets clay; the bank counter opens the bank.
     const w = this.world.village.places.well;
     this.resources.add({ kind: 'station', station: 'well', name: 'Well', verb: 'Draw water at', x: w.x, y: VILLAGE.y + 0.9, z: w.z, r: 1.2, h: 1.8, reach: 2.4 });
+    // Doors swing on E; private houses only answer a knock.
+    for (const d of this.world.village.doors) this.resources.add(d.target);
+  }
+
+  #door(door) {
+    const r = door.use();
+    this.audio.play(r.locked ? 'thunk' : 'click', door.target, r.locked ? 0.8 : 0.6);
+    if (r.text) this.panels.message(r.text, 'game');
   }
 
   #station(s) {
@@ -545,6 +554,8 @@ export class Game {
         if (!clay) return this.panels.message('You draw some water, then pour it back. Clay would soften in it.');
         return this.#produce(s, { out: 'soft_clay', needs: [['clay', 1]], xp: 0, n: 1 }, Infinity, { skill: null, clip: 'Interact', ticks: 2, text: 'You soften the clay with water.' });
       }
+      case 'door':
+        return this.#door(s.door);
       case 'bank':
         return this.openBank();
       case 'cave':

@@ -4,6 +4,7 @@ import { Colliders } from '../world/colliders.js';
 import { Fire } from '../world/effects.js';
 import { STEP } from '../world/world.js';
 import { generate, CELL, rng } from './generate.js';
+import { placeProp, tag } from '../world/props.js';
 
 // A dungeon level built from a generated layout: uneven stone walls two storeys high,
 // stone floors, a dark vault overhead, torches (a few real lights shared among the
@@ -54,7 +55,7 @@ export class Dungeon {
           batch.add('Wall_UnevenBrick_Straight', ex, 0, ez, rot);
           batch.add('Wall_UnevenBrick_Straight', ex, WALL_H, ez, rot);
           // Now and then a torch on the wall.
-          if (this.rnd() < 0.07) this.#torch(ex - di * 0.25, ez - dj * 0.25, rot, batch);
+          if (this.rnd() < 0.07) this.#torch(ex - di * 0.04, ez - dj * 0.04, rot, batch);
         }
       }
     this.#pillars(L, floor);
@@ -151,12 +152,12 @@ export class Dungeon {
       // Clutter along the edges.
       for (let k = 0; k < Math.min(6, cells.length / 5); k++) {
         const [i, j] = cells[Math.floor(this.rnd() * cells.length)];
+        if (used.has(i + ',' + j)) continue; // one prop to a cell, so they never overlap
         used.add(i + ',' + j);
         const c = this.cellCentre(i, j);
         const name = props[Math.floor(this.rnd() * props.length)];
         const ox = (this.rnd() - 0.5) * 0.8, oz = (this.rnd() - 0.5) * 0.8;
-        batch.add(name, c.x + ox, 0, c.z + oz, this.rnd() * Math.PI * 2);
-        if (['Barrel', 'Crate_Wooden', 'Cage_Small'].includes(name)) this.colliders.addCircle(c.x + ox, c.z + oz, 0.45, -1, 1.1);
+        placeProp({ kit: this.kit, batch, scene: this.scene, colliders: this.colliders }, name, c.x + ox, 0, c.z + oz, this.rnd() * Math.PI * 2);
       }
       if (room.role === 'start') {
         // Arrive in the middle of the room, with the rope in a neighbouring cell.
@@ -219,6 +220,8 @@ export class Dungeon {
     bowl.position.set(x, 1.05, z);
     const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 0.9, 8), mat);
     stand.position.set(x, 0.45, z);
+    tag(bowl, 'Brazier');
+    tag(stand, 'Brazier');
     this.scene.add(bowl, stand);
     this.fires.push(new Fire(this.scene, x, 1.1, z, { size: 0.55, light: false }));
     this.torches.push(new THREE.Vector3(x, 1.8, z));
@@ -246,8 +249,9 @@ export class Dungeon {
     g.position.set(x, 0, z);
     g.rotation.y = rot;
     g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    this.scene.add(g);
-    this.colliders.addBox(x, z, 0.52, 0.34, g.rotation.y, -1, 0.9);
+    this.scene.add(tag(g, 'Chest'));
+    const solid = this.colliders.addBox(x, z, 0.52, 0.34, g.rotation.y, -1, 0.75);
+    solid.floor = true;
     const chest = { kind: 'station', station: 'chest', name: 'Chest', verb: 'Open', x, y: 0.5, z, r: 0.6, h: 1.0, reach: 2.0, lid, depth, rot, opened: false };
     this.chests.push(chest);
     this.interactables.push(chest);
