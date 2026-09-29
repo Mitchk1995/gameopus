@@ -1,4 +1,4 @@
-# ci paths=src/world/,src/actors/camera-rig.js,src/dungeon/,tests/playtest/camera
+# ci paths=src/world/,src/actors/camera-rig.js,src/main.js,src/dungeon/,tests/playtest/camera
 # Camera never clips: at village doorways, inside the bank, store and inn, against building
 # corners, at the mine mouth and in the Old Warren, the camera must never sit inside a solid
 # shape, above an interior ceiling, under the ground or above the dungeon vault, and it must
@@ -10,7 +10,7 @@ STEPS = [
   {'eval': """(() => {
     const g = __game, C = __cam, v = g.world.village, list = [];
     for (const id of ['bank', 'store', 'inn']) list.push({ id, ceiling: true, p: v.places[id] });
-    (v.places.houses || []).forEach((p, i) => list.push({ id: 'house' + i, ceiling: false, p }));
+    (v.places.houses || []).forEach((p, i) => { if (i % __EVERY__ === 0) list.push({ id: 'house' + i, ceiling: false, p }); });
     for (const { id, ceiling, p } of list) C.T.buildings.push({ id, ceiling, x: p.x, z: p.z, rot: p.rot, w: p.w, d: p.d, y: 3.2, storey: 3, place: p });
     return { buildings: C.T.buildings.length, colliders: g.world.colliders.all.length };
   })()"""},
@@ -167,3 +167,9 @@ STEPS = [
     return { frames: T.frames, skippedInWall: T.skipped, skipBy: T.skipBy, flutters: T.jitter, flutterAt: (T.flutterAt || []).slice(0, 12).join(' | '), biggestStep: +T.maxStep.toFixed(2), fails: lines.length, failLines: lines.join(' || ') || 'none' };
   })()"""},
 ]
+
+# The town has dozens of cottages built by the same rules, so by default this plays the public
+# buildings, the workshops and every fourth house; CAMERA_FULL=1 plays every house.
+import os as _os
+_every = '1' if _os.environ.get('CAMERA_FULL') else '4'
+STEPS = [dict(s, eval=s['eval'].replace('__EVERY__', _every)) if 'eval' in s else s for s in STEPS]

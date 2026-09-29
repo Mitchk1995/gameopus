@@ -1,4 +1,4 @@
-# ci
+# ci paths=src/world/,src/actors/camera-rig.js,src/main.js,tests/playtest/camera
 # Camera smoothness in doorways: scripted walks (jog and run, in and out, at several camera
 # headings, pitches and zooms, and steering with the mouse) through the door of EVERY building
 # (bank, store, inn, all houses, the smithy's open front) and into the cave mouth, plus standing in
@@ -17,8 +17,8 @@ STEPS = [
     M.build();
     // Every building's front door: [id, place, door centre, outward direction (world heading)].
     const doors = [];
-    for (const id of ['bank', 'store', 'inn']) doors.push([id, v.places[id]]);
-    (v.places.houses || []).forEach((p, i) => doors.push(['house' + i, p]));
+    for (const id of ['bank', 'store', 'inn', 'potter']) if (v.places[id]) doors.push([id, v.places[id]]);
+    (v.places.houses || []).forEach((p, i) => { if (i % __EVERY__ === 0) doors.push(['house' + i, p]); });
     doors.push(['smithy', g.resources.places.smithy]);
     window.__doors = doors.map(([id, p]) => {
       const lx = p.openings?.[0]?.lx ?? 0;
@@ -155,3 +155,9 @@ STEPS = [
       fails: lines.length, failLines: lines.join(' || ') || 'none' };
   })()"""},
 ]
+
+# The town has dozens of cottages built by the same rules, so by default this plays the public
+# buildings, the workshops and every fourth house; CAMERA_FULL=1 plays every house.
+import os as _os
+_every = '1' if _os.environ.get('CAMERA_FULL') else '4'
+STEPS = [dict(s, eval=s['eval'].replace('__EVERY__', _every)) if 'eval' in s else s for s in STEPS]

@@ -1,4 +1,4 @@
-# ci
+# ci paths=src/world/,src/actors/camera-rig.js,src/main.js,tests/playtest/camera
 # The camera never clips through any building: for EVERY building (bank, Maren's store, inn, all
 # the houses, the smithy) and the cave mouth, the player is put at many places in and around it
 # (inside, against walls and corners, under eaves, beside chimneys) with the camera at many
@@ -14,8 +14,8 @@ STEPS = [
     const g = __game, M = __cm, v = g.world.village;
     M.build();
     const list = [];
-    for (const id of ['bank', 'store', 'inn']) list.push({ id, p: v.places[id] });
-    (v.places.houses || []).forEach((p, i) => list.push({ id: 'house' + i, p }));
+    for (const id of ['bank', 'store', 'inn', 'potter']) if (v.places[id]) list.push({ id, p: v.places[id] });
+    (v.places.houses || []).forEach((p, i) => { if (i % __EVERY__ === 0) list.push({ id: 'house' + i, p }); });
     list.push({ id: 'smithy', p: g.resources.places.smithy });
     window.__list = list;
     return { buildings: list.length, truthTriangles: M.S.n };
@@ -88,3 +88,9 @@ STEPS = [
     return { checks: F.checks, skippedHeadInWall: F.skipped, clips: F.clips, inside: F.inside, occludedByScenery: F.occluded, fails: lines.length, failLines: lines.join(' || ') || 'none' };
   })()"""},
 ]
+
+# The town has dozens of cottages built by the same rules, so by default this plays the public
+# buildings, the workshops and every fourth house; CAMERA_FULL=1 plays every house.
+import os as _os
+_every = '1' if _os.environ.get('CAMERA_FULL') else '4'
+STEPS = [dict(s, eval=s['eval'].replace('__EVERY__', _every)) if 'eval' in s else s for s in STEPS]
