@@ -424,7 +424,7 @@ function abbey(sk, xm, keep) {
   // The ruin is meant to be seen straight up Lake Street over the bank: trees on the hill that stand in
   // that line of sight (to the wall's lancets, the gable and the tower) are not there.
   const targets = [[-13, 9], [-5.6, 9.5], [0, 9], [5.6, 9.5], [11.2, 9], [X1 + T / 2, 20], [-18.5, 19]].map(([lx, h]) => { const [x, z] = f.at(lx, HW); return [x, base + h, z]; });
-  const eyes = [[-8, 53], [-8, 66], [-9, 84], [-8, 30]].map(([x, z]) => [x, sk.ground(x, z) + 1.7, z]);
+  const eyes = [[-8, 53], [-8, 66], [-9, 84], [-8, 30], [-27, -24], [-29, -40]].map(([x, z]) => [x, sk.ground(x, z) + 1.7, z]);
   keep.push(sightOut(ABBEY_HILL.x, ABBEY_HILL.z, 115, eyes, targets));
   // Points for tests and views: the door, just inside it, outside the next bay, the gable's apex and the tower top.
   return {
@@ -633,6 +633,8 @@ function beacon(sk, xm, sites, smoke, keep) {
   sites.updaters.push((dt) => fire.update(dt));
   smoke.add(L.x, dy + up + 2.9, L.z, { puffs: 48, life: 22, rise: 60, size: [1.3, 14], grey: 0.46, opacity: 0.8, spread: 5, seed: 3 });
   keep.push(circleOut(L.x, L.z, 14));
+  // The view of the fire from Bridge Street, the bridge and the square stays open.
+  keep.push(sightOut(L.x, L.z, 160, [[60, 14], [90, 3], [40, 14], [-4, 16]].map(([x, z]) => [x, sk.ground(x, z) + 1.7, z]), [[L.x, dy + up + 1.6, L.z], [L.x, base + TOP, L.z]]));
   return { x: L.x, z: L.z, base, top: dy + up + 2.45, fire, R: R0 + 0.35, approach: f.at(0, R0 + 3) };
 }
 
@@ -736,6 +738,8 @@ function headframe(sk, xm, smoke, keep) {
   timberStack(sk, f, base, 2.0, 4.2, xm);
   for (const [lx, lz, R, Hh] of [[-1.2, 4.3, 1.2, 1.0], [5.8, 4.6, 1.0, 0.8]]) { const [x, z] = f.at(lx, lz); rubble(sk, xm, x, z, R, Hh, rng(lx * 100 + lz), 'spoil heap'); }
   keep.push(circleOut(L.x, L.z, 12));
+  // The wheel and the chimney's smoke from the Quarry Road and the north gate stay in view.
+  keep.push(sightOut(L.x, L.z, 110, [[-29, -40], [-27, -24], [-72, -86]].map(([x, z]) => [x, sk.ground(x, z) + 1.7, z]), [[wx, wheelY + 0.5, wz], [cx, base + chH + 4, cz]]));
   const way = roadById('headframe').pts;
   return { x: L.x, z: L.z, base, top: wheelY + WR, wheel: [wx, wheelY, wz], chimney: [cx, base + chH, cz], yard: f.at(SX - 1, -3.6), pathEnd: way[way.length - 1] };
 }
@@ -853,6 +857,8 @@ function lighthouse(sk, xm, keep) {
   sk.colliders.addCircle(tx, tz, R0 + 0.6, y0, gy + 1.2);
   keeperHut(sk, f, tx, tz, doorYaw, R0, xm);
   keep.push(circleOut(tx, tz, 13));
+  // The lantern from the spawn, through the south gate and down Lake Street stays in view.
+  keep.push(sightOut(tx, tz, 150, [[-8, 53], [-8, 60], [-9, 84], [-20, 118]].map(([x, z]) => [x, sk.ground(x, z) + 1.7, z]), [[tx, gy + 1.3, tz], [tx, gy - 3, tz]]));
   return { x: tx, z: tz, base: floor, top: gy + 0.35 + LH + (LR + 0.2) * 0.72 + 1.1, R: R0 + 0.6, approach: [ex - ux * 2, ez - uz * 2] };
 }
 

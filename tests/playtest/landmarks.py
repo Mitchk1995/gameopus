@@ -3,7 +3,7 @@
 #   built    each landmark exists, is tall enough to read from town, and stands on its ground
 #   effects  smoke plumes and flames are live objects outside the static batch (no colliders, no camera)
 #   trees    none grow inside the ruin or the bandit fort's clearing
-#   sight    the abbey shows straight up Lake Street from the spawn, over the bank; the beacon from
+#   sight    the abbey shows straight up Lake Street from the spawn, over the bank, and from the north gate; the beacon from
 #            Bridge Street; the lighthouse through the south gate; the headframe from the Quarry Road
 #            (sight lines clear of the ground, walls, roofs, trunks and tree crowns)
 #   walk     with the game's own controller: into the fort by the west gate and out by the east gate onto
@@ -49,7 +49,7 @@ STEPS = [
     const tests = [
       ['abbey gable top from the spawn', L.eye(-8, 53), up(M.abbey.apex, -1.1), 2],
       ['abbey tower (its upper south face) from the spawn', L.eye(-8, 53), M.abbey.towerFace, 1],
-      ['abbey gable top from the south gate', L.eye(-8, 60), up(M.abbey.apex, -1.1), 2],
+      ['abbey tower from the north gate', L.eye(-27, -24), M.abbey.towerFace, 1],
       ['beacon from Bridge Street', L.eye(60, 14), [M.beacon.x, M.beacon.top - 0.5, M.beacon.z], M.beacon.R + 1],
       ['beacon from the bridge', L.eye(90, 3), [M.beacon.x, M.beacon.top - 0.5, M.beacon.z], M.beacon.R + 1],
       ['lighthouse through the south gate', L.eye(-8, 60), [M.lighthouse.x, M.lighthouse.top - 1.2, M.lighthouse.z], 2],
