@@ -137,6 +137,30 @@ signposted crossroads: Wren Lane (west, houses and gardens) and Stable Lane (eas
   gate, barn, stable, farmyard, hay cart, haystacks and pump by the farm gate, a hay paddock. The dock is
   outside the wall at the end of the lake road, with its crates and barrels by Old Tam.
 
+**The buildings, and what they are drawn from.** Ashford is a market town of ash woods under the
+mountains, built the way northern European towns were, in its own palette. No two neighbours match.
+- *Jettied town houses* (Lavenham, Weobley): timber frames, the upper floor oversailing the street on
+  joists and a moulded beam, plaster in limewashes (cream, white, ochre, Suffolk pink, sage, russet),
+  eaves or a gable to the street, weathered clay peg tiles in three reds and browns.
+- *A tall narrow house and a crooked one* (Rothenburg, Lavenham's Crooked House): three storeys on a
+  4 m front; a gable-fronted house whose upper floor leans.
+- *Stone cottages* (Cotswolds): honey or grey rubble to the eaves, stone slate roofs, stone-mullioned
+  windows under hood moulds, gabled dormers, stacks on the gables, a date stone (1487) over one door.
+- *Thatched cottages*: one storey under thick reed thatch with a mossy ridge roll.
+- Every house has a painted door, leaded windows (diamond panes in the timber houses, small squares in
+  the stone ones), no shutters and no arched windows (the owner's call). Carved bargeboards with an
+  ash-leaf motif are Ashford's own.
+- *The trades say what they are*: the bank is a barred stone counting house with its name cut over a
+  heavy door under a slate canopy; the store lets its windows down as counters with goods; the Crooked
+  Pike has a big painted pike on a bracket, a yard arch and a fire in its hearth; the smithy a real forge
+  and chimney; the potter's a display of turned pots; the barn weatherboard, big doors and hay; the
+  stables half doors; the toll house a board of tolls; the watch house a bell.
+- *The chapel* (Heath Chapel, West Itchenor): a small stone church laid east and west, west tower with
+  louvred belfry, bell and slate spire, nave with round-headed lights and buttresses, lower chancel; a
+  grass churchyard with a lych-gate (oak frames on sleeper walls under a slate roof) and graves in rows.
+- *The market hall* (Ledbury): black-and-white on oak posts over an open market floor, cupola and
+  weathervane, on the square's east side where the view down Bridge Street ends on it.
+
 **Props with a reason.** Lamp posts every ~12 m per side down Lake Street, Bridge Street, Quarry
 Road and at the square's corners; wall lanterns at every door; barrels and cask racks only at the inn,
 the cooper's, the smithy and the store; crates and apples at the store; pots at the potter; benches at the

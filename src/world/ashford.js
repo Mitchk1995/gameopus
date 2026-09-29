@@ -129,7 +129,7 @@ export const BUILDINGS = [
   // (a carriage arch between the inn and the stable leads into the inn yard)
   ...row('S', 12.5, 23.6, [
     H({ role: 'stable', type: 'stable', w: 6, d: 8, floors: 1, doors: door(1, false, 's', { shape: 'Flat', leaf: 2 }), chimney: 0, gap: 0 }),
-    H({ role: 'watch house', type: 'lockup', stone: 'honey', roof: 'slate-dark', w: 4, d: 6, floors: 1, style: 'stone', doors: door(1, false, 's', { shape: 'Flat', leaf: 4 }) }),
+    H({ role: 'watch house', type: 'lockup', stone: 'honey', roof: 'slate-dark', ridge: 'across', w: 4, d: 6, floors: 1, style: 'stone', doors: door(0, false, 's', { shape: 'Flat', leaf: 4 }) }), // (its door clear of Garrow's post)
   ]),
   ...row('N', 17.5, 16.4, [
     H({ role: 'cottage', type: 'jetty', wash: 'white', timber: 'black', roof: 'tile-brown', boxes: true, w: 6, d: 8, floors: 2, doors: door(1, false, 's', { paint: 'red' }), gap: 0 }),
@@ -152,10 +152,11 @@ export const BUILDINGS = [
   ]),
 
   // ---- Stable Lane, east: the working edge with a barn and a stable
-  ...row('S', 45.3, 3, [H({ role: 'cottage', type: 'stone', stone: 'honey', roof: 'tile-brown', w: 8, d: 8, floors: 2, style: 'stone', doors: door(2, false, 's', { shape: 'Flat', paint: 'blue' }), gap: 0 })]),
-  ...row('N', 48.7, 4.4, [
+  ...row('S', 45.3, 3, [H({ role: 'cottage', type: 'stone', stone: 'honey', roof: 'tile-brown', w: 8, d: 8, floors: 2, style: 'stone', doors: door(0, false, 's', { shape: 'Flat', paint: 'blue' }), gap: 0 })]),
+  // (the barn stands a little east, so its open doors don't face the stone house's across the lane)
+  ...row('N', 48.7, 5.6, [
     H({ role: 'barn', w: 8, d: 10, floors: 1, doors: door(1.5), chimney: 0, gap: 0 }),
-    H({ role: 'stable', type: 'stable', w: 4, d: 8, floors: 1, doors: door(1, false, 's', { shape: 'Flat', leaf: 2 }), chimney: 0 }),
+    H({ role: 'stable', type: 'stable', w: 4, d: 8, floors: 1, doors: door(1, false, 's', { shape: 'Flat', leaf: 2 }), chimney: 0, gap: 1.2 }),
   ]),
 ].map((b, i) => ({ ...b, key: i }));
 

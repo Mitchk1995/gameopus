@@ -15,6 +15,7 @@ const SWING = Math.PI / 2; // shut to open, into the building
 const SECONDS = 0.35;
 export const LEAF_THICK = 0.06;
 export const DOOR_CLEAR = 2.25; // player-blocking height of a door
+export const HALF = 0.56; // where a half door splits (a share of its height)
 
 export function leafFit(shape) {
   const o = OPENING[shape], l = LEAF[shape];
@@ -50,6 +51,22 @@ export class Door {
     this.pivot.add(this.leaf);
     this.pivot.userData.audit = { door: true, name: this.leafName };
     scene.add(this.pivot);
+    // A stable's half door: the lower leaf is the door (shut, it still bars the way), the upper one
+    // stands open against the inside of the wall so the horses can put their heads out.
+    this.half = !!def.half;
+    if (this.half) {
+      const split = HALF;
+      this.leaf.scale.y = this.fit.sy * split;
+      const upper = kit.instance(this.leafName);
+      if (def.paintMat) upper.traverse((o) => { if (o.isMesh) o.material = [o.material].flat().map((m) => (m.name === 'MI_WoodTrim' ? def.paintMat : m)).at(0); });
+      upper.scale.set(this.fit.sx, this.fit.sy * (1 - split), 1);
+      upper.position.y = this.fit.height * split;
+      this.upper = new THREE.Group();
+      this.upper.position.copy(this.pivot.position);
+      this.upper.rotation.y = def.yaw + SWING;
+      this.upper.add(upper);
+      scene.add(this.upper);
+    }
 
     this.open = this.public;
     this.t = this.open ? 1 : 0; // 0 shut .. 1 open

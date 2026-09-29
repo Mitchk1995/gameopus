@@ -418,7 +418,7 @@ window.__geo = (() => {
       if (w > openW + 0.005) R.fail('door', lab, `leaf ${f2(w)} m wide is wider than its ${f2(openW)} m frame opening`);
       else if (openW - w > TOL.doorWide) R.fail('door', lab, `leaf ${f2(w)} m wide leaves a gap in its ${f2(openW)} m frame opening`);
       if (h > op.top + 0.005) R.fail('door', lab, `leaf ${f2(h)} m tall pokes above its ${f2(op.top)} m opening`);
-      else if (op.top - h > TOL.doorTall) R.fail('door', lab, `leaf ${f2(h)} m tall leaves a gap under its ${f2(op.top)} m lintel`);
+      else if (op.top - h > TOL.doorTall && !d.half) R.fail('door', lab, `leaf ${f2(h)} m tall leaves a gap under its ${f2(op.top)} m lintel`); // (a half door's top leaf stands open)
       if (Math.abs(off) > TOL.doorOff) R.fail('door', lab, `leaf hangs ${f2(off)} m off-centre in its frame`);
       if (y0 - d.def.y > 0.08 || y0 - d.def.y < -0.02) R.fail('door', lab, `leaf bottom is ${f2(y0 - d.def.y)} m from the floor`);
       if (b1 > 0.2 || b0 < -0.21) R.fail('door', lab, `leaf sits outside the wall's thickness (${f2(b0)}..${f2(b1)})`);
@@ -872,6 +872,7 @@ window.__geo = (() => {
     }
     // Working buildings: no glazed windows, the right doors.
     for (const b of by('stable')) if (b.windows.length) R.fail('role', lab(b), `a stable with ${b.windows.length} glazed windows`);
+    for (const b of by('stable')) if (!b.doors.some((d) => d.half)) R.fail('role', lab(b), 'no half door on the stable');
     if (!V.barn) R.fail('role', 'barn', 'no barn was built (a cottage stands in for it)');
     else {
       if (V.barn.width < 2.5) R.fail('role', 'barn', `the barn's doorway is only ${f2(V.barn.width)} m wide`);

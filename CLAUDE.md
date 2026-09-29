@@ -147,18 +147,38 @@ is in flight, and the next steps in order. Read it first, and rewrite it at the 
 - **Ashford, the town.** A walled market town (DESIGN.md, "Ashford v2"): Lake Street from the south
   gate to a rectangular square with the bank at its head, store, inn (with the cooking hearth) and
   open-fronted smithy and potter around it, cottage rows, Wren and Stable lanes, a chapel on a rise,
-  three gates. Buildings come from `buildHouse`. Known gaps: all roofs are the same tile colour, the
-  5 m streets are tight for the camera, no animals.
+  three gates, and the market hall on posts in the square. Known gaps: the 5 m streets are tight for
+  the camera, no animals.
+- **Ashford's buildings.** Every `BUILDINGS` row in `ashford.js` names a `type` (see `TYPES` in
+  `buildings.js`: `jetty` eaves-to-the-street timber house with an oversailing upper floor, `gabled`
+  gable-fronted jettied house, `tall` three-storey narrow house, `stone` Cotswold-style cottage,
+  `thatch`, `lockup`, and the trades' `bank`, `shop`, `inn`, `workshop`, `stable`, `hall`) and its
+  colours: `wash` (cream, white, ochre, pink, sage, russet), `timber` (kit, oak, black), `stone` (grey,
+  honey), `roof` (tile, tile-red, tile-brown, slate, slate-dark, thatch), plus `ridge` ('across' =
+  gable to the street, 'along' = eaves to it), `dormers`, `boxes` (flower boxes), `ivy`, `datestone`,
+  `lean` (the crooked house), door `paint`/`leaf`/`shape`, `backDoor`. Neighbours never match; keep it
+  that way when adding rows. `buildHouse` places the kit walls with material swaps from `looks.js`
+  (the palette; Batcher `meta.swap`, one draw call per material in use) and builds the rest
+  procedurally: roofs (`roofs.js`: a profile swept along the ridge, Poly Haven peg tiles, stone slates
+  and reed thatch at world scale, from `public/assets/build/`, fetched by `scripts/fetch-assets.mjs
+  buildings`), gables with king posts, carved ash-leaf bargeboards, chimney stacks, jetty joists and
+  bressumers, leaded casements or stone mullions (no shutters, no arched windows), dormers. The chapel,
+  lych-gate, graves, barn, signs, yard arch, toll board and watch bell are in `civic.js`; the forge and
+  the potter's fit-out in `resources.js`. Door lanterns (`doorLantern`) hang with their underside
+  2.36 m up. `builtGround` in `ashford.js` paints trodden earth under every footprint so no grass grows
+  indoors (re-bake after moving a building). `geometry.py` checks each building's role (`role`) and
+  floors (`floor`).
 - **Building and prop quality.** `src/world/props.js` holds the real solid shape of every prop that
   matters (`SOLIDS`: a stall is a counter block plus posts, a bench is a jumpable slab, a lantern is a
   lamp on a bracket) and `placeProp` places a prop with its colliders; use it for anything new
   (walk-through props are a bug). Shapes flagged `floor` are standable (tops up to about 1 m are
   jumpable). Procedural meshes get world-scale UVs (`fitUV`, `courseGeometry`, 2 m per repeat like the
   kit) and call `tag()` so the audit sees them. Houses (`buildings.js`) put windows in every other bay,
-  mirrored about the door, stacked per floor; shutters only on the front, all alike. Doors (`doors.js`)
+  mirrored about the door, stacked per floor. Doors (`doors.js`)
   are scaled to their frame, solid when shut, swing on E; bank, store and inn doors start open, private
-  houses stay shut and answer a knock. The town (`ashford.js`, `townkit.js`, `village.js`) obeys the
-  same rules: kit props go through `#prop`/`placeProp`, `Lantern_Wall` and doors come from the building
+  houses stay shut and answer a knock; stables have half doors (`half`: the top leaf stands open). The
+  town (`ashford.js`, `townkit.js`, `village.js`) obeys the
+  same rules: kit props go through `#prop`/`placeProp`, lanterns and doors come from the building
   rules, stall goods are packed onto the counter by `#goods`, and every `TownKit` method calls
   `begin(label, x, z)` so the audit can group its meshes (soft things such as crops and washing are
   walk-through; pass `on` for a piece resting on another). `TownKit.put` fits UVs to the material's

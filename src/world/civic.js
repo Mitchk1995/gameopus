@@ -450,7 +450,7 @@ export function barn(env, b, y) {
   const hw = b.w / 2, hd = b.d / 2, PL = 0.55, WH = 3.7, T = 0.24;
   const boards = L.timber('black'), g = boards.userData.grain || [2.2, 0.645];
   const stone = L.stone('grey');
-  const DW = 3.6, DH = 3.4; // the doorway in the front gable
+  const DW = 3.6, DH = 3.62; // the doorway in the front gable, up to the wall plate as threshing barns' are
   const wallBox = (w, h, along) => grainUV(new THREE.BoxGeometry(w, h, T).translate(0, h / 2, 0), 'h', g);
   f.begin('barn', 0, hd);
   // Plinth and weatherboarded walls: back and sides whole, the front either side of the doorway.
@@ -469,13 +469,16 @@ export function barn(env, b, y) {
   const [lint, lm] = timber(L, DW + 0.3, 0.25, 0.3, 'x', 'oak');
   f.put(lint, lm, f.M(0, DH - 0.12, hd - T / 2));
   for (const k of [-1, 1]) { const [pg, pm] = timber(L, 0.25, DH, 0.3, 'y', 'oak'); f.put(pg, pm, f.M(k * (DW / 2 + 0.12), DH / 2, hd - T / 2)); }
-  // Doors: two ledged leaves standing open against the front wall.
+  // Doors: two ledged leaves standing open against the front wall (the camera passes door leaves).
+  f.begin('barn door', 0, hd + 0.1);
+  tk.cur.thin = true;
   for (const k of [-1, 1]) {
     const [dg, dm] = timber(L, DW / 2 - 0.05, DH - 0.1, 0.08, 'y', 'oak');
     f.put(dg, dm, f.M(k * (DW / 2 + 0.2 + (DW / 2 - 0.05) / 2), DH / 2 - 0.02, hd + 0.08));
     for (const yy of [0.5, DH / 2, DH - 0.6]) { const [rg, rm] = timber(L, DW / 2 - 0.1, 0.14, 0.05, 'x', 'oak'); f.put(rg, rm, f.M(k * (DW / 2 + 0.2 + (DW / 2 - 0.05) / 2), yy, hd + 0.14)); }
     f.solid(k * (DW / 2 + 0.2 + (DW / 2 - 0.05) / 2), hd + 0.1, (DW / 2 - 0.05) / 2, 0.06, -0.5, DH);
   }
+  f.begin('barn', 0, hd);
   // Slatted vents in the long walls: tall narrow dark slits between the boards.
   L.shade ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x1c1712, roughness: 1 }), { name: 'Shade' });
   for (const s of [-1, 1]) for (const zz of [-hd * 0.5, 0, hd * 0.5]) f.put(new THREE.PlaneGeometry(0.16, 1.3), L.shade, f.M(s * (hw + 0.005), 2.0, zz, s * Math.PI / 2));
@@ -511,7 +514,9 @@ export function barn(env, b, y) {
   f.solid(0, 0, hw + 0.4, hd + 0.4, WH, WH + rise + 0.6).cameraOnly = true;
   // Hay stacked inside, where you can see it through the open doors.
   const hay = [];
-  for (const [lx, lz, lv, rot] of [[-2.2, -2.8, 0, 0], [-1.1, -2.8, 0, 0.05], [0.0, -2.8, 0, -0.04], [1.1, -2.9, 0, 0.02], [-1.6, -2.8, 1, 0.03], [-0.5, -2.85, 1, 0], [0.6, -2.8, 1, -0.05], [-1.0, -2.8, 2, 0.02], [2.4, -0.6, 0, 1.57], [2.4, 0.5, 0, 1.6]]) {
+  // Hay stacked in the bays either side; the threshing floor down the middle, in line with the doors, is clear.
+  const Q = Math.PI / 2;
+  for (const [lx, lz, lv, rot] of [[-2.85, -3.7, 0, Q], [-2.85, -2.6, 0, Q + 0.04], [-2.85, -1.5, 0, Q - 0.03], [-2.85, -3.15, 1, Q + 0.02], [-2.85, -2.05, 1, Q], [-2.85, -2.6, 2, Q - 0.04], [2.85, -3.7, 0, Q], [2.85, -2.6, 0, Q - 0.03], [2.85, -3.15, 1, Q + 0.03]]) {
     const [wx, wz] = f.at(lx, lz);
     hay.push([wx, wz, lv, b.rot + rot]);
   }

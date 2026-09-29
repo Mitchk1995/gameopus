@@ -45,7 +45,7 @@ export const TYPES = {
   shop: { walls: 'mixed', roof: 'tile', ridge: 'across', jetty: 0.45, window: 'shop', barge: true, chimney: 'ridge' },
   inn: { walls: 'frame', roof: 'tile-brown', ridge: 'along', jetty: 0.5, window: 'casement', barge: true, chimney: 'ridge' },
   workshop: { walls: 'mixed', roof: 'tile', ridge: 'across', window: 'casement', barge: true, chimney: 'none' },
-  stable: { walls: 'mixed', roof: 'tile-brown', ridge: 'along', window: 'none', chimney: 'none', timber: 'oak' },
+  stable: { walls: 'mixed', roof: 'tile-brown', ridge: 'along', window: 'none', chimney: 'none', timber: 'oak', halfDoor: true },
   lockup: { walls: 'stone', roof: 'slate', ridge: 'along', window: 'mullion', chimney: 'gable', pitch: 47 },
   hall: { walls: 'frame', roof: 'tile-red', ridge: 'along', window: 'casement', barge: true, chimney: 'none', pitch: 50 },
 };
@@ -122,10 +122,14 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
     mesh.matrix.copy(toWorld(local, lean));
     batch.addObject(mesh, new THREE.Matrix4(), tk.cur);
   };
+  // Thin dressing on the walls (window frames and sills, flower boxes, a date stone) lets the camera
+  // pass; the house itself (walls, roof, gables, stacks, jetties) holds it off.
+  const THIN = new Set(['window', 'date stone']);
   const begin = (label, lx, lz, on = true) => {
     if (!tk) return;
     const p = new THREE.Vector3(lx, 0, lz).applyMatrix4(world);
     tk.begin(label, p.x, p.z, false, on);
+    if (THIN.has(label)) tk.cur.thin = true;
   };
   const hw = spec.w / 2, hd = spec.d / 2;
   const doors = (spec.doors || []).map((d) => ({ ...d }));
@@ -278,7 +282,7 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
           // The door itself (built by whoever owns the scene: see Door in doors.js).
           const local = new THREE.Vector3(lx + Math.sin(rot) * WALL_Z, 0, lz + Math.cos(rot) * WALL_Z).applyMatrix4(world);
           const d = opening.door;
-          doorDefs.push({ x: local.x, z: local.z, yaw: yaw + rot, y: groundY, shape: opening.shape, leaf: d.leaf || doorLeaf || 1, paint: d.paint || doorPaint || null, public: !!d.open, side, bay: i, back: !!d.back });
+          doorDefs.push({ x: local.x, z: local.z, yaw: yaw + rot, y: groundY, shape: opening.shape, leaf: d.leaf || doorLeaf || 1, paint: d.paint || doorPaint || null, public: !!d.open, side, bay: i, back: !!d.back, half: !!(look.halfDoor && !d.back) });
         }
       }
     }
@@ -352,15 +356,16 @@ function flowerBox(put, at, timber, L, lean, seed) {
   put(box, timber, at(0, OPEN.y0 - 0.26, 0.14), lean);
   L.leaf ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x3f6a2e, roughness: 0.9 }), { name: 'Leaf' });
   L.flowerMats ??= FLOWERS.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
-  const leafG = (L.leafG ??= new THREE.SphereGeometry(0.1, 8, 6).scale(1.3, 0.8, 1));
-  const headG = (L.headG ??= new THREE.SphereGeometry(0.035, 6, 5));
+  // Small leafy clumps spilling over the edge, dotted with blossoms in the house's two colours.
+  const leafG = (L.leafG ??= new THREE.DodecahedronGeometry(0.06, 1).scale(1.2, 0.75, 1));
+  const headG = (L.headG ??= new THREE.DodecahedronGeometry(0.024, 0));
   let s = seed * 9301 + 49297;
   const r = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
   const col = L.flowerMats[seed % L.flowerMats.length], col2 = L.flowerMats[(seed + 2) % L.flowerMats.length];
-  for (let i = 0; i < 5; i++) {
-    const x = -0.44 + i * 0.22;
-    put(leafG, L.leaf, at(x, OPEN.y0 - 0.06 + r() * 0.04, 0.14), lean);
-    for (let k = 0; k < 3; k++) put(headG, k === 2 ? col2 : col, at(x + (r() - 0.5) * 0.18, OPEN.y0 + 0.02 + r() * 0.08, 0.1 + r() * 0.12), lean);
+  for (let i = 0; i < 9; i++) {
+    const x = -0.48 + i * 0.12 + (r() - 0.5) * 0.04;
+    put(leafG, L.leaf, at(x, OPEN.y0 - 0.1 + r() * 0.07, 0.1 + r() * 0.09), lean);
+    for (let k = 0; k < 2; k++) put(headG, (i + k) % 3 === 2 ? col2 : col, at(x + (r() - 0.5) * 0.12, OPEN.y0 - 0.02 + r() * 0.08, 0.08 + r() * 0.14), lean);
   }
 }
 

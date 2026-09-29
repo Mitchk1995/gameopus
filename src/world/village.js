@@ -484,7 +484,7 @@ export class Village {
     put(inn, 'Mug', -1.6, -3.85, 0.4, it - y, false);
     put(inn, 'Mug', -1.2, -3.95, 2.1, it - y, false);
     put(inn, 'Bottle_1', 0.4, -3.9, 0, it - y, false);
-    put(inn, 'Barrel_Holder', 1.9, -5.25, 0);
+    put(inn, 'Barrel_Holder', 2.9, -5.25, 0); // clear of a back door into the yard
     put(inn, 'Shelf_Small_Bottles', -3.0, -inn.d / 2 + 0.28, 0, 1.3, false);
     // Tables with chairs and a bench.
     put(inn, 'Table_Large', 0.4, 1.4, Math.PI / 2);
