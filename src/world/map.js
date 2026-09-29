@@ -24,7 +24,7 @@ export const GOBLIN_CAMP = { x: -96, z: -44, r: 9 };
 export const SPAWN = { x: -8, z: 53, facing: Math.PI };
 // Bump this whenever the land or the town is laid out anew: a position saved under another layout
 // could now be inside a house or a hill, so the player starts at SPAWN instead.
-export const LAYOUT = 2;
+export const LAYOUT = 3;
 
 // Hills you can see from the square. Each is a soft dome; the landmark stands on its crown.
 export const ABBEY_HILL = { x: -6, z: -204, r: 100, h: 42, crown: 20 };
