@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { STEP } from '../world/world.js';
 import { WORLD } from '../world/map.js';
 import rootMotion from './rootmotion.json';
-import { UPPER } from './aim.js';
+import { UPPER, tiltUpper, raySphere } from './aim.js';
 
 // The player's body: walking, running, rolling and standing on things. Movement is
 // relative to the camera; the character turns to face where it's going. Clips play in
@@ -15,6 +15,10 @@ export const SPEED = { walk: 1.3, jog: 5.0, sprint: 7.4, aim: 1.7 };
 const CLIP_SPEED = { Walk_Loop: 0.97, Jog_Fwd_Loop: 5.36, Sprint_Loop: 8.25 };
 const JUMP_SPEED = 7.2;       // about a metre of height
 const SWING_MOVE = 0.7;       // share of jog speed you keep while swinging
+// How a swing tips the body to put the blade on the crosshair: the spine takes most of the
+// angle, the swinging arm the rest (the shares add up to 1).
+const SWING_LEAN = [['spine_01', 0.15], ['spine_02', 0.22], ['spine_03', 0.25], ['clavicle_r', 0.1], ['upperarm_r', 0.28]];
+const SWING_BLEND = 0.03;     // seconds for the layered swing to fade in over the legs
 const ROLL = { clip: 'Roll', rate: 1.2, scale: 0.8, control: 0.95, iframes: [0.04, 0.55] };
 
 export class Player {
@@ -41,6 +45,17 @@ export class Player {
     this.wasAir = false;
     this.landT = 0;
     this.swingTracks = new Map();
+    // Where a swing is aimed, set by the fight code: the crosshair ray, the target's body
+    // point if there is one, and the resulting point the body turns toward.
+    this.aimPoint = null;
+    this.aimOrigin = null;
+    this.aimDir = null;
+    this.aimTarget = null;
+    this.leanW = 0;
+    this.recoverT = 0;
+    this.settle = 0;
+    this.lastMove = null;
+    this.sinceSwing = 9;
   }
 
   spawn(x, z, facing = 0) {
@@ -96,12 +111,19 @@ export class Player {
   // animator's root motion until the blade connects, and onHit fires at that moment.
   startAttack(move, onHit) {
     if (this.state === 'act') this.stopAction();
+    // Coming out of the finisher (a low, twisted follow-through) the body straightens into
+    // the next swing over a little longer, so it doesn't snap.
+    const before = this.state === 'attack' ? this.move : this.sinceSwing < 0.3 ? this.lastMove : null;
+    const fade = before && before.kind === 'finisher' ? 0.12 : 0.06;
     this.state = 'attack';
     this.stateTime = 0;
     this.move = move;
     this.onHit = onHit;
     this.hitDone = false;
     this.lungeDone = 0;
+    this.recoverT = 0;
+    this.settle = 0;
+    if (this.gait === 'Recover') this.gait = null;
     this.clipLength = this.char.clips.get(move.clip).duration;
     // Swinging while on the move: the legs keep jogging and the swing plays on the upper
     // body. Standing still, the whole body swings and steps in as before.
@@ -111,8 +133,14 @@ export class Player {
     } else {
       this.swingMode = 'full';
       this.vel.set(0, 0, 0);
-      this.char.play(move.clip, { loop: false, speed: move.speed, fade: 0.08, restart: true });
+      const a = this.char.play(move.clip, { loop: false, speed: move.speed, fade, restart: true });
+      a.time = move.from ?? 0;
     }
+  }
+
+  // Where the swing is in its clip (seconds of clip time, counted from the clip's start).
+  get swingClipT() {
+    return (this.move.from ?? 0) + this.stateTime * this.move.speed;
   }
 
   // Starts moving mid-swing (or jumps): the legs take over, the swing carries on above.
@@ -123,37 +151,90 @@ export class Player {
   }
 
   // Runs after the animation each frame: lays the swing over the upper body while the
-  // legs do their own thing, and eases it out at the end or when a dodge cuts it off.
+  // legs do their own thing, tips the body so the blade passes through the crosshair, and
+  // eases it all out at the end or when a dodge cuts it off.
   applySwing(dt) {
-    const m = this.move;
-    if (this.state === 'attack' && this.swingMode === 'layered') {
-      this.swingT = this.stateTime * m.speed;
-      this.swingIn = Math.min(1, this.swingIn + dt / 0.07);
+    const m = this.move, attacking = this.state === 'attack';
+    if (attacking && this.swingMode === 'layered') {
+      this.swingT = this.swingClipT;
+      this.swingIn = Math.min(1, this.swingIn + dt / SWING_BLEND);
       const end = m.end ?? this.clipLength * 0.92;
       this.swingW = Math.min(this.swingIn, Math.max(0, (end - this.swingT) / (0.1 * m.speed)));
       this.swingClip = m.clip;
     } else this.swingW = Math.max(0, this.swingW - dt / 0.1);
-    if (this.swingW < 0.01 || !this.swingClip) return;
+    this.leanW = attacking ? Math.min(1, this.leanW + dt / 0.06) : Math.max(0, this.leanW - dt / 0.12);
+    if (this.swingW >= 0.01 && this.swingClip) this.#overlay();
+    if (this.leanW >= 0.01 && this.aimPoint && this.aimDir && m) this.#lean(m);
+    else if (!attacking && this.leanW < 0.01) this.aimPoint = null;
+  }
+
+  // The swing clip's upper-body rotations, blended over whatever the legs are doing.
+  #overlay() {
+    const B = this.char.bones;
     const clip = this.char.clips.get(this.swingClip);
-    let tracks = this.swingTracks.get(this.swingClip);
-    if (!tracks) {
-      tracks = [];
+    let set = this.swingTracks.get(this.swingClip);
+    if (!set) {
+      set = { tracks: [], pelvis: null };
       for (const track of clip.tracks) {
         const [name, prop] = track.name.split('.');
-        if (prop === 'quaternion' && UPPER.includes(name) && this.char.bones[name]) tracks.push({ bone: this.char.bones[name], interp: track.createInterpolant() });
+        if (prop !== 'quaternion') continue;
+        if (name === 'pelvis') set.pelvis = track.createInterpolant();
+        else if (UPPER.includes(name) && B[name]) set.tracks.push({ bone: B[name], name, interp: track.createInterpolant() });
       }
-      this.swingTracks.set(this.swingClip, tracks);
+      this.swingTracks.set(this.swingClip, set);
     }
-    const t = Math.min(this.swingT, clip.duration), q = this._q || (this._q = new THREE.Quaternion());
-    for (const { bone, interp } of tracks) {
+    const t = Math.min(this.swingT ?? 0, clip.duration), q = this._q || (this._q = new THREE.Quaternion());
+    // The clip's chest orientation assumes the hips were in the clip's own pose. The jump
+    // and jog poses tip the hips differently (leaning back in the air, which sent the swing
+    // over the head), so the lowest spine bone takes up the difference.
+    let hips = null;
+    if (set.pelvis) {
+      const r = set.pelvis.evaluate(t);
+      hips = (this._qh || (this._qh = new THREE.Quaternion())).copy(B.pelvis.quaternion).invert().multiply(q.set(r[0], r[1], r[2], r[3]).normalize());
+    }
+    for (const { bone, name, interp } of set.tracks) {
       const r = interp.evaluate(t);
-      bone.quaternion.slerp(q.set(r[0], r[1], r[2], r[3]).normalize(), this.swingW);
+      q.set(r[0], r[1], r[2], r[3]).normalize();
+      if (hips && name === 'spine_01') q.premultiply(hips);
+      this.char.mark(bone);
+      bone.quaternion.slerp(q, this.swingW);
     }
+  }
+
+  // Tips the body up or down so the blade's path at the moment of the hit runs through the
+  // crosshair (or the target's body): the same idea as the bow's chest lean, taken from
+  // the aim pitch. Without a target, the aim is where the crosshair ray passes at the
+  // blade's reach from the shoulder, so it works the same on the ground and in the air.
+  #lean(m) {
+    const B = this.char.bones, root = this.char.root;
+    const bones = SWING_LEAN.map(([name]) => B[name]);
+    const snap = this._snap || (this._snap = bones.map(() => new THREE.Quaternion()));
+    bones.forEach((b, i) => snap[i].copy(b.quaternion));
+    const sh = this._sh || (this._sh = new THREE.Vector3()), c = this._sc || (this._sc = new THREE.Vector3()), tmp = this._sp || (this._sp = new THREE.Vector3());
+    const ahead = this.state === 'attack' ? Math.max(0, (m.lunge || 0) - this.lungeDone) : 0;
+    // Tipping the spine moves the shoulder too, so settle on the angle over a few passes:
+    // pose with the guess, look where the shoulder ended up, and correct.
+    let phi = 0, info = null;
+    for (let pass = 0; pass < 3; pass++) {
+      bones.forEach((b, i) => b.quaternion.copy(snap[i]));
+      if (pass) tiltUpper(this.char, this.yaw, phi * this.leanW, SWING_LEAN);
+      root.updateMatrixWorld(true);
+      B.upperarm_r.getWorldPosition(sh);
+      // The shoulder as it will be when the blade lands, after the rest of the lunge.
+      c.set(sh.x + Math.sin(this.yaw) * ahead, sh.y, sh.z + Math.cos(this.yaw) * ahead);
+      const p = this.aimTarget || raySphere(this.aimOrigin, this.aimDir, c, m.aimReach ?? 1.1, tmp);
+      const pitch = Math.atan2(p.y - c.y, Math.max(0.4, Math.hypot(p.x - c.x, p.z - c.z)));
+      phi = THREE.MathUtils.clamp(pitch - (m.aimPitch ?? 0), -0.9, 0.9);
+      info = { pitch, phi };
+    }
+    bones.forEach((b, i) => b.quaternion.copy(snap[i]));
+    tiltUpper(this.char, this.yaw, phi * this.leanW, SWING_LEAN);
+    this.leanInfo = info;
   }
 
   get attackPhase() {
     if (this.state !== 'attack') return null;
-    const t = this.stateTime * this.move.speed;
+    const t = this.swingClipT;
     return { t, afterHit: this.hitDone, canChain: this.hitDone && t >= this.move.hit + (this.move.next ?? 0.1) };
   }
 
@@ -196,14 +277,21 @@ export class Player {
   }
 
   #attackStep(dt) {
-    const m = this.move, t = this.stateTime * m.speed;
+    const m = this.move, t = this.swingClipT, from = m.from ?? 0;
+    // Aim: follow the target or the crosshair until the blow lands.
+    if (!this.hitDone && this.aimPoint) {
+      const dx = this.aimPoint.x - this.pos.x, dz = this.aimPoint.z - this.pos.z;
+      if (dx * dx + dz * dz > 0.09) this.#turnTowards(Math.atan2(dx, dz), dt, 30);
+    }
     // Lunge with the clip's root motion, scaled to the move's reach, up to the hit.
     const curve = rootMotion.clips[m.clip];
     if (curve && m.lunge && t <= m.hit + 0.05) {
-      const total = curve[Math.min(curve.length - 1, Math.round((m.hit + 0.05) * rootMotion.hz))] || 1;
-      const f = Math.min(curve.length - 1, t * rootMotion.hz), i = Math.floor(f);
-      const at = curve[i] + ((curve[Math.min(i + 1, curve.length - 1)] - curve[i]) * (f - i));
-      const want = (at / Math.max(0.01, total)) * m.lunge;
+      const at = (x) => {
+        const f = Math.min(curve.length - 1, Math.max(0, x * rootMotion.hz)), i = Math.floor(f);
+        return curve[i] + ((curve[Math.min(i + 1, curve.length - 1)] - curve[i]) * (f - i));
+      };
+      const total = at(m.hit + 0.05) - at(from);
+      const want = total > 0.01 ? ((at(t) - at(from)) / total) * m.lunge : 0;
       const step = Math.max(0, want - this.lungeDone);
       this.lungeDone += step;
       this.pos.x += Math.sin(this.yaw) * step;
@@ -214,14 +302,29 @@ export class Player {
       this.onHit?.(m);
     }
     const end = m.end ?? this.clipLength * 0.92;
-    if (t >= end) {
-      this.state = 'move';
-      this.gait = null;
+    if (t >= end) this.#endSwing();
+  }
+
+  // The swing is over: back to moving. Standing, the blade eases home through the
+  // recovery clip; either way the pose settles into idle or the jog without a snap.
+  #endSwing() {
+    const m = this.move;
+    this.state = 'move';
+    this.gait = null;
+    this.settle = 0.22;
+    this.lastMove = m;
+    this.sinceSwing = 0;
+    if (this.swingMode === 'full' && this.grounded && m.recover && this.char.clips.has(m.recover)) {
+      const speed = 1.7;
+      this.char.play(m.recover, { loop: false, speed, fade: 0.08, restart: true });
+      this.gait = 'Recover';
+      this.recoverT = 0.6 / speed;
     }
   }
 
   update(dt, camYaw) {
     this.stateTime += dt;
+    this.sinceSwing += dt;
     const input = this.input;
     const wish = this.wish(camYaw, this._wish || (this._wish = new THREE.Vector3()));
     const moving = wish.lengthSq() > 0;
@@ -430,6 +533,11 @@ export class Player {
       this.landT -= dt;
       return;
     }
+    // Easing the blade home after a swing: hold the recovery clip unless you move off.
+    if (this.gait === 'Recover') {
+      this.recoverT -= dt;
+      if (target === 0 && this.recoverT > 0) return;
+    }
     let gait, dir = 1;
     if (this.state === 'attack') {
       const sp = Math.hypot(this.vel.x, this.vel.z);
@@ -442,7 +550,8 @@ export class Player {
     if (!(gait in CLIP_SPEED || gait === 'Idle_Loop')) gait = 'Idle_Loop';
     const rate = gait === 'Idle_Loop' ? 1 : Math.min(1.25, Math.max(0.5, speed / CLIP_SPEED[gait]));
     if (gait !== this.gait) {
-      this.char.play(gait, { fade: gait === 'Idle_Loop' ? 0.15 : 0.1, speed: dir * rate });
+      this.char.play(gait, { fade: this.settle || (gait === 'Idle_Loop' ? 0.15 : 0.1), speed: dir * rate });
+      this.settle = 0;
       this.gait = gait;
     } else if (gait !== 'Idle_Loop') this.char.current.timeScale = dir * rate;
   }

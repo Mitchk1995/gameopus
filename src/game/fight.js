@@ -3,6 +3,7 @@ import { MONSTERS, PLAYER_MOVES, playerMelee, playerRanged, playerMagic, monster
 import { ITEMS } from './items.js';
 import { MonsterFactory, Enemy } from '../actors/enemies.js';
 import { CombatUI } from '../ui/combatui.js';
+import { raySphere } from '../actors/aim.js';
 import { buildItem } from '../ui/itemart.js';
 import { Fire } from '../world/effects.js';
 import { BANDIT_CAMP, SPAWN } from '../world/map.js';
@@ -16,6 +17,8 @@ const PERFECT_DODGE = 0.2;     // a roll started this close to a blow is a perfe
 const RIPOSTE_WINDOW = 1.4;
 const MAX_STAMINA = 100;
 const COST = { roll: 18, block: 10 };
+
+const _shoulder = new THREE.Vector3();
 
 const CAMPS = [
   { id: 'goblins', x: -96, z: -44, r: 9, spawns: ['goblin', 'goblin', 'goblin', 'goblin', 'goblin_brute'] },
@@ -32,6 +35,9 @@ export class Fight {
     this.lock = null;
     this.combo = 0;
     this.queued = null;
+    this.queuedAt = 0;
+    this.swingTarget = null;
+    this.lastState = 'move';
     this.ground = [];
     this.riposteUntil = 0;
     this.time = 0;
@@ -206,27 +212,44 @@ export class Fight {
       this.#faceFoe();
     } else if (!blocking && P.state === 'block') P.endBlock();
 
-    // Light attacks chain; a press during a swing queues the next one.
-    if (attackPressed) this.queued = 'light';
-    if (heavyPressed) this.queued = 'heavy';
+    // Light attacks chain; a press during a swing queues the next one. Anything that takes
+    // over the body (a dodge, a guard, a hit) drops the chain and the queued swing; a press
+    // just before a dodge or a stagger ends still counts.
+    if (P.state !== this.lastState) {
+      if (P.state === 'roll' || P.state === 'block' || P.state === 'hurt' || P.state === 'dead') {
+        this.combo = 0;
+        this.queued = null;
+      }
+      this.lastState = P.state;
+    }
+    if (attackPressed) {
+      this.queued = 'light';
+      this.queuedAt = this.time;
+    }
+    if (heavyPressed) {
+      this.queued = 'heavy';
+      this.queuedAt = this.time;
+    }
     if (this.queued && (P.state === 'move' || (P.state === 'attack' && P.attackPhase.canChain))) {
       const kind = this.queued;
       this.queued = null;
       this.#attack(kind);
-    } else if (this.queued && P.state !== 'attack') this.queued = null;
+    } else if (this.queued && P.state !== 'attack' && !((P.state === 'roll' || P.state === 'hurt') && this.time - this.queuedAt < 0.3)) this.queued = null;
     if (P.state !== 'attack' && P.state !== 'block' && this.time - (this.lastSwing || 0) > 1.2) this.combo = 0;
+    // While a swing is winding up, keep it on the target or the crosshair.
+    if (P.state === 'attack' && !P.hitDone) this.#aimSwing(P.move);
   }
 
   #attack(kind) {
     const g = this.game, P = g.player;
     const weapon = g.state.equip.weapon && ITEMS[g.state.equip.weapon];
     let move;
-    if (kind === 'heavy') move = { ...PLAYER_MOVES.heavy };
+    if (kind === 'heavy') move = { ...(weapon ? PLAYER_MOVES.heavy : PLAYER_MOVES.unarmed.heavy) };
     else {
-      move = { ...PLAYER_MOVES.light[this.combo % PLAYER_MOVES.light.length] };
+      const chain = weapon ? PLAYER_MOVES.light : [PLAYER_MOVES.unarmed.light];
+      move = { ...chain[this.combo % chain.length] };
       this.combo = (this.combo + 1) % PLAYER_MOVES.light.length;
     }
-    if (!weapon) Object.assign(move, kind === 'heavy' ? { clip: 'Punch_Cross', hit: 0.19, speed: 1, range: 1.6, end: 0.7 } : { clip: 'Punch_Jab', hit: 0.16, speed: 1.1, range: 1.5, end: 0.55, recover: null });
     if (this.time < this.riposteUntil && kind === 'light') move.kind = 'riposte';
     if (!this.#spend(move.stamina)) {
       if (this.time - (this.tiredAt ?? -9) > 2.5) g.panels.message('You are too tired to swing.', 'bad');
@@ -235,14 +258,68 @@ export class Fight {
     }
     if (kind === 'heavy') this.combo = 0;
     this.lastSwing = this.time;
-    this.#faceFoe(true);
     g.stop();
     P.startAttack(move, (m) => this.#playerHit(m));
+    // Face the target or the crosshair right away; the swing then tracks it until it lands.
+    this.#aimSwing(move);
+    const at = P.aimPoint;
+    P.yaw = Math.hypot(at.x - P.pos.x, at.z - P.pos.z) > 0.3 ? Math.atan2(at.x - P.pos.x, at.z - P.pos.z) : g.rig.yaw + Math.PI;
     g.audio.play(kind === 'heavy' ? 'heavy' : 'swing', P.pos);
   }
 
-  // Turn toward the locked target, or the nearest foe roughly in front, or the camera.
-  #faceFoe(orCamera = false) {
+  // Where a swing goes: the locked target; otherwise the foe closest to the crosshair
+  // ray that is within reach; otherwise the point the blade can reach along the ray.
+  // Sets the player's aim point (the body turns and tips toward it) and the swing target.
+  #aimSwing(move) {
+    const g = this.game, P = g.player, cam = g.camera.position;
+    const ray = g.rig.forward(this.rayTmp || (this.rayTmp = new THREE.Vector3()));
+    const hl = Math.hypot(ray.x, ray.z) || 1e-6, hx = ray.x / hl, hz = ray.z / hl, slope = ray.y / hl;
+    // Distance along the ray's ground track, and the ray's height there.
+    const alongOf = (x, z) => (x - cam.x) * hx + (z - cam.z) * hz;
+    const rayY = (along) => cam.y + slope * along;
+    const point = P.aimPoint || (P.aimPoint = new THREE.Vector3());
+    P.aimOrigin ??= new THREE.Vector3();
+    P.aimDir ??= new THREE.Vector3();
+    let target = null;
+    if (this.lock?.alive && this.lock.realm === g.realm) target = this.lock;
+    else {
+      const reach = move.range + (move.lunge || 0) + 0.5;
+      let best = 0.9;
+      for (const e of this.enemies) {
+        if (!e.alive || e.realm !== g.realm) continue;
+        if (Math.hypot(e.pos.x - P.pos.x, e.pos.z - P.pos.z) - e.radius > reach) continue;
+        const along = alongOf(e.pos.x, e.pos.z);
+        if (along < 0.5) continue;
+        // How far the enemy stands off the ray, sideways and above or below.
+        const side = Math.abs((e.pos.x - cam.x) * hz - (e.pos.z - cam.z) * hx) - e.radius;
+        const y = rayY(along), out = y < e.pos.y ? e.pos.y - y : Math.max(0, y - (e.pos.y + e.height));
+        const miss = Math.max(0, side) + out * 0.6;
+        if (miss < best) {
+          best = miss;
+          target = e;
+        }
+      }
+    }
+    P.aimOrigin.copy(cam);
+    P.aimDir.copy(ray);
+    if (target) {
+      // Aim at the body where the crosshair crosses it, or the chest if it's the lock-on.
+      const y = target === this.lock ? target.pos.y + target.height * 0.6 : Math.min(target.pos.y + target.height * 0.9, Math.max(target.pos.y + 0.3, rayY(alongOf(target.pos.x, target.pos.z))));
+      point.set(target.pos.x, y, target.pos.z);
+      P.aimTarget = point.clone();
+    } else {
+      // Straight along the crosshair, where this swing's blade reaches at the moment of the
+      // hit (the player's body refines the height from its shoulder as it swings).
+      const ahead = Math.max(0, (move.lunge || 0) - (P.state === 'attack' ? P.lungeDone : 0));
+      const shoulder = _shoulder.set(P.pos.x + Math.sin(P.yaw) * ahead, P.pos.y + 1.3, P.pos.z + Math.cos(P.yaw) * ahead);
+      raySphere(cam, ray, shoulder, move.aimReach ?? 1.1, point);
+      P.aimTarget = null;
+    }
+    this.swingTarget = target;
+  }
+
+  // Turn toward the locked target, or the nearest foe roughly in front (a raised guard).
+  #faceFoe() {
     const g = this.game, P = g.player;
     let t = this.lock;
     if (!t) {
@@ -260,7 +337,6 @@ export class Fight {
       }
     }
     if (t) P.faceTowards(t.pos.x, t.pos.z);
-    else if (orCamera) P.yaw = g.rig.yaw + Math.PI;
   }
 
   #pickLock(side = 0) {
@@ -302,8 +378,9 @@ export class Fight {
       if (!e.alive || e.realm !== g.realm) continue;
       const to = new THREE.Vector3(e.pos.x - P.pos.x, 0, e.pos.z - P.pos.z);
       const d = to.length() - e.radius;
-      if (d > move.range) continue;
-      if (to.normalize().dot(fwd) < Math.cos((move.arc * Math.PI) / 180)) continue;
+      if (d > move.range + (e === this.swingTarget ? 0.3 : 0)) continue;
+      // The foe under the crosshair counts even if the swing ended a touch off it.
+      if (e !== this.swingTarget && to.normalize().dot(fwd) < Math.cos((move.arc * Math.PI) / 180)) continue;
       const kind = move.kind === 'riposte' && e.state !== 'parried' ? 'light' : move.kind;
       const res = playerMelee(g.state.skills, g.state.bonuses(), e.def, { kind }, { exposed: e.exposed });
       const outcome = e.takeHit(res, { ...move, kind }, P.yaw);

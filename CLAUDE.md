@@ -101,6 +101,25 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   the boom in by a couple of metres in one frame, and the shoulder can jump about 0.25 m when a jamb
   edge passes; the camera can hug the head (hero hidden) for about a second after such a pull; thin
   scenery between the head and the camera (a post beside the boom) can still hide the hero a little.
+- Melee aim and flow (done): every swing turns and tips toward the crosshair (or the lock-on
+  target, or else the foe nearest the crosshair ray within reach; `Fight.#aimSwing`) and
+  tracks it until the blow lands; `Player.#lean` tips the spine and sword arm (`tiltUpper` in
+  `aim.js`, shared with the bow) so the blade passes through that point, solved from the live
+  shoulder position. Each move in `PLAYER_MOVES` carries `from` (skips clip lead-in), `hit`
+  (blade crossing time), `next` (chain window), `aimPitch`/`aimReach` (where the blade passes at
+  `hit`; re-measure by sampling the clip when a clip or hit time changes, see the comment
+  above `PLAYER_MOVES`). A light swing starts moving in one frame and lands in about 0.2 s (heavy
+  0.38 s, finisher 0.18 s). The chain is A (right to left), B (back to the right), C (low sweep
+  to the left, first half of its clip only); a press during a swing cuts in at the chain window,
+  and a dodge, block or hit drops the combo and any queued swing. The layered swing subtracts
+  the jump/jog pelvis tilt (`#overlay`), which is what used to send airborne swings overhead.
+  Swings end through the recovery clip (`Recover` gait) so the blade eases home.
+  Gotcha: three's mixer only rewrites a bone whose animated value changed, so any pose laid
+  over the animation must call `char.mark(bone)` first (`Character.update` restores marked
+  bones); otherwise steady bones accumulate the layer every frame. `tests/playtest/melee_aim.py`
+  (`# ci`) measures swing start, blade-through-crosshair (ground, moving, jumping, looking up
+  and down), hits on the crosshair target, chain order and sides, pops and resets, and takes
+  `jump_swing_*.png`. `play.py` now prints up to 60000 chars so long check lists aren't cut.
 - Richer textures (done): the GLB textures were fine, but plaster, skin and cloth are almost
   flat paint. `src/engine/detail.js` patches every normal-mapped GLB material (kits, chars,
   monsters) with a shared noise map: colour grain, tiny bumps in the normal, slow mottling,
