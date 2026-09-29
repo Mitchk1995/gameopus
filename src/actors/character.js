@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { enhance } from '../engine/detail.js';
+import { enhance, detailTexture } from '../engine/detail.js';
 
 // People are assembled from Quaternius parts that share one 65-bone humanoid rig:
 // an outfit (arms, torso, legs, feet, extras), a head cut from a base body, hair,
@@ -311,7 +311,9 @@ export class CharacterFactory {
 // skinned to the spine, hips and thighs, so they hang and swing with the person. Measured on
 // the rig at rest (a T-pose facing +z): hips 0.95 m, chest 1.3 m, shoulders 1.46 m, head
 // centre 1.70 m, hair top 1.81 m, torso front 0.10 m ahead of the spine, thighs 0.09 m out.
-const clothMaterial = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0, side: THREE.DoubleSide, ...extra });
+// Built cloth is plain colour with a fine woven grain from the shared detail noise (as a bump map,
+// so it needs no texture of its own).
+const clothMaterial = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0, side: THREE.DoubleSide, bumpMap: detailTexture(), bumpScale: 0.8, ...extra });
 
 // Which bones a point at height y (and side x) moves with: 0 spine_02, 1 spine_01, 2 pelvis,
 // 3 thigh_l, 4 thigh_r.
@@ -337,7 +339,7 @@ function panelWeights(y, x) {
 // With a `trim` colour the bottom `trimHeight` metres are that colour, with a sharp edge (the row
 // where they meet is doubled, so the colours do not blend). Plain vertex colours, so the panel
 // needs no texture.
-function clothPanel(ctx, knots, { color, cols = 8, rowsPerKnot = 3, curve = 1.6, trim = null, trimHeight = 0.08 }) {
+function clothPanel(ctx, knots, { color, cols = 16, rowsPerKnot = 4, curve = 1.6, trim = null, trimHeight = 0.08 }) {
   const at = (y) => {
     for (let k = 0; k < knots.length - 1; k++) {
       const a = knots[k], b = knots[k + 1];
@@ -363,11 +365,14 @@ function clothPanel(ctx, knots, { color, cols = 8, rowsPerKnot = 3, curve = 1.6,
   } else rows.push([...bottom, false]);
   const front = knots[0][2] >= 0;
   const base = new THREE.Color(color), edge = new THREE.Color(trim ?? color);
-  const pos = [], idx = [], skinIndex = [], skinWeight = [], colors = [];
+  const pos = [], idx = [], skinIndex = [], skinWeight = [], colors = [], uvs = [];
   rows.forEach(([y, w, z, trimmed]) => {
     for (let i = 0; i <= cols; i++) {
-      const x = ((i / cols) * 2 - 1) * w;
-      pos.push(x, y, z - Math.sign(z) * curve * x * x);
+      const u = (i / cols) * 2 - 1, x = u * w;
+      // a few soft vertical folds, deeper towards the hem
+      const fold = 0.004 * Math.sin(u * Math.PI * 3) * (1 - Math.abs(u) * 0.5) * Math.min(1, (1.45 - y) * 1.4);
+      pos.push(x, y, z - Math.sign(z) * (curve * x * x + fold));
+      uvs.push(x * 14, y * 14);
       const wt = panelWeights(y, x).map((v, n) => [v, n]).sort((p, q) => q[0] - p[0]).slice(0, 4);
       const sum = wt.reduce((acc, v) => acc + v[0], 0) || 1;
       for (let n = 0; n < 4; n++) { skinIndex.push(wt[n][1]); skinWeight.push(wt[n][0] / sum); }
@@ -386,6 +391,7 @@ function clothPanel(ctx, knots, { color, cols = 8, rowsPerKnot = 3, curve = 1.6,
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
   geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
   geo.setIndex(idx);
@@ -416,6 +422,8 @@ function wear(g, ctx) {
     const h = HATS[g.style || 'straw'];
     const k = g.size ?? 1;
     const geo = new THREE.LatheGeometry(h.profile.map(([r, y]) => new THREE.Vector2(r * k, y * k)), 24);
+    const uv = geo.attributes.uv; // repeat the grain round the hat
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 8, uv.getY(i) * 3);
     const mesh = new THREE.Mesh(geo, clothMaterial(g.color ?? 0xc9a85a, { roughness: 1 }));
     mesh.name = 'gear_hat';
     mesh.castShadow = mesh.receiveShadow = true;

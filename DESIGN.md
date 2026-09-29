@@ -87,7 +87,8 @@ the quest data).
 No more outfits exist for our skeleton. The free Standard download of Modular Character Outfits
 (Fantasy) holds only the Peasant and Ranger outfits, male and female; its other ten outfits are in the
 paid Source edition (we only use what is free), and Quaternius has published no other outfit pack for the
-Universal Base Characters rig (the older Ultimate Modular Men/Women packs are on a different rig).
+Universal Base Characters rig as of September 2026 (checked on quaternius.com and quaternius.itch.io; the
+older Ultimate Modular Men/Women packs are on a different rig).
 People are therefore told apart by what the character factory can do with those four outfits.
 
 ### Villagers who look like themselves
