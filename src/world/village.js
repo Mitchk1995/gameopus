@@ -7,6 +7,7 @@ import { TownKit, boardTexture, findMaterial } from './townkit.js';
 import { placeProp, tag, fitUV } from './props.js';
 import { Door } from './doors.js';
 import { houseLooks } from './looks.js';
+import { chapel, lychGate, grave, barn, hangingSign, wallBoard, shopWindow, yardArch, wallBell } from './civic.js';
 
 // Ashford: a market town on a level terrace. Streets, the square, the rows of houses, the gates
 // and the wall are all read from ashford.js (see DESIGN.md, "Ashford v2"). This file turns that
@@ -33,6 +34,13 @@ export class Village {
     this.looks = await houseLooks(this.kit, this.assets, this.tk);
     const env = { tk: this.tk, looks: this.looks };
     for (const b of A.BUILDINGS) {
+      if (b.type === 'chapel') continue; // built below, nave, chancel and tower together
+      if (b.role === 'barn') {
+        const place = { ...b, y: y + (b.rise || 0), openings: [], doors: [], look: {} };
+        this.barn = barn(env, b, place.y);
+        (this.places.houses ??= []).push(place);
+        continue;
+      }
       const by = y + (b.rise || 0);
       const spec = { ...b, seed: 101 + b.key * 17 };
       const info = buildHouse(this.kit, batch, this.world.colliders, spec, by, env);
@@ -50,7 +58,21 @@ export class Village {
         }
       }
     }
+    // The chapel and its churchyard: the lych-gate, the graves in the grass.
+    const nave = A.BUILDINGS.find((b) => b.type === 'chapel' && b.role === 'chapel');
+    const tower = A.BUILDINGS.find((b) => b.type === 'chapel' && b.role === 'tower');
+    if (nave && tower) {
+      const cy = y + (nave.rise || 0);
+      this.chapel = chapel(env, nave, tower, cy);
+      for (const b of [nave, tower]) this.places[b.role] = { ...b, y: cy, openings: [], doors: [], look: {} };
+      const lg = A.LYCH;
+      this.chapel.lych = lychGate(env, lg.x, lg.z, lg.rot, this.world.heightAt(lg.x, lg.z));
+      const rnd = rng(1311);
+      for (const gv of A.GRAVES) grave(env, gv.x, this.world.heightAt(gv.x, gv.z), gv.z, gv.rot, gv.kind, rnd);
+      this.chapel.graves = A.GRAVES.length;
+    }
     this.#lanterns();
+    this.#trades(batch);
     this.#edge(batch);
     this.#plots(batch);
     this.#props(batch, y);
@@ -107,6 +129,97 @@ export class Village {
     }
   }
 
+  // What each building is for, shown on it: painted signs on iron brackets, the bank's carved name
+  // and canopy, the store's counters let down with goods on them, the inn's yard arch, the toll board,
+  // the watch's bell. (Positions are in each building's own frame: +z out of its front.)
+  #trades(batch) {
+    const env = { tk: this.tk, looks: this.looks, kit: this.kit };
+    const P = this.places;
+    const H = (role, n = 0) => (P.houses || []).filter((p) => p.role === role)[n];
+    const front = (p) => p.d / 2 + (p.look.jetty || 0) * (p.floors > 1 ? 1 : 0);
+    const sign = (p, lx, dy, text, icon, o = {}) => {
+      const q = this.at(p, lx, o.lz ?? front(p));
+      return hangingSign(env, q.x, p.y + dy, q.z, p.rot, text, icon, o);
+    };
+    const rnd = rng(4242);
+    this.signs = [];
+    if (P.inn) this.signs.push(sign(P.inn, 3.2, 3.95, 'The Crooked Pike', 'pike', { reach: 1.45, w: 1.15, h: 0.86 }));
+    if (P.store) this.signs.push(sign(P.store, 2.3, 3.85, 'General Store', 'sack', { colors: { bg: '#5a2a1c', fg: '#f0dfb0' } }));
+    const cooper = H('cooper');
+    if (cooper) this.signs.push(sign(cooper, 2.3, 3.85, 'Cooper', 'barrel', { colors: { bg: '#2c3a4a', fg: '#e8d8a8' } }));
+    // The open workshops hang theirs from a front corner post, standing out from the front.
+    for (const [p, text, icon, sx] of [[P.smithy, 'Smithy', 'anvil', 1], [P.potter, 'Potter', 'jug', -1]]) {
+      if (!p) continue;
+      const q = this.at(p, sx * (p.w / 2 - 0.1), p.d / 2 - 0.1);
+      this.signs.push(hangingSign(env, q.x, p.y + 2.98, q.z, p.rot, text, icon, { reach: 0.85, w: 0.62, h: 0.5, colors: { bg: text === 'Smithy' ? '#1e1e22' : '#6a3a22', fg: '#efe0b6' } }));
+    }
+    // The bank: its name cut in a stone tablet over the door, under a slate canopy on stone brackets.
+    if (P.bank) {
+      const p = P.bank, door = p.openings.find((o) => o.side === 's');
+      const L = this.looks, dressed = L.dressed('honey'), slate = L.roof('slate-dark');
+      const q = (lx, lz) => this.at(p, lx, lz);
+      const c = q(door.lx, p.d / 2);
+      this.tk.begin('bank canopy', c.x, c.z, false, true);
+      const put = (geo, mat, lx, y, lz, rx = 0) => { const w = q(lx, lz); this.tk.put(geo, mat, w.x, p.y + y, w.z, p.rot, 1, 1, 1, rx, 0); };
+      for (const k of [-1, 1]) put(new THREE.BoxGeometry(0.22, 0.42, 0.5), dressed, door.lx + k * 0.95, 2.62, p.d / 2 + 0.25);
+      put(new THREE.BoxGeometry(2.3, 0.14, 0.66), dressed, door.lx, 3.04, p.d / 2 + 0.33);
+      put(new THREE.BoxGeometry(2.4, 0.06, 0.78), slate, door.lx, 3.18, p.d / 2 + 0.33, -0.22);
+      const tab = q(door.lx, p.d / 2 + 0.03);
+      this.tk.begin('bank name', tab.x, tab.z, false, true);
+      this.tk.put(new THREE.BoxGeometry(1.7, 0.42, 0.06), L.carved('COUNTING HOUSE', { w: 512, h: 128 }), tab.x, p.y + 3.62, tab.z, p.rot);
+    }
+    // The store: both front windows opened as counters, with goods laid out on them.
+    if (P.store) for (const m of P.store.shopWindows || []) {
+      this.tk.begin('shop counter', m.elements[12], m.elements[14], false, true);
+      const c = shopWindow(env, m, rnd);
+      const pool = ['FarmCrate_Apple', 'Pot_1', 'Bottle_1', 'FarmCrate_Carrot', 'Vase_4', 'Bag'];
+      let x = c.x0 + 0.1;
+      for (let k = 0; k < 4; k++) {
+        const name = pool[(((k * 2 + Math.round(m.elements[12])) % pool.length) + pool.length) % pool.length];
+        const b = this.kit.bounds(name), w = b.max.x - b.min.x;
+        if (x + w > c.x1 - 0.05 || b.max.z - b.min.z > 0.55) { x += 0.05; continue; }
+        const v = new THREE.Vector3(x + w / 2 - (b.max.x + b.min.x) / 2, 0, c.z + 0.02 - (b.max.z + b.min.z) / 2).applyMatrix4(m);
+        this.#prop(batch, name, v.x, v.z, P.store.rot, { y: m.elements[13] + c.top + 0.03 - b.min.y, solid: false });
+        x += w + 0.06;
+      }
+      const v = new THREE.Vector3(0, 0, c.z).applyMatrix4(m);
+      const sh = this.world.colliders.addBox(v.x, v.z, 0.7, 0.3, P.store.rot, m.elements[13] - 0.5, m.elements[13] + 1.0);
+      sh.floor = true;
+    }
+    // The inn's yard arch, between the inn and the stable, onto Bridge Street.
+    const stable = H('stable');
+    if (P.inn && stable) {
+      const e = this.at(P.inn, P.inn.w / 2, -P.inn.d / 2), s0 = this.at(stable, -stable.w / 2, stable.d / 2);
+      const x = (Math.max(e.x, P.inn.x + P.inn.d / 2) + s0.x) / 2;
+      const gap = s0.x - (P.inn.x + P.inn.d / 2);
+      if (gap > 2.4) yardArch(env, x, s0.z - 0.3, 0, this.world.heightAt(x, s0.z), gap - 0.8, 'Crooked Pike Yard');
+    }
+    // The toll house: its board of tolls by the door.
+    const toll = H('toll house');
+    if (toll) {
+      const q = this.at(toll, -1.02, toll.d / 2 + 0.02);
+      wallBoard(env, q.x, toll.y + 1.55, q.z, toll.rot, ['TOLLS', 'Cart ~ 2d', 'Horse ~ 1d', 'Beasts ~ 1d', 'On foot ~ free'], { w: 0.64, h: 0.86 });
+    }
+    // The watch house: a notice by the door, and the bell on its gable to raise the town.
+    const watch = H('watch house');
+    if (watch) {
+      const q = this.at(watch, 0, watch.d / 2 + 0.02);
+      wallBoard(env, q.x, watch.y + 1.6, q.z, watch.rot, ['THE WATCH', 'Ring for', 'the watchman'], { w: 0.64, h: 0.6 });
+      const g = this.at(watch, watch.w / 2 + 0.01, 0.4);
+      wallBell(env, g.x, watch.y + 2.95, g.z, watch.rot + Math.PI / 2);
+    }
+    if (stable) {
+      const q = this.at(stable, -2.1, stable.d / 2 + 0.02);
+      wallBoard(env, q.x, stable.y + 1.7, q.z, stable.rot, ['STABLES', 'Horses kept', 'by the night'], { w: 0.8, h: 0.6 });
+    }
+    // Hay in the barn.
+    for (const [x, z, lv, rot] of this.barn?.hay || []) {
+      this.tk.bale(x, z, rot, lv);
+      // A stacked bale stands on the ones below: the stack is solid to its top.
+      if (lv > 0) this.world.colliders.addBox(x, z, 0.55, 0.3, rot, this.world.heightAt(x, z) + lv * 0.55 - 0.1, this.world.heightAt(x, z) + (lv + 1) * 0.55);
+    }
+  }
+
   // The wall, hedge and gates around the town.
   #edge(batch) {
     const tk = this.tk;
@@ -132,8 +245,9 @@ export class Village {
     const cy = A.YARDS.find((r) => r.id === 'churchyard');
     tk.stoneWall([cy.x0, cy.z0], [cy.x0, cy.z1], null, { height: 1.1, thick: 0.5 });
     tk.stoneWall([cy.x1, cy.z0], [cy.x1, cy.z1], null, { height: 1.1, thick: 0.5 });
-    tk.stoneWall([cy.x0, cy.z1], [1.8 - 1.9, cy.z1], null, { height: 1.1, thick: 0.5 });
-    tk.stoneWall([1.8 + 1.9, cy.z1], [cy.x1, cy.z1], null, { height: 1.1, thick: 0.5 });
+    const lg = A.LYCH;
+    tk.stoneWall([cy.x0, cy.z1], [lg.x - 1.5, cy.z1], null, { height: 1.1, thick: 0.5 });
+    tk.stoneWall([lg.x + 1.5, cy.z1], [cy.x1, cy.z1], null, { height: 1.1, thick: 0.5 });
   }
 
   // Gardens, allotments and paddocks: a fence with a gap, and what grows inside.

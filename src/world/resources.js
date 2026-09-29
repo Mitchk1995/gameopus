@@ -4,6 +4,7 @@ import { Batcher } from './kit.js';
 import { rng } from './buildings.js';
 import { FIRE, KILN } from './ashford.js';
 import { placeProp, tag, fitUV, courseGeometry } from './props.js';
+import { TownKit } from './townkit.js';
 import { Fire, fishingRings } from './effects.js';
 import { ROCKS, FISHING } from '../game/content.js';
 import { VILLAGE, LAKE, FARMS, SWIMS, MINE_ENTRANCE } from './map.js';
@@ -214,7 +215,7 @@ export class Resources {
   // ------------------------------------------------------------------ smithy
   #smithy(batch) {
     // The smithy building (open front, posts at the open corners) is built with the village;
-    // this fits it out.
+    // this fits it out: a flagstone floor, the forge, the anvil on its stump, the quench tub.
     const place = this.world.village.places.smithy;
     const { x, z, rot } = place;
     const at = (lx, lz) => {
@@ -222,42 +223,122 @@ export class Resources {
       return [x + lx * c + lz * s, z - lx * s + lz * c];
     };
     const env = { kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders };
-    // Furnace against the back wall.
-    const [fx, fz] = at(-1.2, -1.9);
-    this.#furnace(fx, fz, rot);
+    // Flagstones.
+    for (let ix = 0; ix < place.w / 2; ix++) for (let iz = 0; iz < place.d / 2; iz++) {
+      const [px, pz] = at(-place.w / 2 + 1 + ix * 2, -place.d / 2 + 1 + iz * 2);
+      batch.add('Floor_UnevenBrick', px, VILLAGE.y + 0.012, pz, rot);
+    }
+    // The forge against the back wall.
+    const [fx, fz] = at(-1.2, -place.d / 2 + 0.95);
+    this.#furnace(fx, fz, rot, place, batch);
     // Anvil in the middle, tools and a water barrel.
     const [ax, az] = at(0.9, 0.4);
     placeProp(env, 'Anvil_Log', ax, VILLAGE.y, az, rot + 0.3);
     this.add({ kind: 'station', station: 'anvil', name: 'Anvil', x: ax, y: VILLAGE.y + 0.8, z: az, r: 0.6, h: 1.1, reach: 2.4 });
     const [wx, wz] = at(2.1, -1.8);
     placeProp(env, 'Whetstone', wx, VILLAGE.y, wz, rot + Math.PI);
-    const [bx, bz] = at(2.3, 1.6);
-    placeProp(env, 'Barrel', bx, VILLAGE.y, bz, 0);
-    const [sx, sz] = at(2.15, 0.0); // against the east wall, out of the smith's face
+    const [sx, sz] = at(2.15, 0.2); // against the side wall, out of the smith's face
     placeProp(env, 'WeaponStand', sx, VILLAGE.y, sz, rot + Math.PI / 2);
+    // The quench tub beside the anvil: a coopered half-barrel of water.
+    const [qx, qz] = at(1.1, 1.75);
+    this.#quench(qx, qz, batch);
     this.places = { ...(this.places || {}), smithy: place };
   }
 
-  #furnace(x, z, rot) {
+  // A town kit for the stations' own pieces, batched with them (its audit ids kept apart).
+  #tk(batch) {
+    if (this.tkFor === batch) return this.tk;
+    this.tk = new TownKit(this.kit, batch, this.world.colliders, this.world);
+    this.tk.nid = 3000000;
+    this.tkFor = batch;
+    return this.tk;
+  }
+
+  // The forge: a waist-high brick hearth with a bed of live coals in it (the fire burns in a hollow
+  // in the top), a brick hood over it narrowing into a chimney that runs up through the roof, and a
+  // pair of leather bellows beside it on their frame, with the lever the smith pulls.
+  #furnace(x, z, rot, place, batch) {
+    const tk = this.#tk(batch);
+    const L = this.world.village.looks;
     const brick = findMaterial(this.kit, 'MI_Brick') || this.rockMat;
-    const g = new THREE.Group();
-    g.position.set(x, VILLAGE.y, z);
-    g.rotation.y = rot;
-    const body = new THREE.Mesh(fitUV(new THREE.BoxGeometry(1.8, 1.5, 1.3), 2.2), brick);
-    body.position.y = 0.75;
-    const top = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.35, 0.6, 1.6, 8), 2.2), brick);
-    top.position.set(0, 2.2, -0.15);
-    const mouth = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.5), new THREE.MeshStandardMaterial({ color: 0x220800, emissive: 0xff5a10, emissiveIntensity: 2.2 }));
-    mouth.position.set(0, 0.55, 0.652);
-    g.add(body, top, mouth);
-    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    this.scene.add(tag(g, 'Furnace'));
-    const fire = new Fire(this.scene, 0, 0, 0, { size: 0.45 });
-    g.add(fire.group);
-    fire.group.position.set(0, 0.32, 0.45);
+    const iron = this.world.village.tk.m.iron;
+    const y = VILLAGE.y;
+    const c = Math.cos(rot), s = Math.sin(rot);
+    const at = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
+    const W = 1.8, D = 1.1, HH = 0.85;
+    tk.begin('forge', x, z);
+    // The hearth: a brick block, its top a rim round a sunken fire bed.
+    tk.put(tk.box(W, HH - 0.12, D), brick, x, y, z, rot);
+    for (const [lx, lz, w, d] of [[0, -D / 2 + 0.1, W, 0.2], [0, D / 2 - 0.1, W, 0.2], [-W / 2 + 0.2, 0, 0.4, D - 0.4], [W / 2 - 0.2, 0, 0.4, D - 0.4]]) {
+      const [px, pz] = at(lx, lz);
+      tk.put(tk.box(w, 0.12, d), brick, px, y + HH - 0.12, pz, rot);
+    }
+    // Coals: dark lumps round a glowing heart.
+    const coal = (L.coal ??= new THREE.MeshStandardMaterial({ color: 0x1b1714, roughness: 1 }));
+    const ember = (L.ember ??= new THREE.MeshStandardMaterial({ color: 0x3a1206, emissive: 0xff5a18, emissiveIntensity: 2.0, roughness: 1 }));
+    tk.put(tk.box(W - 0.8, 0.04, D - 0.4), ember, x, y + HH - 0.12, z, rot);
+    const rnd = rng(55);
+    for (let i = 0; i < 26; i++) {
+      const lx = (rnd() - 0.5) * (W - 0.9), lz = (rnd() - 0.5) * (D - 0.5), [px, pz] = at(lx, lz);
+      const g = (tk.geo['coal' + (i % 4)] ??= new THREE.DodecahedronGeometry(0.05 + (i % 4) * 0.012, 0));
+      tk.put(g, Math.hypot(lx / (W - 0.9), lz / (D - 0.5)) < 0.3 && i % 3 === 0 ? ember : coal, px, y + HH - 0.1 + rnd() * 0.03, pz, rnd() * 6);
+    }
+    // Brick cheeks at the back corners carry the hood.
+    for (const k of [-1, 1]) {
+      const [px, pz] = at(k * (W / 2 - 0.14), -D / 2 + 0.14);
+      tk.put(tk.box(0.28, 1.12, 0.28), brick, px, y + HH - 0.02, pz, rot);
+    }
+    // The hood: a brick funnel from over the hearth up into the chimney.
+    const hood = new THREE.CylinderGeometry(0.42 * Math.SQRT2, 1.0 * Math.SQRT2, 1.1, 4, 1, true).rotateY(Math.PI / 4);
+    hood.scale(1, 1, D / 2 + 0.05);
+    const hoodG = fitUV(hood.translate(0, 0.55, 0), 2.2);
+    hoodG.userData.wuv = true;
+    tk.put(hoodG, brick, x, y + 1.95, z, rot);
+    // The chimney: from the hood up through the roof to well above the ridge.
+    const top = place.roof?.ridge ?? 5.5;
+    const h = top + 1.0 - 3.05;
+    tk.put(tk.box(0.84, h, 0.64), brick, x, y + 3.05, z, rot);
+    tk.put(tk.box(1.0, 0.14, 0.8), brick, x, y + 3.05 + h - 0.2, z, rot);
+    // The bellows: its frame, the leather bag between two boards, the nozzle into the fire, the lever.
+    const [bx, bz] = at(W / 2 + 0.55, 0.05);
+    tk.begin('forge bellows', bx, bz);
+    const tim = L.timber('oak'), leather = (L.leather ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x4a2e1c, roughness: 0.8 }), { name: 'Leather' }));
+    for (const k of [-1, 1]) { const [px, pz] = at(W / 2 + 0.55 + k * 0.3, 0.05); tk.put(tk.box(0.08, 0.7, 0.08), tim, px, y, pz, rot); }
+    tk.put(tk.box(0.72, 0.06, 0.5), tim, bx, y + 0.7, bz, rot);
+    const wedge = new THREE.Shape([new THREE.Vector2(-0.45, 0), new THREE.Vector2(0.45, 0), new THREE.Vector2(0.45, 0.34), new THREE.Vector2(-0.45, 0.06)]);
+    const wg = new THREE.ExtrudeGeometry(wedge, { depth: 0.46, bevelEnabled: false }).translate(0, 0, -0.23);
+    tk.put(wg, leather, bx, y + 0.76, bz, rot + Math.PI / 2);
+    tk.put(tk.box(0.5, 0.04, 0.95), tim, bx, y + 0.96, bz, rot);
+    const [nx, nz] = at(W / 2 + 0.2, 0.05);
+    tk.put(tk.cyl(0.05, 0.03, 0.34, 8), iron, nx, y + 0.72, nz, rot, 1, 1, 1, 0, Math.PI / 2);
+    tk.put(tk.box(0.05, 0.05, 1.3), tim, bx, y + 1.0, bz, rot, 1, 1, 1, 0.5, 0);
+    this.world.colliders.addBox(bx, bz, 0.42, 0.3, rot, y - 0.5, y + 1.1);
+    // The fire in the bed of coals, and its light.
+    const fire = new Fire(this.scene, 0, 0, 0, { size: 0.42 });
+    fire.group.position.set(x, y + HH - 0.1, z);
+    this.scene.add(fire.group);
     this.fires.push(fire);
-    this.world.colliders.addBox(x, z, 0.95, 0.7, rot, VILLAGE.y - 1, VILLAGE.y + 3);
-    this.add({ kind: 'station', station: 'furnace', name: 'Furnace', x, y: VILLAGE.y + 1.0, z, r: 1.0, h: 2.4, reach: 2.8 });
+    this.world.colliders.addBox(x, z, W / 2, D / 2, rot, y - 1, y + HH);
+    this.world.colliders.addBox(x, z, 0.5, 0.35, rot, y + 1.9, y + h + 3.2).cameraOnly = true;
+    this.add({ kind: 'station', station: 'furnace', name: 'Forge', x, y: y + 1.0, z, r: 1.0, h: 1.4, reach: 2.8 });
+  }
+
+  // A coopered tub of water for quenching hot iron.
+  #quench(x, z, batch) {
+    const tk = this.#tk(batch);
+    const y = VILLAGE.y;
+    const tim = this.world.village.looks.timber('oak');
+    tk.begin('quench tub', x, z);
+    const staves = 16, R = 0.38, H = 0.55;
+    for (let i = 0; i < staves; i++) {
+      const a = (i / staves) * Math.PI * 2;
+      tk.put(tk.box(0.155, H, 0.04), tim, x + Math.cos(a) * R, y, z + Math.sin(a) * R, -a + Math.PI / 2);
+    }
+    for (const hy of [0.1, 0.45]) tk.put(new THREE.TorusGeometry(R + 0.02, 0.012, 5, 24).rotateX(Math.PI / 2), this.world.village.tk.m.iron, x, y + hy, z);
+    const water = (this.waterMat ??= new THREE.MeshStandardMaterial({ color: 0x223c44, roughness: 0.08 }));
+    tk.put(new THREE.CircleGeometry(R - 0.02, 20).rotateX(-Math.PI / 2), water, x, y + H - 0.08, z);
+    tk.put(tk.cyl(R, R, 0.03, 16), tim, x, y + 0.02, z);
+    this.world.colliders.addCircle(x, z, R + 0.04, y - 0.5, y + H).floor = true;
   }
 
   // ------------------------------------------------------------------ cooking fire
@@ -374,9 +455,78 @@ export class Resources {
       this.#kiln(KILN.x, KILN.z, KILN.rot, y);
     }
     const env = { kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders };
+    const tk = this.#tk(batch);
+    const L = this.world.village.looks;
+    const mat = (key, color, roughness) => (L[key] ??= Object.assign(new THREE.MeshStandardMaterial({ color, roughness }), { name: key }));
+    const clay = mat('Clay', 0x8a6446, 0.55), green = mat('Greenware', 0xbcae98, 0.95), terra = mat('Terracotta', 0xa9573b, 0.8), glaze = mat('Glaze', 0x5d6f58, 0.35);
+    const tim = L.timber('oak');
+    // A floor of boards.
+    for (let ix = 0; ix < po.w / 2; ix++) for (let iz = 0; iz < po.d / 2; iz++) {
+      const [px, pz] = local(-po.w / 2 + 1 + ix * 2, -po.d / 2 + 1 + iz * 2);
+      batch.add('Floor_WoodLight', px, y + 0.012, pz, face);
+    }
+    // Turned pots: a jug, a bowl, a storage jar (profiles in metres, lathe-turned like the real thing).
+    const lathe = (pts) => new THREE.LatheGeometry(pts.map(([r, h]) => new THREE.Vector2(r, h)), 14);
+    const POTS = {
+      jug: lathe([[0.001, 0], [0.08, 0], [0.11, 0.05], [0.12, 0.13], [0.09, 0.21], [0.055, 0.26], [0.065, 0.31], [0.05, 0.31], [0.001, 0.29]]),
+      bowl: lathe([[0.001, 0], [0.06, 0], [0.13, 0.04], [0.16, 0.09], [0.145, 0.095], [0.11, 0.05], [0.001, 0.03]]),
+      jar: lathe([[0.001, 0], [0.09, 0], [0.15, 0.09], [0.16, 0.19], [0.13, 0.29], [0.09, 0.32], [0.1, 0.35], [0.001, 0.34]]),
+    };
+    const pot = (kind, m, lx, yy, lz, turn = 0) => { const [px, pz] = local(lx, lz); tk.put(POTS[kind], m, px, yy, pz, face + turn); };
+    // The display at the front, by the corner post: a two-tier plank stand on trestles, fired ware on it.
+    {
+      const [cx, cz] = local(2.5, po.d / 2 - 0.55);
+      tk.begin('pot display', cx, cz);
+      for (const [lz, hy, dep] of [[po.d / 2 - 0.4, 0.55, 0.42], [po.d / 2 - 0.72, 0.95, 0.3]]) {
+        const [px, pz] = local(2.5, lz);
+        tk.put(tk.box(2.2, 0.045, dep), tim, px, y + hy - 0.045, pz, face);
+        for (const k of [-1, 1]) {
+          const [lx2, lz2] = local(2.5 + k * 1.0, lz);
+          tk.put(tk.box(0.06, hy - 0.045, 0.06), tim, lx2, y, lz2, face);
+        }
+      }
+      const low = y + 0.55, high = y + 0.95;
+      pot('bowl', terra, 1.65, low, po.d / 2 - 0.4, 0.3);
+      pot('bowl', glaze, 2.05, low, po.d / 2 - 0.42);
+      pot('jar', terra, 2.5, low, po.d / 2 - 0.38, 1.1);
+      pot('bowl', terra, 2.95, low, po.d / 2 - 0.4, 2.1);
+      pot('jar', glaze, 3.35, low, po.d / 2 - 0.4, 0.4);
+      // A stack of plates.
+      const [spx, spz] = local(1.6, po.d / 2 - 0.72);
+      for (let k = 0; k < 6; k++) tk.put(tk.cyl(0.13, 0.11, 0.018, 16), terra, spx, high + k * 0.02, spz);
+      for (const [lx, m] of [[2.0, terra], [2.4, glaze], [2.8, terra], [3.2, terra]]) pot('jug', m, lx, high, po.d / 2 - 0.72, lx);
+      const [bx2, bz2] = local(2.5, po.d / 2 - 0.55);
+      this.world.colliders.addBox(bx2, bz2, 1.12, 0.36, face, y - 0.5, y + 1.0).floor = true;
+    }
+    // The wedging table, a lump of clay on it; the clay bin beside the wheel; a bucket of water.
     const [wx, wz] = local(0.6, -3.2);
     placeProp(env, 'Workbench', wx, y, wz, face);
-    const [bx, bz] = local(3.0, -3.0);
+    tk.begin('clay lump', wx, wz, false, true);
+    tk.put((tk.geo.lump ??= new THREE.SphereGeometry(0.16, 12, 8).scale(1.3, 0.6, 1)), clay, wx, y + 0.89 + 0.02, wz);
+    {
+      const [cx, cz] = local(-0.9, 2.3);
+      tk.begin('clay bin', cx, cz);
+      tk.put(tk.box(0.8, 0.5, 0.55), tim, cx, y, cz, face);
+      tk.put(tk.box(0.72, 0.04, 0.47), clay, cx, y + 0.5, cz, face);
+      for (let k = 0; k < 3; k++) { const [lx, lz] = local(-1.1 + k * 0.2, 2.25 + (k % 2) * 0.1); tk.put(tk.geo.lump, clay, lx, y + 0.54, lz, k); }
+      this.world.colliders.addBox(cx, cz, 0.42, 0.3, face, y - 0.5, y + 0.6).floor = true;
+    }
+    {
+      const [bx2, bz2] = local(1.5, 1.9);
+      placeProp(env, 'Bucket_Wooden_1', bx2, y, bz2, face + 0.4);
+    }
+    // Shelves of drying greenware on the back wall, in the bays with no window.
+    for (const lx of [3, -3]) {
+      const [sx, sz] = local(lx, -po.d / 2 + 0.31 + 0.16);
+      tk.begin('greenware shelf', sx, sz, false, true);
+      for (const hy of [1.15, 1.65]) {
+        tk.put(tk.box(1.5, 0.04, 0.3), tim, sx, y + hy, sz, face);
+        for (const k of [-1, 1]) { const [px, pz] = local(lx + k * 0.6, -po.d / 2 + 0.31 + 0.08); tk.put(tk.box(0.04, 0.16, 0.14), tim, px, y + hy - 0.16, pz, face); }
+        ['jug', 'bowl', 'jar', 'bowl'].forEach((kind, k) => pot(kind, green, lx - 0.52 + k * 0.35, y + hy + 0.04, -po.d / 2 + 0.31 + 0.16, k));
+      }
+      this.world.colliders.addBox(sx, sz, 0.76, 0.16, face, y + 1.05, y + 2.1);
+    }
+    const [bx, bz] = local(3.0, -2.6);
     placeProp(env, 'Barrel', bx, y, bz, 0);
   }
 

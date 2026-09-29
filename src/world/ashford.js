@@ -30,13 +30,16 @@ export const STREETS = [
   { id: 'bridge', name: 'Bridge Street', w: 5, paved: true, pts: [[8, 15], [38, 15]] },
   { id: 'quarry', name: 'Quarry Road', w: 5, paved: true, pts: [[-25, 2], [-25, -18], [-27, -28]] },
   { id: 'church', name: 'Church Lane', w: 3.6, paved: true, pts: [[1.8, 2], [1.8, -11]] },
+  // The flagged path from the lych-gate to the chapel's south door.
+  { id: 'church path', name: 'Church Path', w: 1.6, paved: true, pts: [[2.6, -10.4], [3.5, -17.2]] },
   { id: 'wren', name: 'Wren Lane', w: 3.2, paved: false, pts: [[-10.5, 47], [-54, 47]] },
   { id: 'stable', name: 'Stable Lane', w: 3.4, paved: false, pts: [[-5.5, 47], [22, 47], [20, 64]] },
 ];
 
 // Yards and forecourts: paved or trodden rectangles that are not streets.
 export const YARDS = [
-  { id: 'churchyard', x0: -5, x1: 13, z0: -27, z1: -11, paved: false },
+  // The churchyard is mown grass (only its path is paved): `grass` keeps the dirt paint off it.
+  { id: 'churchyard', x0: -5, x1: 13, z0: -27, z1: -11, paved: false, grass: true },
   { id: 'inn yard', x0: 20, x1: 36, z0: 0, z1: 12, paved: false },
   { id: 'farmyard', x0: 22, x1: 36, z0: 47, z1: 63, paved: false },
   { id: 'kiln alcove', x0: -32, x1: -24, z0: 13, z1: 18.5, paved: false },
@@ -90,6 +93,12 @@ export const BUILDINGS = [
     { id: 'smithy', type: 'workshop', walls: 'stone', stone: 'grey', roof: 'slate', barge: false, w: 6, d: 6, floors: 1, style: 'stone', open: ['s'], chimney: 0, gap: 9 },
   ]),
 
+  // In the square itself, the town's landmark: the market hall, its timber-framed hall on oak posts over
+  // an open market floor, black and white under a red roof with a louvred cupola. It stands on the
+  // square's east side, where Bridge Street's view from the east gate ends on it, clear of the stalls,
+  // the hearth and the smithy's front, with the villagers' walks passing under it.
+  { id: 'hall', role: 'market hall', type: 'hall', wash: 'white', timber: 'black', roof: 'tile-red', groundOpen: true, w: 6, d: 6, floors: 2, style: 'plaster', doors: [], chimney: 0, x: 3.5, z: 17.2, rot: -Math.PI / 2, face: 'W' },
+
   // ---- Lake Street, the way in from the south: cottages and shops in tight rows
   ...row('E', -10.5, 27.5, [
     H({ role: 'cottage', type: 'jetty', wash: 'ochre', timber: 'oak', roof: 'tile', dormers: 1, boxes: true, w: 6, d: 8, floors: 2, doors: door(1, false, 's', { paint: 'red' }), gap: 0 }),
@@ -110,12 +119,15 @@ export const BUILDINGS = [
   ]),
   ...row('W', -22.4, -16.5, [H({ role: 'cottage', type: 'gabled', wash: 'sage', timber: 'black', roof: 'tile', w: 6, d: 6, floors: 2, doors: door(1), gap: 0 })]),
 
-  // ---- Church Lane: the chapel on its rise, with a bell tower
-  ...row('S', -14.6, -1.2, [H({ role: 'chapel', w: 6, d: 10, floors: 2, style: 'stone', doors: door(1), chimney: 0, rise: 1.4, gap: 0 })]),
-  { ...H({ role: 'tower', w: 4, d: 4, floors: 3, style: 'stone', doors: door(0), chimney: 0, rise: 1.4 }), x: 7.6, z: -18.6, rot: 0, face: 'S' },
+  // ---- Church Lane: the chapel on its rise, laid out east and west as churches are: its tower at the
+  // west end, the nave with the south door at the head of the churchyard path, the chancel (built with
+  // the nave) to the east. The tower keeps east of the view from the spawn to the abbey on its hill.
+  { ...H({ role: 'chapel', type: 'chapel', w: 7, d: 6, floors: 2, style: 'stone', doors: door(0), chimney: 0, rise: 1.4 }), x: 6, z: -21, rot: 0, face: 'S' },
+  { ...H({ role: 'tower', type: 'chapel', w: 4, d: 4, floors: 4, style: 'stone', doors: [], chimney: 0, rise: 1.4 }), x: 0.5, z: -21, rot: 0, face: 'S' },
 
   // ---- Bridge Street: stable and watch house on the north side, cottages on the south
-  ...row('S', 12.5, 22.6, [
+  // (a carriage arch between the inn and the stable leads into the inn yard)
+  ...row('S', 12.5, 23.6, [
     H({ role: 'stable', type: 'stable', w: 6, d: 8, floors: 1, doors: door(1, false, 's', { shape: 'Flat', leaf: 2 }), chimney: 0, gap: 0 }),
     H({ role: 'watch house', type: 'lockup', stone: 'honey', roof: 'slate-dark', w: 4, d: 6, floors: 1, style: 'stone', doors: door(1, false, 's', { shape: 'Flat', leaf: 4 }) }),
   ]),
@@ -142,13 +154,13 @@ export const BUILDINGS = [
   // ---- Stable Lane, east: the working edge with a barn and a stable
   ...row('S', 45.3, 3, [H({ role: 'cottage', type: 'stone', stone: 'honey', roof: 'tile-brown', w: 8, d: 8, floors: 2, style: 'stone', doors: door(2, false, 's', { shape: 'Flat', paint: 'blue' }), gap: 0 })]),
   ...row('N', 48.7, 4.4, [
-    H({ role: 'barn', w: 8, d: 10, floors: 1, doors: door(2), chimney: 0, gap: 0 }),
+    H({ role: 'barn', w: 8, d: 10, floors: 1, doors: door(1.5), chimney: 0, gap: 0 }),
     H({ role: 'stable', type: 'stable', w: 4, d: 8, floors: 1, doors: door(1, false, 's', { shape: 'Flat', leaf: 2 }), chimney: 0 }),
   ]),
 ].map((b, i) => ({ ...b, key: i }));
 
 // Buildings that get a named place (the rest are `houses`).
-export const PUBLIC = ['bank', 'store', 'inn', 'smithy', 'potter'];
+export const PUBLIC = ['bank', 'store', 'inn', 'smithy', 'potter', 'hall'];
 
 // ---------------------------------------------------------------- geometry helpers
 // Signed distance to a polygon: negative inside, positive outside.
@@ -224,13 +236,32 @@ export function townGround(x, z) {
   const sd = Math.hypot(Math.max(dx, 0), Math.max(dz, 0)) + Math.min(Math.max(dx, dz), 0);
   cobble = Math.max(cobble, sm(0.5, -0.5, sd));
   for (const y of YARDS) {
+    if (y.grass) continue;
     const ex = Math.max(y.x0 - x, x - y.x1), ez = Math.max(y.z0 - z, z - y.z1);
     const d = Math.hypot(Math.max(ex, 0), Math.max(ez, 0)) + Math.min(Math.max(ex, ez), 0);
     const v = sm(0.6, -0.6, d);
     if (y.paved) cobble = Math.max(cobble, v);
     else dirt = Math.max(dirt, v * 0.85);
   }
-  return [dirt, cobble];
+  return [Math.max(dirt, builtGround(x, z)), cobble];
+}
+
+// Trodden earth under every building and a hand's breadth round it, so no grass grows through a floor
+// (the grass only grows on meadow ground). A market hall's floor is the square's own cobbles.
+export function builtGround(x, z) {
+  let v = 0;
+  for (const b of BUILDINGS) {
+    if (b.groundOpen) continue;
+    const dx = x - b.x, dz = z - b.z;
+    if (Math.abs(dx) > b.w + b.d || Math.abs(dz) > b.w + b.d) continue;
+    const c = Math.cos(b.rot), s = Math.sin(b.rot);
+    const lx = dx * c - dz * s, lz = dx * s + dz * c;
+    // The chapel's chancel runs on east of its nave.
+    const ext = b.type === 'chapel' && b.role === 'chapel' ? 3.1 : 0;
+    const d = Math.max(Math.abs(lx - ext / 2) - (b.w + ext) / 2, Math.abs(lz) - b.d / 2);
+    v = Math.max(v, sm(0.45, 0.1, d));
+  }
+  return v;
 }
 
 // ---------------------------------------------------------------- the wall around the town
@@ -346,33 +377,24 @@ function lamps(street, list) {
   kit('Bench', FIRE.x + 3, FIRE.z, -Math.PI / 2, { why: 'hearth bench' });
   kit('Bench', FIRE.x, FIRE.z + 2.6, Math.PI, { why: 'hearth bench' });
 }
-// The store: crates and apples outside, where shoppers browse.
+// The store: its goods are laid out on the counters let down from its front windows (village.js),
+// with a barrel of apples by the door, where shoppers browse.
 {
   const st = B('store');
   const w = (lx, lz) => toWorld(st, lx, lz);
-  kit('Barrel_Apples', ...w(-2.2, 4.7), 0, { r: 0.4, why: 'store display' });
-  kit('Crate_Wooden', ...w(2.2, 4.6), 0.3, { r: 0.45, why: 'store display' });
-  kit('Crate_Wooden', ...w(3.3, 4.7), 1.2, { r: 0.45, why: 'store display' });
+  kit('Barrel_Apples', ...w(0.98, 4.95), 0, { r: 0.4, why: 'store display' });
 }
 // The bank: a bench for waiting, nothing else. Banks do not have barrels.
 kit('Bench', -5.4, 2.65, 0, { why: 'bank bench' });
-// The smithy: a quench trough, a barrel and a crate of coal beside the open front.
+// The smithy: a barrel and a crate of coal beside the open front (the quench tub is inside, by the anvil).
 {
   const sm = B('smithy');
   const w = (lx, lz) => toWorld(sm, lx, lz);
-  put('trough', ...w(2.3, 4.0), sm.rot + Math.PI / 2, { why: 'smithy quench trough' });
   kit('Barrel', ...w(-2.6, 3.9), 0, { r: 0.4, why: 'smithy barrel' });
   kit('Crate_Metal', ...w(-2.6, 4.9), 0.2, { r: 0.45, why: 'smithy coal' });
 }
-// The potter: finished pots by the workshop front.
-{
-  const po = B('potter');
-  const w = (lx, lz) => toWorld(po, lx, lz);
-  kit('Vase_2', ...w(-3.2, 4.7), 0, { r: 0.35, why: 'pots for sale' });
-  kit('Pot_1', ...w(-2.4, 4.6), 0.5, { r: 0.3, why: 'pots for sale' });
-  kit('Vase_4', ...w(3.3, 4.7), 0, { r: 0.28, why: 'pots for sale' });
-  kit('Pot_1_Lid', ...w(2.5, 4.6), 0.2, { r: 0.3, why: 'pots for sale' });
-}
+// The potter: the finished pots stand on a plank display at the workshop's front, and the work in
+// hand inside (resources.js, #craftCorner), not on the street.
 // The cooper: barrels along his wall.
 {
   const co = R('cooper');
@@ -399,9 +421,28 @@ put('sign', -22.0, -21.6, 0, { boards: [{ text: 'Quarry & Warren', dir: [-0.2, -
 put('sign', -5.0, 44.0, 0.2, { boards: [{ text: 'Wren Lane', dir: [-1, 0] }, { text: 'Stable Lane', dir: [1, 0] }, { text: 'Lake', dir: [0, 1] }], why: 'Lake Street crossroads' });
 put('sign', 5.0, 3.6, 0, { boards: [{ text: 'Chapel', dir: [-0.3, -1] }], why: 'church lane mouth' });
 
-// Churchyard: graves in rows either side of the chapel, a lych-gate at the lane end.
-for (const gx of [-1.9, 10.6, 12.1]) for (let gz = -25.2; gz < -15.5; gz += 2.5) if (!(gx > 9 && gz > -21.5)) put('grave', gx, gz, 0.08 * (gz % 3), { why: 'churchyard' });
-put('lychgate', 1.8, -11.0, 0, { why: 'churchyard entrance' });
+// Churchyard: a lych-gate in the wall where Church Lane arrives, the path to the south door, and graves
+// in rows on the grass either side of it (and a few behind the nave), none near the walls or the path.
+export const LYCH = { x: 2.6, z: -11.0, rot: 0 };
+export const GRAVES = [];
+{
+  const cy = YARDS.find((r) => r.id === 'churchyard');
+  const path = STREETS.find((st) => st.id === 'church path');
+  const kinds = ['round', 'shoulder', 'round', 'cross', 'shoulder', 'round', 'shoulder'];
+  let k = 0, seed = 11;
+  const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const ok = (x, z, clear) => x > cy.x0 + 1.5 && x < cy.x1 - 1.5 && z > cy.z0 + 1.5 && z < cy.z1 - 1.5 && lineDistance(x, z, path.pts) > path.w / 2 + 0.9 &&
+    !BUILDINGS.some((b) => (b.role === 'chapel' || b.role === 'tower') && rectDistance(x, z, { x0: b.x - b.w / 2, x1: b.x + b.w / 2 + (b.role === 'chapel' ? 3.1 : 0), z0: b.z - b.d / 2, z1: b.z + b.d / 2 }) < clear) &&
+    Math.hypot(x - 6.4, z + 12.3) > 2.0;
+  for (const z of [-12.9, -14.5, -16.1]) for (let x = -3.4; x <= 11.6; x += 1.36) {
+    const gx = x + (r() - 0.5) * 0.3, gz = z + (r() - 0.5) * 0.3;
+    if (!ok(gx, gz, 1.2)) continue;
+    GRAVES.push({ x: gx, z: gz, rot: (r() - 0.5) * 0.12, kind: kinds[k++ % kinds.length] });
+  }
+  for (const [x, z] of [[4.2, -25.4], [5.6, -25.5], [7.0, -25.3], [-3.3, -19.6], [-3.4, -22.6]]) if (ok(x, z, 0.9)) GRAVES.push({ x, z, rot: (r() - 0.5) * 0.1, kind: kinds[k++ % kinds.length] });
+  // Two chest tombs for the town's old families.
+  for (const g of [GRAVES.find((q) => q.x > 8.5 && q.z < -15.5), GRAVES.find((q) => q.x < -1.5 && q.z > -13.5)]) if (g) g.kind = 'table';
+}
 kit('Bench', 6.4, -12.3, 0, { why: 'churchyard bench' });
 
 // Cottages: a woodpile behind a few of them.

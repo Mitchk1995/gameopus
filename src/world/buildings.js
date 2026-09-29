@@ -47,6 +47,7 @@ export const TYPES = {
   workshop: { walls: 'mixed', roof: 'tile', ridge: 'across', window: 'casement', barge: true, chimney: 'none' },
   stable: { walls: 'mixed', roof: 'tile-brown', ridge: 'along', window: 'none', chimney: 'none', timber: 'oak' },
   lockup: { walls: 'stone', roof: 'slate', ridge: 'along', window: 'mullion', chimney: 'gable', pitch: 47 },
+  hall: { walls: 'frame', roof: 'tile-red', ridge: 'along', window: 'casement', barge: true, chimney: 'none', pitch: 50 },
 };
 const PITCH = { thatch: 52, slate: 47, 'slate-dark': 47 };
 
@@ -152,7 +153,7 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
     if (spec.open?.includes(side)) continue;
     const doorBay = doors.find((d) => d.side === side)?.at ?? -1;
     const bays = !kind ? [] : windowBays(n, doorBay);
-    for (let f = 0; f < floors; f++)
+    for (let f = spec.groundOpen ? 1 : 0; f < floors; f++)
       for (let i = 0; i < n; i++) {
         const [lx, lz, k] = at(i, f);
         const y = f * STOREY;
@@ -169,7 +170,8 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
         } else if (bays.includes(i)) {
           const piece = stone ? 'Wall_UnevenBrick_Window_Wide_Flat' : f === 0 ? 'Wall_Plaster_Window_Wide_Flat' : 'Wall_Plaster_Window_Wide_Flat2';
           place(piece, local, { ...meta, role: 'window-wall', kind }, lean);
-          windows.push({ side, floor: f, bay: i, n, kind, style: look.window, shutters: 'none', local, lean });
+          const style = look.window === 'shop' && !(f === 0 && side === 's') ? 'casement' : look.window;
+          windows.push({ side, floor: f, bay: i, n, kind, style, shutters: 'none', local, lean });
         } else {
           let name;
           if (stone) name = 'Wall_UnevenBrick_Straight';
@@ -185,7 +187,7 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
   for (const [cx, cz] of [[hw, hd], [-hw, hd], [-hw, -hd], [hw, -hd]]) {
     const a = cz > 0 ? 's' : 'n', b = cx > 0 ? 'e' : 'w';
     if (!has(a) || !has(b)) continue;
-    for (let f = 0; f < floors; f++) {
+    for (let f = spec.groundOpen ? 1 : 0; f < floors; f++) {
       const zz = cz > 0 ? cz + J(f) : cz;
       place(stoneAt(f) ? 'Corner_Exterior_Brick' : 'Corner_Exterior_Wood', M(cx, f * STOREY, zz, CORNER_TURN[`${Math.sign(cx)},${Math.sign(cz)}`]), { role: 'corner', floor: f }, f > 0);
     }
@@ -216,6 +218,9 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
     // Chimney stacks: brick on the timber houses, stone on the stone ones.
     if (look.chimney !== 'none' && spec.chimney !== 0) chimney(put, begin, roof, look, stoneAt(floors - 1) ? mats.stone : L.brick, L.pot, rnd, { hw, hd, Jtop, lean: floors > 1 && !!look.lean });
     if (look.dormers && look.ridge === 'along') dormers(put, begin, roof, look, mats, L.glass, spec.w, hd, Jtop, look.dormers, floors > 1 && !!look.lean);
+    // A market hall: its upper floor stands on oak posts over an open ground floor, with a boarded
+    // ceiling on beams, and a louvred cupola with a weathervane rides its ridge.
+    if (spec.groundOpen) roof.posts = hallFrame(put, begin, mats, L, spec.w, spec.d, roof);
     // A date stone over the front door, carved the year the house was built.
     const front = openings.find((o) => o.side === 's');
     if (look.datestone && front) {
@@ -249,7 +254,7 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
       return colliders.addBox(v.x, v.z, hx, hz, yaw, groundY - 1, groundY + h);
     };
     for (const [side, n, rot, at] of sides) {
-      if (spec.open?.includes(side)) continue;
+      if (spec.open?.includes(side) || spec.groundOpen) continue;
       const horiz = side === 's' || side === 'n';
       for (let i = 0; i < n; i++) {
         const [lx, lz] = at(i, 0);
@@ -277,6 +282,11 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
         }
       }
     }
+    // A hall's posts.
+    if (spec.groundOpen && roof.posts) for (const [px, pz] of roof.posts) {
+      const v = new THREE.Vector3(px, 0, pz).applyMatrix4(world);
+      colliders.addCircle(v.x, v.z, 0.2, groundY - 1, groundY + STOREY - 0.2);
+    }
     // The roof: from the top of the walls up, over the whole footprint, so the camera
     // can't climb through the ceiling or roof from inside (or drop through it from above).
     const c = new THREE.Vector3(0, 0, Jtop / 2).applyMatrix4(world);
@@ -285,7 +295,8 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
   }
   const info = {
     world, top, openings, doors: doorDefs, parts, windows: windows.map(({ local, lean, ...w }) => w), look, roof,
-    spec: { x: spec.x, z: spec.z, rot: yaw, w: spec.w, d: spec.d, floors, groundY, style: spec.style || 'plaster', type: spec.type || spec.id, role: spec.role || spec.id, roof: roof.kind, open: spec.open || [], jetty: Jtop },
+    shopWindows: windows.filter((w) => w.style === 'shop').map((w) => toWorld(w.local, w.lean)),
+    spec: { x: spec.x, z: spec.z, rot: yaw, w: spec.w, d: spec.d, floors, groundY, style: spec.style || 'plaster', type: spec.type || spec.id, role: spec.role || spec.id, roof: roof.kind, open: spec.open || [], jetty: Jtop, groundOpen: !!spec.groundOpen },
   };
   if (colliders) (colliders.buildings ??= []).push(info);
   return info;
@@ -373,6 +384,58 @@ function jettyFloor(put, timber, w, zFace, J, y, upper) {
   shape.lineTo(0, 0);
   const geo = grainUV(new THREE.ExtrudeGeometry(shape, { depth: 0.14, bevelEnabled: false, curveSegments: 6 }).translate(0, 0, -0.07), 'y', g);
   for (const s of [-1, 1]) put(geo, timber, new THREE.Matrix4().makeTranslation(s * (w / 2 - 0.1), y - 0.22, zFace).multiply(new THREE.Matrix4().makeRotationY(-Math.PI / 2)), upper);
+}
+
+// ---------------------------------------------------------------- the market hall
+// Oak posts on stone pads round an open ground floor, braced to the beams that carry the hall above,
+// a boarded ceiling, and a louvred cupola with a weathervane on the ridge. Returns the posts.
+function hallFrame(put, begin, mats, L, w, d, roof) {
+  const hw = w / 2, hd = d / 2, H = STOREY - 0.25;
+  const g = mats.timber.userData.grain || [2.2, 0.645];
+  const bx = (sx, sy, sz, along) => grainUV(new THREE.BoxGeometry(sx, sy, sz), along, g);
+  const T = (x, y, z, rx = 0, rz = 0) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, rz)), new THREE.Vector3(1, 1, 1));
+  const posts = [];
+  const nx = Math.round((w - 0.3) / 2);
+  for (let i = 0; i <= nx; i++) for (const z of [-hd + 0.15, hd - 0.15]) posts.push([-hw + 0.15 + ((w - 0.3) * i) / nx, z]);
+  const nz = d > 7 ? Math.round((d - 0.3) / 3) : 1; // the short ends of a small hall span on their tie beams
+  for (let j = 1; j < nz; j++) for (const x of [-hw + 0.15, hw - 0.15]) posts.push([x, -hd + 0.15 + ((d - 0.3) * j) / nz]);
+  begin('hall frame', 0, 0, false);
+  for (const [x, z] of posts) {
+    put(new THREE.BoxGeometry(0.44, 0.4, 0.44).translate(0, 0.1, 0), mats.dressed, T(x, 0, z));
+    put(bx(0.26, H - 0.3, 0.26, 'y'), mats.timber, T(x, 0.3 + (H - 0.3) / 2, z));
+  }
+  // Arch braces from the posts up to the beams along the long sides.
+  const brace = Math.hypot(0.62, 0.62);
+  for (const [x, z] of posts) {
+    if (Math.abs(Math.abs(z) - (hd - 0.15)) > 0.01) continue;
+    for (const k of [-1, 1]) {
+      if (Math.abs(x + k * 0.5) > hw - 0.1) continue;
+      put(bx(0.1, brace, 0.12, 'y'), mats.timber, T(x + k * 0.31, H - 0.31, z, 0, -k * Math.PI / 4));
+    }
+  }
+  // Beams: round the edge and across the hall every two metres; a boarded ceiling over them.
+  for (const z of [-hd + 0.15, hd - 0.15]) put(bx(w, 0.26, 0.28, 'x'), mats.timber, T(0, H + 0.13, z));
+  for (const x of [-hw + 0.15, hw - 0.15]) put(bx(0.28, 0.26, d - 0.56, 'z'), mats.timber, T(x, H + 0.13, 0));
+  for (let i = 1; i < nx; i++) put(bx(0.2, 0.22, d - 0.56, 'z'), mats.timber, T(-hw + 0.15 + ((w - 0.3) * i) / nx, H + 0.11, 0));
+  put(bx(w - 0.5, 0.05, d - 0.5, 'x'), mats.timber, T(0, H + 0.225, 0));
+  // The cupola on the ridge.
+  const [cx, , cz] = roof.at(0, 0, 0);
+  const y = roof.ridge - 0.12;
+  begin('cupola', cx, cz);
+  put(bx(1.2, 0.3, 1.2, 'x'), mats.timber, T(cx, y + 0.15, cz));
+  for (const [a, b] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) put(bx(0.12, 0.95, 0.12, 'y'), mats.timber, T(cx + a * 0.5, y + 0.3 + 0.475, cz + b * 0.5));
+  for (const [a, b, r] of [[0, 1, 0], [0, -1, 0], [1, 0, 1], [-1, 0, 1]]) for (let k = 0; k < 3; k++) {
+    const geo = r ? bx(0.05, 0.22, 0.9, 'z') : bx(0.9, 0.22, 0.05, 'x');
+    put(geo, mats.timber, T(cx + a * 0.5, y + 0.45 + k * 0.27, cz + b * 0.5, r ? 0 : 0.5 * b, r ? -0.5 * a : 0));
+  }
+  const cap = fitUV(new THREE.ConeGeometry(0.92, 0.75, 4, 1, false).rotateY(Math.PI / 4), 3.6);
+  put(cap, mats.roof, T(cx, y + 1.25 + 0.375, cz));
+  put(new THREE.CylinderGeometry(0.025, 0.025, 1.0, 6), L.iron, T(cx, y + 2.1, cz));
+  put(new THREE.SphereGeometry(0.07, 10, 8), L.iron, T(cx, y + 1.95, cz));
+  put(new THREE.BoxGeometry(0.75, 0.04, 0.04), L.iron, T(cx, y + 2.35, cz));
+  put(new THREE.ConeGeometry(0.08, 0.18, 4).rotateZ(-Math.PI / 2), L.iron, T(cx + 0.44, y + 2.35, cz));
+  put(new THREE.BoxGeometry(0.02, 0.22, 0.2), L.iron, T(cx - 0.35, y + 2.35, cz));
+  return posts;
 }
 
 // ---------------------------------------------------------------- roofs

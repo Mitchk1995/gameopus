@@ -620,7 +620,7 @@ window.__geo = (() => {
       }
       // Same bays on every floor, so they stack.
       for (const [k, ws] of Object.entries(byWall)) {
-        if (k[1] === '0') continue;
+        if (k[1] === '0' || sp.groundOpen) continue; // (a hall on posts has no walls below its windows)
         const ground = (byWall[k[0] + '0'] || []).map((w) => w.bay);
         for (const w of ws) if (!ground.includes(w.bay)) R.fail('window', lab, `wall ${k[0]}: upper window in bay ${w.bay} doesn't sit over one below`);
       }
@@ -652,13 +652,14 @@ window.__geo = (() => {
       }
       // Corner posts: one at each of the four corners of the footprint, wrapped round the outside
       // of the corner (none of their mass pokes into the room).
-      const corners = sp.open.length ? [] : S.pieces.filter((p) => p.cat === 'corner' && Math.hypot(p.x - sp.x, p.z - sp.z) < Math.hypot(sp.w, sp.d) / 2 + 0.3 && Math.abs(p.y - sp.groundY) < 0.05);
+      const cornerY = sp.groundY + (sp.groundOpen ? 3 : 0); // a hall's walls start on its first floor
+      const corners = sp.open.length ? [] : S.pieces.filter((p) => p.cat === 'corner' && Math.hypot(p.x - sp.x, p.z - sp.z) < Math.hypot(sp.w, sp.d) / 2 + 0.3 && Math.abs(p.y - cornerY) < 0.05);
       if (!sp.open.length) {
         const c = Math.cos(sp.rot), s = Math.sin(sp.rot);
         for (const [ax, az] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
           const wx = sp.x + (ax * sp.w / 2) * c + (az * sp.d / 2) * s, wz = sp.z - (ax * sp.w / 2) * s + (az * sp.d / 2) * c;
           const p = corners.find((q) => Math.hypot(q.x - wx, q.z - wz) < 0.05);
-          if (!p) { R.fail('corner', lab, `no corner post at ${at(wx, sp.groundY, wz)}`); continue; }
+          if (!p) { R.fail('corner', lab, `no corner post at ${at(wx, cornerY, wz)}`); continue; }
           const pts = worldCloud(S.kit, p);
           let room = 0, n = 0;
           for (let i = 0; i < pts.length; i += 3) {
