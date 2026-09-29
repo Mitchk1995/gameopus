@@ -49,15 +49,18 @@ window.__geo = (() => {
 
   // ---- results
   function makeReport() {
-    const fails = [], seen = new Set(), counts = {};
+    const fails = [], seen = new Set(), counts = {}, warns = [];
     return {
-      fails, counts,
+      fails, counts, warns,
       fail(check, label, msg) {
         const key = check + '|' + label + '|' + msg.replace(/[0-9.\-]+/g, '#');
         if (seen.has(key)) return;
         seen.add(key);
         counts[check] = (counts[check] || 0) + 1;
         fails.push({ check, line: `FAIL ${check} ${label}: ${msg}` });
+      },
+      warn(check, label, msg) {
+        warns.push(`WARN ${check} ${label}: ${msg}`);
       },
     };
   }
@@ -718,10 +721,13 @@ window.__geo = (() => {
       const e1 = B.clone().sub(A), e2 = C.clone().sub(A);
       const wa = e1.clone().cross(e2).length() / 2;
       if (wa < 1e-8) continue;
-      const u1 = [uv.getX(ib) - uv.getX(ia), uv.getY(ib) - uv.getY(ia)], u2 = [uv.getX(ic) - uv.getX(ia), uv.getY(ic) - uv.getY(ia)];
-      const ua = Math.abs(u1[0] * u2[1] - u2[0] * u1[1]) / 2;
       let mat = mats[0];
       if (mats.length > 1) for (const gr of g.groups) if (i >= gr.start && i < gr.start + gr.count) mat = mats[gr.materialIndex];
+      // Stretch is judged on the texels: a texture that is not square (a band cut from a trim sheet) is
+      // meant to be laid with u and v at different rates.
+      const img = mat?.map?.image, asp = img && img.width && img.height ? img.width / img.height : 1;
+      const u1 = [(uv.getX(ib) - uv.getX(ia)) * asp, uv.getY(ib) - uv.getY(ia)], u2 = [(uv.getX(ic) - uv.getX(ia)) * asp, uv.getY(ic) - uv.getY(ia)];
+      const ua = Math.abs(u1[0] * u2[1] - u2[0] * u1[1]) / 2 / asp;
       // Stretch: ratio of the singular values of the world-to-uv map for this triangle.
       const l1 = e1.length(), l2 = e2.length(), d = e1.dot(e2) / (l1 * l2);
       const s = Math.sqrt(Math.max(0, 1 - d * d));
@@ -742,16 +748,41 @@ window.__geo = (() => {
       yield { wa, ua, mat, aniso };
     }
   }
+  // The grounds this build owns: the town and a margin round it, the dock and the mine mouth. The same
+  // mistakes found out in the vale are reported (WARN) for the world's builders, not failed here.
+  function inGrounds(S) {
+    if (S._inGrounds) return S._inGrounds;
+    const L = S.world.village?.layout, g = G();
+    const spots = [g.resources?.jettyEnd, S.world.village?.mapData?.MINE_ENTRANCE].filter(Boolean);
+    return (S._inGrounds = (x, z) => (L ? L.polyDistance(x, z) < 30 : true) || spots.some((q) => Math.hypot(q.x - x, q.z - z) < 40));
+  }
+  const flagFor = (S, R, gr) => (inGrounds(S)(gr.x, gr.z) ? R.fail.bind(R) : R.warn.bind(R));
+
+  // Trim sheets hold strips of different surfaces (the wood sheet has a metal band): mapped across a thin
+  // part, the part shows stripes of the wrong material.
+  const TRIM = /^(MI_WoodTrim|MI_Trim_Metal|MI_Trim_Props|MI_Trim_Furniture|MI_RockTrim)$/;
+  // Textures that tile (unlike a trim sheet, which is sampled a strip at a time).
+  const tiles = (mat) => !TRIM.test(mat);
   function checkTextures(S, R) {
     const ref = refDensity(S);
+    const size = new T.Vector3(), sc = new T.Vector3();
     for (const gr of S.groups) {
-      const nm = gr.name;
+      const nm = gr.name, flag = flagFor(S, R, gr);
       const acc = {};
       for (const m of gr.objs) {
         if (m.fromKit || !m.geometry.attributes.uv || [m.material].flat().some((x) => x.transparent)) continue;
+        // A trim sheet on a thin part (thinner than 0.15 m two ways) samples its metal strips.
+        const names = [m.material].flat().map((x) => x.name);
+        if (names.some((n) => /^(MI_WoodTrim|MI_Trim_Metal)$/.test(n))) {
+          m.geometry.boundingBox || m.geometry.computeBoundingBox();
+          m.geometry.boundingBox.getSize(size);
+          sc.setFromMatrixScale(m.matrixWorld);
+          const dims = [size.x * sc.x, size.y * sc.y, size.z * sc.z].sort((a, b) => a - b);
+          if (dims[0] < 0.15 && dims[1] < 0.15) flag('texture', `${nm} ${at(gr.x, S.ground(gr.x, gr.z), gr.z)}`, `the ${names.find((n) => /Trim/.test(n))} trim sheet on a part only ${f2(dims[0])} x ${f2(dims[1])} m thick shows its metal bands (use plain timber)`);
+        }
         for (const t of triangles(m)) {
           if (!t.mat.map) continue;
-          const a = (acc[t.mat.name || t.mat.uuid] ??= { w: 0, u: 0, an: [] });
+          const a = (acc[t.mat.name || t.mat.uuid] ??= { w: 0, u: 0, an: [], atlas: !!t.mat.userData?.atlas });
           a.w += t.wa; a.u += t.ua; a.an.push([t.aniso, t.wa]);
         }
       }
@@ -762,11 +793,15 @@ window.__geo = (() => {
         let half = a.w / 2, med = 1;
         for (const [v, w] of a.an) { half -= w; if (half <= 0) { med = v; break; } }
         const lab = `${nm} material ${mat} ${at(gr.x, S.ground(gr.x, gr.z), gr.z)}`;
-        if (/^MI_/.test(mat) && med > TOL.stretch) R.fail('texture', lab, `stretched ${f2(med)}:1 (one texture axis is ${f2(med)}x the other)`);
+        if (/^(MI_|Wood_|Stone_|Tiles_)/.test(mat) && med > TOL.stretch) flag('texture', lab, `stretched ${f2(med)}:1 (one texture axis is ${f2(med)}x the other)`);
         if (ref[mat]) {
           const ratio = dens / ref[mat];
-          if (ratio < TOL.density[0] || ratio > TOL.density[1]) R.fail('texture', lab, `${f2(dens)} repeats per metre vs ${f2(ref[mat])} in the kit (${f2(ratio)}x: bricks ${ratio < 1 ? 'too big' : 'too small'})`);
+          if (ratio < TOL.density[0] || ratio > TOL.density[1]) flag('texture', lab, `${f2(dens)} repeats per metre vs ${f2(ref[mat])} in the kit (${f2(ratio)}x: bricks ${ratio < 1 ? 'too big' : 'too small'})`);
         }
+        // A tiling texture blown up so the surface shows only a tile or two (the well roof's four giant
+        // tiles): over 1 m2, more than 3 m a repeat and fewer than 1.5 repeats across the surface.
+        const mpr = 1 / dens;
+        if (tiles(mat) && !a.atlas && a.w > 1 && mpr > 3.0 && Math.sqrt(a.w) / mpr < 1.5) flag('texture', lab, `a tiling texture ${f2(mpr)} m a repeat shows only ${f2(Math.sqrt(a.w) / mpr)} repeats across ${f2(a.w)} m2 (too few repeats: giant tiles)`);
       }
     }
   }
@@ -830,6 +865,244 @@ window.__geo = (() => {
     }
   }
 
+  // =============================================================== the grounds checks
+  // From the critic's pass (docs/critic/town-2026-09-29.md, "Recurring mistakes"): what is built, and how
+  // it meets its neighbours, rather than what the plan intends.
+
+  const inPoly2 = (x, z, poly) => {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [ax, az] = poly[j], [bx, bz] = poly[i];
+      if (az > z !== bz > z && x < ((bx - ax) * (z - az)) / (bz - az) + ax) inside = !inside;
+    }
+    return inside;
+  };
+  // Labels of the procedural groups by their audit id (TownKit.begin), to name a collider's owner.
+  function groupLabels(S) {
+    if (S._labels) return S._labels;
+    const m = new Map();
+    S.scene.traverse((o) => { for (const e of o.userData.pieces || []) if (e.proc) m.set(e.meta.id, e.meta.label); });
+    return (S._labels = m);
+  }
+  // Plan overlap (penetration depth) of two collider shapes.
+  function planDepth(a, b) {
+    if (a.kind === 'c' && b.kind === 'c') return a.r + b.r - Math.hypot(a.x - b.x, a.z - b.z);
+    if (a.kind === 'b' && b.kind === 'c') [a, b] = [b, a];
+    if (a.kind === 'c') {
+      const dx = a.x - b.x, dz = a.z - b.z, lx = dx * b.c - dz * b.s, lz = dx * b.s + dz * b.c;
+      const qx = Math.max(-b.hx, Math.min(b.hx, lx)), qz = Math.max(-b.hz, Math.min(b.hz, lz));
+      const d = Math.hypot(lx - qx, lz - qz);
+      return d > 0 ? a.r - d : a.r + Math.min(b.hx - Math.abs(lx), b.hz - Math.abs(lz));
+    }
+    let depth = Infinity;
+    for (const q of [a, b]) for (const [ax, az] of [[q.c, -q.s], [q.s, q.c]]) {
+      const proj = (p) => { const cp = p.x * ax + p.z * az, r = p.hx * Math.abs(p.c * ax - p.s * az) + p.hz * Math.abs(p.s * ax + p.c * az); return [cp - r, cp + r]; };
+      const [a0, a1] = proj(a), [b0, b1] = proj(b);
+      depth = Math.min(depth, Math.min(a1, b1) - Math.max(a0, b0));
+    }
+    return depth;
+  }
+  // Pieces of the boundary join each other by design (a wall run into its tower or its gatehouse).
+  const BOUNDARY = /^(town wall|wall tower|gatehouse|hedge)$/;
+
+  // 7. Crossing: solid shapes of different things overlapping in the town (a wall through a garden,
+  // a haystack half through a hedge, bales through a wagon wheel, a lamp post in a trough). Furniture
+  // inside buildings is the penetration check's business.
+  function checkCrossing(S, R, only = null) {
+    const w = S.world, L = w.village?.layout;
+    if (!L) return;
+    const labels = groupLabels(S);
+    const feet = L.BUILDINGS.map((b) => ({ b, poly: L.footprint(b, 0.3) }));
+    const inB = (x, z) => feet.find((f) => inPoly2(x, z, f.poly));
+    const people = (G().npcs || []).map((n) => n.pos);
+    const list = (only || w.colliders.all).filter((sh) => !sh.removed && !sh.cameraOnly && !sh.keepCamera && L.polyDistance(sh.x, sh.z) < 8 && !people.some((q) => Math.hypot(q.x - sh.x, q.z - sh.z) < 0.05));
+    // Owners: a TownKit group, a placed kit prop, a plot's fences, a tree, a building; untagged shapes near
+    // each other are one thing (a station's several colliders).
+    const key = new Map();
+    let loose = 0;
+    for (const sh of list) {
+      let k = null;
+      if (sh.owner != null) k = typeof sh.owner === 'number' ? 'g' + sh.owner : String(sh.owner);
+      else if (sh.data?.tree) k = 'tree' + sh.data.tree.id;
+      else { const f = inB(sh.x, sh.z); if (f) k = 'building' + f.b.key; }
+      if (k === null) { const n = list.find((o) => key.has(o) && key.get(o).startsWith('loose') && Math.hypot(o.x - sh.x, o.z - sh.z) < 1.5); k = n ? key.get(n) : 'loose' + loose++; }
+      key.set(sh, k);
+    }
+    const nameOf = (sh) => { const k = key.get(sh); if (k[0] === 'g') return labels.get(+k.slice(1)) || k; return k.replace(/^building/, 'building #'); };
+    const indoor = (sh) => sh.prop && inB(sh.x, sh.z);
+    const order = new Map(list.map((s, i) => [s, i]));
+    for (const a of list) {
+      if (indoor(a)) continue;
+      for (const b of w.colliders.query(a.x, a.z, a.reach + 0.1)) {
+        if (b === a || !key.has(b) || order.get(b) < order.get(a) || indoor(b)) continue;
+        const ka = key.get(a), kb = key.get(b);
+        if (ka === kb) continue;
+        if (ka.startsWith('building') && kb.startsWith('building')) continue;
+        const na = nameOf(a), nb = nameOf(b);
+        if (BOUNDARY.test(na) && BOUNDARY.test(nb)) continue;
+        // Lengths of one low wall or one fence meeting at a corner.
+        if (na === 'wall' && nb === 'wall') continue;
+        if (/^(fence@|plot:)/.test(ka) && /^(fence@|plot:)/.test(kb)) continue;
+        const v = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+        if (v <= 0.06) continue;
+        const d = planDepth(a, b);
+        if (d > 0.06) R.fail('crossing', `${na} ${at(a.x, a.y0, a.z)}`, `overlaps ${nb} ${at(b.x, b.y0, b.z)} by ${f2(d)} m`);
+      }
+    }
+  }
+
+  // 8. Placeholders: objects made of untextured surfaces (more than 0.3 m2 of plain colour that is not
+  // glass, fire, water or a hole), and low-poly cones and icospheres standing in for plants, hay, roofs.
+  const PLACEHOLDER_OK = [
+    [/^(bridge|abbey|beacon|headframe|lighthouse|keeper|fort|palisade|watch|lookout|gateway|totem|hide|barricade|goblin)/i, 'vale structures (the lead\'s), checked by landmarks.py'],
+    [/^hedgerow$/, 'the vale\'s field hedgerows (fields.js): their plain dark heart is seen only between the leaf cards'],
+  ];
+  function untextured(mat) {
+    if (!mat || mat.map || mat.transparent) return false;
+    // An unlit black is an opening (a slit, a doorway's dark), not a surface; near-black is shadow.
+    if (mat.color && mat.color.r + mat.color.g + mat.color.b < (mat.isMeshBasicMaterial ? 0.12 : 0.03)) return false;
+    // Wrought and cast iron is a plain dark metal (hoops, bands, brackets, rails).
+    if ((mat.metalness ?? 0) >= 0.5) return false;
+    if (/water|glass|void|ember|flame|lantern/i.test(mat.name || '')) return false;
+    if (mat.emissive && mat.emissive.getHex() > 0 && (mat.emissiveIntensity ?? 1) > 0.2) return false;
+    return true;
+  }
+  function checkPlaceholders(S, R) {
+    const A = new T.Vector3(), B2 = new T.Vector3(), C = new T.Vector3();
+    for (const gr of S.groups) {
+      if (PLACEHOLDER_OK.some(([re]) => re.test(gr.name))) continue;
+      const flag = flagFor(S, R, gr);
+      let bare = 0, worst = '';
+      for (const o of gr.objs) {
+        if (o.fromKit) continue;
+        const src = o.geometry.userData?.source || o.geometry;
+        const p = src.parameters;
+        const lab = `${gr.name} ${at(gr.x, S.ground(gr.x, gr.z), gr.z)}`;
+        if (p && /^(CylinderGeometry|ConeGeometry)$/.test(src.type) && p.radialSegments <= 12 && p.radiusTop < 0.15 * p.radiusBottom && (p.radiusBottom >= 0.25 || p.height >= 0.6)) flag('placeholder', lab, `a ${p.radialSegments}-sided cone ${f2(p.radiusBottom * 2)} m across and ${f2(p.height)} m tall stands in for a real shape`);
+        if (p && src.type === 'IcosahedronGeometry' && p.detail <= 1 && p.radius >= 0.08) flag('placeholder', lab, `a faceted ball (icosahedron, detail ${p.detail}) ${f2(p.radius * 2)} m across stands in for a real shape`);
+        const mats = [o.material].flat(), g = o.geometry, pos = g.attributes.position, idx = g.index;
+        if (!pos) continue;
+        const cnt = idx ? idx.count : pos.count;
+        for (let i = 0; i < cnt; i += 3) {
+          let mat = mats[0];
+          if (mats.length > 1) for (const gg of g.groups) if (i >= gg.start && i < gg.start + gg.count) mat = mats[gg.materialIndex];
+          if (!untextured(mat)) continue;
+          A.fromBufferAttribute(pos, idx ? idx.getX(i) : i).applyMatrix4(o.matrixWorld);
+          B2.fromBufferAttribute(pos, idx ? idx.getX(i + 1) : i + 1).applyMatrix4(o.matrixWorld);
+          C.fromBufferAttribute(pos, idx ? idx.getX(i + 2) : i + 2).applyMatrix4(o.matrixWorld);
+          bare += B2.clone().sub(A).cross(C.clone().sub(A)).length() / 2;
+          worst = mat.name || mat.type;
+        }
+      }
+      if (bare > 0.3) flag('placeholder', `${gr.name} ${at(gr.x, S.ground(gr.x, gr.z), gr.z)}`, `${f2(bare)} m2 of it is plain untextured colour (${worst})`);
+    }
+  }
+
+  // 9. Joins between repeated pieces: posts and piers must not overlap one another or stand inside a
+  // hedge, a pier must not crowd a gatehouse, neighbouring lengths of wall carry their coping at one
+  // height, and a building's closed corners have corner posts.
+  function groupBox(gr) {
+    if (gr._box) return gr._box;
+    const box = new T.Box3();
+    for (const o of gr.objs) {
+      if ([o.material].flat().some((m) => m.transparent) || !o.geometry.attributes.position) continue;
+      o.geometry.boundingBox || o.geometry.computeBoundingBox();
+      box.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
+    }
+    return (gr._box = box);
+  }
+  function checkJoins(S, R) {
+    const w = S.world, labels = groupLabels(S);
+    const POST = /^(wall pier|gap post|gate post|lantern post|signpost|washing pole|pier)$/;
+    const posts = S.groups.filter((g) => POST.test(g.name));
+    const hedges = w.colliders.all.filter((sh) => !sh.removed && typeof sh.owner === 'number' && /^hedge/.test(labels.get(sh.owner) || ''));
+    const gates = S.groups.filter((g) => g.name === 'gatehouse');
+    for (let i = 0; i < posts.length; i++) {
+      const a = posts[i], ba = groupBox(a);
+      const cx = (ba.min.x + ba.max.x) / 2, cz = (ba.min.z + ba.max.z) / 2, lab = `${a.name} ${at(cx, ba.min.y, cz)}`;
+      for (const h of hedges) {
+        const dx = cx - h.x, dz = cz - h.z, lx = dx * h.c - dz * h.s, lz = dx * h.s + dz * h.c;
+        if (Math.abs(lx) < h.hx - 0.02 && Math.abs(lz) < h.hz - 0.02) { R.fail('joins', lab, `stands inside a hedge ${at(h.x, h.y0, h.z)}`); break; }
+      }
+      for (let j = i + 1; j < posts.length; j++) {
+        const bb = groupBox(posts[j]);
+        const ox = Math.min(ba.max.x, bb.max.x) - Math.max(ba.min.x, bb.min.x), oz = Math.min(ba.max.z, bb.max.z) - Math.max(ba.min.z, bb.min.z);
+        if (ox > 0.02 && oz > 0.02) R.fail('joins', lab, `overlaps ${posts[j].name} ${at((bb.min.x + bb.max.x) / 2, bb.min.y, (bb.min.z + bb.max.z) / 2)}`);
+      }
+      if (/pier/.test(a.name)) for (const g of gates) {
+        const gb = groupBox(g);
+        const d = Math.hypot(Math.max(gb.min.x - ba.max.x, ba.min.x - gb.max.x, 0), Math.max(gb.min.z - ba.max.z, ba.min.z - gb.max.z, 0));
+        if (d < 1.0) R.fail('joins', lab, `stands ${f2(d)} m from a gatehouse (the gatehouse is the wall's end)`);
+      }
+    }
+    // Copings of neighbouring lengths of the same wall meet at one height where they join (a wall on a
+    // slope may rise or fall along its length, but no step or lip where two lengths meet).
+    const topNear = (g, x, z) => {
+      let top = -Infinity;
+      const v = new T.Vector3();
+      for (const o of g.objs) {
+        const p = o.geometry.attributes.position;
+        for (let i = 0; i < p.count; i++) {
+          v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+          if (Math.hypot(v.x - x, v.z - z) < 0.35) top = Math.max(top, v.y);
+        }
+      }
+      return top;
+    };
+    for (const kind of ['town wall', 'wall']) {
+      const runs = S.groups.filter((g) => g.name === kind).map((g) => ({ g, b: groupBox(g) }));
+      for (let i = 0; i < runs.length; i++) for (let j = i + 1; j < runs.length; j++) {
+        const a = runs[i].b, b = runs[j].b;
+        const gap = Math.hypot(Math.max(a.min.x - b.max.x, b.min.x - a.max.x, 0), Math.max(a.min.z - b.max.z, b.min.z - a.max.z, 0));
+        if (gap > 0.3) continue;
+        // The joint: the middle of where the two lengths' boxes meet.
+        const jx = (Math.max(a.min.x, b.min.x) + Math.min(a.max.x, b.max.x)) / 2, jz = (Math.max(a.min.z, b.min.z) + Math.min(a.max.z, b.max.z)) / 2;
+        const ta = topNear(runs[i].g, jx, jz), tb = topNear(runs[j].g, jx, jz);
+        if (!Number.isFinite(ta) || !Number.isFinite(tb)) continue;
+        if (Math.abs(ta - tb) > 0.02) R.fail('joins', `${kind} ${at(jx, ta, jz)}`, `two lengths meet here with their copings ${f2(Math.abs(ta - tb))} m apart in height`);
+      }
+    }
+    // Closed corners of buildings (both walls present) have a corner post: open workshops keep theirs on
+    // the walls they have. (A warning here: the building rules own corner posts.)
+    for (const b of w.colliders.buildings || []) {
+      const sp = b.spec;
+      if (!sp.open?.length) continue;
+      const c = Math.cos(sp.rot), s = Math.sin(sp.rot);
+      const has = (side) => !sp.open.includes(side);
+      for (const [ax, az, s1, s2] of [[1, 1, 's', 'e'], [-1, 1, 's', 'w'], [-1, -1, 'n', 'w'], [1, -1, 'n', 'e']]) {
+        if (!has(s1) || !has(s2)) continue;
+        const wx = sp.x + (ax * sp.w / 2) * c + (az * sp.d / 2) * s, wz = sp.z - (ax * sp.w / 2) * s + (az * sp.d / 2) * c;
+        if (!S.pieces.some((p) => p.cat === 'corner' && Math.hypot(p.x - wx, p.z - wz) < 0.1)) R.warn?.('joins', `building ${at(sp.x, sp.groundY, sp.z)}`, `closed corner ${at(wx, sp.groundY, wz)} has no corner post (B8, for the building rules)`);
+      }
+    }
+  }
+
+  // 10. Headroom: anything fixed to a wall or hung from an arm out of doors (lanterns, shelves, torches,
+  // sign boards) hangs clear of a head: its underside at least 2.1 m up where it reaches out over the way.
+  function checkHeadroom(S, R) {
+    const L = S.world.village?.layout;
+    const feet = L ? L.BUILDINGS.map((b) => L.footprint(b, -0.05)) : [];
+    for (const p of S.pieces) {
+      if (p.cat !== 'mount' || p.name === 'Chandelier' || p.tilted) continue;
+      if (feet.some((poly) => inPoly2(p.x, p.z, poly))) continue; // indoors
+      const reach = (p.b.max.z - p.b.min.z) * p.s;
+      if (reach <= 0.2) continue;
+      const under = p.y + p.b.min.y * p.s - S.ground(p.x, p.z);
+      if (under < 2.1) R.fail('headroom', label(p), `hangs ${f2(under)} m above the ground, reaching ${f2(reach)} m out (want its underside 2.1 m up)`);
+    }
+    for (const gr of S.groups) {
+      if (!/^(signpost|lantern post)$/.test(gr.name)) continue;
+      const g0 = S.ground(gr.x, gr.z);
+      for (const o of gr.objs) {
+        o.geometry.boundingBox || o.geometry.computeBoundingBox();
+        const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);
+        const d = Math.hypot((b.min.x + b.max.x) / 2 - gr.x, (b.min.z + b.max.z) / 2 - gr.z);
+        if (d < 0.25) continue; // the post itself
+        if (b.min.y - g0 < 2.1) { R.fail('headroom', `${gr.name} ${at(gr.x, g0, gr.z)}`, `an arm or board ${f2(d)} m out hangs ${f2(b.min.y - g0)} m above the ground (want 2.1)`); break; }
+      }
+    }
+  }
+
   // ---- entry points
   function run(name, opts = {}) {
     const g = G();
@@ -848,13 +1121,17 @@ window.__geo = (() => {
       coverage: () => { withDoors(S, false, () => checkCoverage(S, R)); withDoors(S, true, () => checkCoverage(S, R)); },
       buildings: () => checkBuildings(S, R),
       textures: () => checkTextures(S, R),
+      crossing: () => checkCrossing(S, R),
+      placeholder: () => checkPlaceholders(S, R),
+      joins: () => checkJoins(S, R),
+      headroom: () => checkHeadroom(S, R),
     };
     const t0 = performance.now();
-    if (dungeon) delete checks.doors, delete checks.buildings, delete checks.textures;
+    if (dungeon) for (const k of ['doors', 'buildings', 'textures', 'crossing', 'joins', 'headroom']) delete checks[k];
     (name === 'all' ? Object.values(checks) : [checks[name]]).forEach((c) => c());
     return {
       check: name, ms: Math.round(performance.now() - t0), pieces: S.pieces.length, tagged: S.groups.length, doors: S.doors.length, colliders: world.colliders.all.length,
-      fails: R.fails.length, counts: R.counts, lines: R.fails.map((f) => f.line),
+      fails: R.fails.length, counts: R.counts, lines: R.fails.map((f) => f.line), warns: R.warns,
     };
   }
   // Breaks pieces on purpose and requires the audit to notice each one, so a scan that quietly
@@ -913,6 +1190,60 @@ window.__geo = (() => {
     expect('a stretched brick texture', (R) => checkTextures(S, R), /texture CanaryWall/);
     g.scene.remove(fake);
     S.groups.pop();
+    // --- the grounds checks
+    const fakeGroup = (name, geometry, material, x, y, z) => {
+      const m = new T.Mesh(geometry, material);
+      m.position.set(x, y, z);
+      m.updateMatrixWorld(true);
+      const gr = { name, soft: false, x, z, objs: [{ geometry, material, matrixWorld: m.matrixWorld }] };
+      S.groups.push(gr);
+      return gr;
+    };
+    const drop = (gr) => S.groups.splice(S.groups.indexOf(gr), 1);
+    // A lamp post planted in the town wall (what a stake through a garden fence looks like to the colliders).
+    const labels = groupLabels(S);
+    const wallSh = world.colliders.all.find((s) => typeof s.owner === 'number' && labels.get(s.owner) === 'town wall');
+    const post = world.colliders.addCircle(wallSh.x, wallSh.z, 0.2, wallSh.y0, wallSh.y1);
+    post.owner = 'canary post';
+    expect('a post standing in the town wall', (R) => checkCrossing(S, R), /crossing .*canary post|canary post.*crossing|overlaps canary post/);
+    world.colliders.remove(post);
+    // A green cone standing in for a bean plant, and a plain-coloured blob.
+    let gr = fakeGroup('canary beans', new T.CylinderGeometry(0.03, 0.22, 1.2, 5), new T.MeshStandardMaterial({ color: 0x5a8a34 }), 60, 3, 60);
+    expect('a cone standing in for a plant', (R) => checkPlaceholders(S, R), /placeholder canary beans.*cone/);
+    drop(gr);
+    gr = fakeGroup('canary cabbage', new T.IcosahedronGeometry(0.27, 1), new T.MeshStandardMaterial({ color: 0x76a24a }), 60, 3, 62);
+    expect('a faceted ball standing in for a cabbage', (R) => checkPlaceholders(S, R), /placeholder canary cabbage/);
+    drop(gr);
+    gr = fakeGroup('canary sheet', new T.PlaneGeometry(1.2, 1.0), new T.MeshStandardMaterial({ color: 0xe8e2d0, side: T.DoubleSide }), 60, 4, 64);
+    expect('untextured cloth', (R) => checkPlaceholders(S, R), /placeholder canary sheet.*untextured/);
+    drop(gr);
+    // A gap post buried in a hedge, and two piers overlapping.
+    const hedgeSh = world.colliders.all.find((s) => typeof s.owner === 'number' && labels.get(s.owner) === 'hedge');
+    gr = fakeGroup('gap post', new T.BoxGeometry(0.3, 1.9, 0.3), new T.MeshStandardMaterial(), hedgeSh.x, hedgeSh.y0 + 1.2, hedgeSh.z);
+    expect('a post buried in a hedge', (R) => checkJoins(S, R), /joins gap post.*inside a hedge/);
+    drop(gr);
+    const p1 = fakeGroup('wall pier', new T.BoxGeometry(0.85, 1.6, 0.85), new T.MeshStandardMaterial(), 70, 4, 70);
+    const p2 = fakeGroup('wall pier', new T.BoxGeometry(0.85, 1.6, 0.85).rotateY(Math.PI / 4), new T.MeshStandardMaterial(), 70.2, 4, 70.1);
+    expect('two piers overlapping into a star', (R) => checkJoins(S, R), /joins wall pier.*overlaps wall pier/);
+    drop(p1);
+    drop(p2);
+    // A wall lantern hung at face height.
+    const lamp2 = S.pieces.find((q) => q.name === 'Lantern_Wall');
+    p = put('Lantern_Wall', lamp2.x, S.ground(lamp2.x, lamp2.z) + 0.6, lamp2.z, lamp2.yaw);
+    expect('a wall lantern at face height', (R) => checkHeadroom(S, R), /headroom Lantern_Wall/);
+    S.remove(p);
+    // The wood trim sheet on a thin pole, and a roof of four giant tiles.
+    let wood = null, round = null;
+    for (const part of kit.parts.values()) part.traverse((o) => { if (o.isMesh) for (const m of [o.material].flat()) { if (m.name === 'MI_WoodTrim') wood = m; if (m.name === 'MI_RoundTiles') round = m; } });
+    gr = fakeGroup('canary pole', new T.CylinderGeometry(0.05, 0.05, 2.2, 6), wood, 60, 4, 66);
+    expect('trim-sheet wood on a thin pole', (R) => checkTextures(S, R), /texture canary pole.*trim sheet/);
+    drop(gr);
+    const roofG = new T.PlaneGeometry(3.4, 2.6);
+    const uv = roofG.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 3.4 / 4.3, uv.getY(i) * 2.6 / 4.3);
+    gr = fakeGroup('canary roof', roofG, round, 60, 5, 68);
+    expect('a roof of four giant tiles', (R) => checkTextures(S, R), /texture canary roof.*giant tiles/);
+    drop(gr);
     return { lines, caught: `${caught}/${total}` };
   }
   return { run, canary, catOf, cloudOf, scan };

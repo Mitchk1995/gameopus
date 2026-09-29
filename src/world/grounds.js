@@ -188,10 +188,13 @@ export function ringBench(tk, x, z, { r0 = 0.72, r1 = 1.18, h = 0.46, sides = 8 
     const b = a + Math.PI / sides;
     for (const rr of [r0 + 0.07, r1 - 0.07]) tk.put(tk.timberBox(0.09, +(h - 0.02).toFixed(2), 0.09, 'y'), m.timber, x + Math.sin(b) * rr / Math.cos(Math.PI / sides), y - 0.03, z + Math.cos(b) * rr / Math.cos(Math.PI / sides), b);
   }
-  // Walkable ring: a floor from the trunk out to the bench's edge.
-  const sh = tk.colliders.addCircle(x, z, r1, y - 0.5, y + h);
-  sh.floor = true;
-  sh.owner = tk.cur.id;
+  // A walkable ring (one seat per side) round the trunk, not a disc through it.
+  for (let i = 0; i < sides; i++) {
+    const a = (i / sides) * TAU, len = 2 * rm * Math.tan(Math.PI / sides) + 0.1;
+    const sh = tk.colliders.addBox(x + Math.sin(a) * rm, z + Math.cos(a) * rm, len / 2, w / 2, a, y - 0.5, y + h);
+    sh.floor = true;
+    sh.owner = tk.cur.id;
+  }
 }
 
 // ------------------------------------------------------------------ brazier
@@ -467,7 +470,7 @@ export function ladder(tk, x, z, rot, { len = 3.2, lean = 0.3 } = {}) {
   for (const e of [-0.22, 0.22]) tk.put(tk.poleGeometry(0.03, 0.03, len, 6), m.bark, x + c * e, y, z - s * e, rot, 1, 1, 1, lean, 0);
   for (let k = 1; k < len / 0.3; k++) {
     const t = k * 0.3;
-    tk.put(tk.poleGeometry(0.018, 0.018, 0.44, 5), m.oak, x + Math.sin(rot) * Math.sin(lean) * t - c * 0.22, y + Math.cos(lean) * t, z + Math.cos(rot) * Math.sin(lean) * t + s * 0.22, rot, 1, 1, 1, 0, -Math.PI / 2);
+    tk.put(tk.poleGeometry(0.018, 0.018, 0.44, 5), m.bark, x + Math.sin(rot) * Math.sin(lean) * t - c * 0.22, y + Math.cos(lean) * t, z + Math.cos(rot) * Math.sin(lean) * t + s * 0.22, rot, 1, 1, 1, 0, -Math.PI / 2);
   }
 }
 

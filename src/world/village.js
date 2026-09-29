@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Kit, Batcher } from './kit.js';
 import { buildHouse, rng, STOREY } from './buildings.js';
-import { VILLAGE, ROADS, SPAWN, MINE_ENTRANCE } from './map.js';
+import { VILLAGE, ROADS, SPAWN, MINE_ENTRANCE, BANDIT_CAMP, BRIDGE } from './map.js';
 import * as A from './ashford.js';
 import { TownKit, boardTexture, texturedMaterial } from './townkit.js';
 import { placeProp } from './props.js';
@@ -23,7 +23,7 @@ export class Village {
     this.interactables = [];
     this.doors = [];
     this.layout = A;
-    this.mapData = { ROADS, SPAWN, MINE_ENTRANCE };
+    this.mapData = { ROADS, SPAWN, MINE_ENTRANCE, BANDIT_CAMP, BRIDGE };
   }
 
   async load() {
@@ -78,9 +78,10 @@ export class Village {
   }
 
   // Wall lanterns beside every door: both sides of the public doors, one side of a house's (the
-  // side with wall to spare). Each is screwed flush to the wall with the lamp hanging at chest
-  // height, where you can walk into it, so it has a collider.
+  // side with wall to spare). Each is screwed flush to the wall with the lamp's underside 2.2 m up,
+  // over a head (the grounds' headroom check; the building rules own these lanterns and may move them).
   #lanterns(batch, y) {
+    const lift = 2.2 - this.kit.bounds('Lantern_Wall').min.y;
     for (const p of [this.places.bank, this.places.store, this.places.inn, ...this.places.houses]) {
       const door = p.openings[0];
       if (!door) continue;
@@ -89,7 +90,7 @@ export class Village {
       for (const s of sides) {
         if (!room(s)) continue;
         const q = this.at(p, door.lx + s * 1.0, p.d / 2 + 0.04);
-        this.#prop(batch, 'Lantern_Wall', q.x, q.z, p.rot, { y: p.y + 0.9 });
+        this.#prop(batch, 'Lantern_Wall', q.x, q.z, p.rot, { y: p.y + lift });
       }
     }
   }
@@ -133,16 +134,16 @@ export class Village {
       const cx = (p.x0 + p.x1) / 2, cz = (p.z0 + p.z1) / 2;
       for (const [k, [a, b]] of Object.entries(sides)) {
         if (!inset(k)) continue;
-        if (k !== p.gate) { tk.fence(a, b); continue; }
+        if (k !== p.gate) { tk.fence(a, b, undefined, 'plot:' + p.id); continue; }
         const len = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
         const mid = len * (p.gateAt ?? 0.5), half = 0.62;
         const g0 = [a[0] + ux * (mid - half), a[1] + uz * (mid - half)], g1 = [a[0] + ux * (mid + half), a[1] + uz * (mid + half)];
-        tk.fence(a, g0);
-        tk.fence(g1, b);
+        tk.fence(a, g0, undefined, 'plot:' + p.id);
+        tk.fence(g1, b, undefined, 'plot:' + p.id);
         // The wicket opens into the plot.
         const ix = cx - (g0[0] + g1[0]) / 2, iz = cz - (g0[1] + g1[1]) / 2, il = Math.hypot(ix, iz);
         const into = Math.abs(ux) > Math.abs(uz) ? [0, Math.sign(iz)] : [Math.sign(ix), 0];
-        tk.wicket(g0, g1, il ? into : [0, 1]);
+        tk.wicket(g0, g1, il ? into : [0, 1], 'plot:' + p.id);
       }
       if (A.BEDS.has(p.crop)) tk.crops(p, p.crop);
     }
@@ -156,6 +157,7 @@ export class Village {
     const noticeMat = texturedMaterial(G.noticeTexture(), 0.9);
     noticeMat.alphaTest = 0.5;
     noticeMat.side = THREE.DoubleSide;
+    noticeMat.userData.atlas = true;
     for (const p of A.PROPS) {
       const h = this.world.heightAt(p.x, p.z);
       switch (p.type) {

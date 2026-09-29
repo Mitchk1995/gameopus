@@ -12,7 +12,7 @@
 # lantern is a solid. Prints "FAIL ..." lines (play.py exits non-zero on those).
 # A canary block breaks pieces on purpose and requires the audit to notice.
 def check(name, dungeon=False):
-    return {'eval': """(() => { const r = __geo.run('%s', { dungeon: %s }); return { check: r.check, fails: r.fails, counts: r.counts, scanned: r.pieces + ' pieces, ' + r.tagged + ' tagged, ' + r.doors + ' doors, ' + r.colliders + ' colliders', failLines: r.lines.slice(0, 14).join(' || ') || 'none' }; })()""" % (name, 'true' if dungeon else 'false')}
+    return {'eval': """(() => { const r = __geo.run('%s', { dungeon: %s }); return { check: r.check, fails: r.fails, counts: r.counts, scanned: r.pieces + ' pieces, ' + r.tagged + ' tagged, ' + r.doors + ' doors, ' + r.colliders + ' colliders', failLines: r.lines.slice(0, 14).join(' || ') || 'none', warnLines: (r.warns || []).slice(0, 8).join(' || ') || 'none' }; })()""" % (name, 'true' if dungeon else 'false')}
 
 STEPS = [
   {'eval': '@geometry_helpers.js'},
@@ -27,6 +27,10 @@ STEPS = [
   check('coverage'),
   check('buildings'),
   check('textures'),
+  check('crossing'),
+  check('placeholder'),
+  check('joins'),
+  check('headroom'),
   # --- canary: the audit must catch deliberately broken pieces
   {'eval': "(() => { const c = __geo.canary(); return { failLines: c.lines.join(' || ') || 'none', caught: c.caught }; })()"},
   # --- the dungeon
@@ -96,18 +100,20 @@ STEPS = [
   {'eval': """(() => { const g = __game, sh = window.__bench, P = g.player.pos;
     const onTop = Math.abs(P.y - sh.y1) < 0.05;
     return { y: +P.y.toFixed(2), benchTop: +sh.y1.toFixed(2), failLines: onTop ? 'none' : 'FAIL bench: could not jump onto the bench (feet ' + P.y.toFixed(2) + ', seat ' + sh.y1.toFixed(2) + ')' }; })()"""},
-  # --- a hanging lantern is solid
+  # --- a door lantern hangs overhead: its collider is above a head, and you walk under it to the wall
   {'eval': """(() => { const g = __game;
     const sh = g.world.colliders.all.find((s) => s.prop === 'Lantern_Wall');
     const h = g.world.village.places.bank, out = { x: Math.sin(h.rot), z: Math.cos(h.rot) };
     window.__lamp = sh;
-    // Stand out in front of the lamp, walk straight at it.
+    const up = sh.y0 - g.world.heightAt(sh.x, sh.z);
+    // Stand out in front of the lamp, walk straight at the wall under it.
     const px = sh.x + out.x * 2.2, pz = sh.z + out.z * 2.2, face = Math.atan2(-out.x, -out.z);
     g.player.spawn(px, pz, face); g.rig.yaw = face + Math.PI; g.rig.pitch = -0.1; g.run(0.3);
-    return 1; })()"""},
+    return { lampUp: +up.toFixed(2), failLines: up < 2.1 ? 'FAIL lantern: a wall lantern hangs only ' + up.toFixed(2) + ' m up (head height)' : 'none' }; })()"""},
   {'key': 'KeyW'},
   {'eval': "__game.sim(2.0)"},
   {'up': 'KeyW'},
-  {'eval': """(() => { const g = __game, sh = window.__lamp, P = g.player.pos, d = Math.hypot(P.x - sh.x, P.z - sh.z);
-    return { distFromLampCentre: +d.toFixed(2), failLines: d < sh.r + 0.25 ? 'FAIL lantern: walked into the hanging lantern (' + d.toFixed(2) + ' m from its centre)' : 'none' }; })()"""},
+  {'eval': """(() => { const g = __game, h = g.world.village.places.bank, P = g.player.pos;
+    const fromWall = (P.x - h.x) * Math.sin(h.rot) + (P.z - h.z) * Math.cos(h.rot) - h.d / 2;
+    return { fromWall: +fromWall.toFixed(2), failLines: fromWall > 0.7 ? 'FAIL lantern: stopped ' + fromWall.toFixed(2) + ' m from the wall, short of walking under the door lantern' : 'none' }; })()"""},
 ]

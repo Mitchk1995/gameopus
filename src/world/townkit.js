@@ -146,14 +146,17 @@ export class TownKit {
       plaster: findMaterial(kit, 'MI_Plaster') || std(0xd8ceb8),
       metal: findMaterial(kit, 'MI_Trim_Metal') || std(0x2a2a2e, { metalness: 0.7, roughness: 0.5 }),
       vine: (() => { const v = findMaterial(kit, 'MI_Vine'); if (!v) return null; const c = v.clone(); return texturedMaterial(c.map, c.roughness, c); })(),
-      iron: std(0x25262a, { metalness: 0.6, roughness: 0.55 }),
+      // Wrought iron: dark, hammered, rusting at the edges.
+      iron: surface('Iron_Wrought', ironTexture(), { roughness: 0.6, metalness: 0.55, tile: [0.6, 0.6] }),
       glass: new THREE.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffa640, emissiveIntensity: 1.6, roughness: 0.3 }),
-      dark: new THREE.MeshBasicMaterial({ color: 0x0a0806 }),
-      water: new THREE.MeshStandardMaterial({ color: 0x2a4d5a, roughness: 0.08, metalness: 0 }),
-      rope: std(0x8a7456, { roughness: 1 }),
-      coal: std(0x1d1a18, { roughness: 1 }),
+      // An opening (a slit window, a doorway's dark): not a surface.
+      dark: Object.assign(new THREE.MeshBasicMaterial({ color: 0x0a0806 }), { name: 'Void' }),
+      water: Object.assign(new THREE.MeshStandardMaterial({ color: 0x2a4d5a, roughness: 0.08, metalness: 0 }), { name: 'Water' }),
+      rope: surface('Rope_Hemp', ropeTexture(), { roughness: 1, tile: [0.25, 0.25] }),
+      coal: surface('Coal', ironTexture(0.5), { roughness: 1, color: 0x9a9088, tile: [0.4, 0.4] }),
       ember: new THREE.MeshStandardMaterial({ color: 0x3a1206, emissive: 0xff5a18, emissiveIntensity: 1.5, roughness: 1 }),
-      hedgeCore: std(0x1c2c14, { roughness: 1 }),
+      // The hedge's heart: twiggy dark shade, seen only between the leaves.
+      hedgeCore: surface('Hedge_Heart', twigTexture(), { roughness: 1, tile: [0.8, 0.8] }),
       // Freshly cut wood (the sharpened tips of stakes out in the vale).
       logEnd: std(0xb58b58),
       // Fallbacks until extras() has loaded the real surfaces.
@@ -172,7 +175,10 @@ export class TownKit {
     m.roofTiles.name = 'Tiles_Small';
     m.roofTiles.userData = { tile: [1.5, 1.5] };
     enhance(m.roofTiles);
-    m.bark = m.barkDark = m.oak;
+    // Bark until extras() brings the real thing (the vale's builders use it without extras).
+    m.bark = m.barkDark = surface('Bark_Painted', barkTexture(), { roughness: 1, tile: [0.7, 1.2] });
+    // Planed wood for small turned and joined work (wheels, benches): a square grain, not a trim sheet.
+    m.planed = surface('Wood_Planed', planedTexture(), { roughness: 0.8, tile: [0.9, 0.9] });
     m.endgrain = texturedMaterial(endGrainTexture(), 0.85);
     m.endgrain.name = 'Wood_EndGrain';
     this.geo = {};
@@ -205,6 +211,7 @@ export class TownKit {
     m.barkDark = bark(oak, 0x8a7a6a, 'Bark_Log');
     m.hedgeLeaf = new THREE.MeshStandardMaterial({ map: leaf, color: 0x6c8d4e, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true });
     m.hedgeLeaf.name = 'Leaf_Hedge';
+    m.hedgeLeaf.userData.atlas = true;
     m.hay = new THREE.MeshStandardMaterial({ map: hayA, normalMap: hayN, color: new THREE.Color(1.3, 1.1, 0.78), roughness: 1, vertexColors: true });
     m.hay.name = 'Hay';
     enhance(m.hay);
@@ -214,12 +221,16 @@ export class TownKit {
     const garments = GR.garmentTexture(linenA.image);
     m.linen = new THREE.MeshStandardMaterial({ map: garments, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, vertexColors: true });
     m.linen.name = 'Cloth_Linen';
+    m.linen.userData.atlas = true;
     m.bean = new THREE.MeshStandardMaterial({ map: GR.beanTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.8, vertexColors: true });
     m.bean.name = 'Leaf_Bean';
+    m.bean.userData.atlas = true;
     m.herb = new THREE.MeshStandardMaterial({ map: GR.herbTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true });
     m.herb.name = 'Leaf_Herb';
+    m.herb.userData.atlas = true;
     m.cabbage = new THREE.MeshStandardMaterial({ map: GR.cabbageTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, vertexColors: true });
     m.cabbage.name = 'Leaf_Cabbage';
+    m.cabbage.userData.atlas = true;
     this.extrasLoaded = true;
     return this;
   }
@@ -236,10 +247,11 @@ export class TownKit {
   put(geo, mat, x, y, z, rotY = 0, sx = 1, sy = 1, sz = 1, rotX = 0, rotZ = 0) {
     const tile = !Array.isArray(mat) && (TILE[mat.name] ?? mat.userData?.tile);
     if (tile && !geo.userData.wuv) {
-      // One fitted copy per (geometry, tile); shapes that already have world UVs keep them.
+      // One fitted copy per (geometry, tile); shapes that already have world UVs keep them. The copy
+      // remembers what it was made from (the audit looks for cones and icospheres).
       const key = Array.isArray(tile) ? tile.join('x') : tile;
       const cache = (geo.userData.fitted ??= {});
-      geo = cache[key] ??= Object.assign(Array.isArray(tile) ? fitUV2(geo, tile[0], tile[1]) : fitUV(geo, tile), { userData: { wuv: true } });
+      geo = cache[key] ??= Object.assign(Array.isArray(tile) ? fitUV2(geo, tile[0], tile[1]) : fitUV(geo, tile), { userData: { wuv: true, source: { type: geo.type, parameters: geo.parameters } } });
     }
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
@@ -341,10 +353,11 @@ export class TownKit {
   // ---------------------------------------------------------------- lantern post
   // A squared oak post on a stone footing with an iron arm and a hanging lantern (no cast-iron street
   // lamps in a medieval town). The lantern's foot is 2.4 m up; the post is solid, the arm is overhead.
-  lamp(x, z, y, rot = 0) {
-    this.begin('lantern post', x, z);
+  lamp(x, z, y, rot = 0, { on = false } = {}) {
+    // (`on`: the post stands on something else, a pile or a pier, and needs no footing of its own)
+    this.begin('lantern post', x, z, false, on);
     const { m } = this;
-    this.put(this.box(0.42, 0.3, 0.42, 1.7), m.stone, x, y - 0.1, z, rot);
+    if (!on) this.put(this.box(0.42, 0.3, 0.42, 1.7), m.stone, x, y - 0.1, z, rot);
     this.put(this.timberBox(0.18, 3.05, 0.18, 'y'), m.timber, x, y + 0.18, z, rot);
     this.put(this.cyl(0.02, 0.15, 0.12, 4), m.timber, x, y + 3.23, z, rot + Math.PI / 4);
     const fx = Math.sin(rot), fz = Math.cos(rot);
@@ -369,18 +382,21 @@ export class TownKit {
     const ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
     const rot = Math.atan2(-uz, ux);
     const n = Math.max(1, Math.round(len / 3)), seg = len / n;
+    const ground = (t) => y ?? this.world.heightAt(a[0] + ux * t, a[1] + uz * t);
     for (let i = 0; i < n; i++) {
       const cx = a[0] + ux * seg * (i + 0.5), cz = a[1] + uz * seg * (i + 0.5);
-      const gy = y ?? this.world.heightAt(cx, cz);
+      // Each length leans with the ground from end to end, so its coping runs on into the next length's
+      // with no step (a wall following a slope, not a staircase).
+      const g0 = ground(seg * i), g1 = ground(seg * (i + 1)), gm = (g0 + g1) / 2, tilt = Math.atan2(g1 - g0, seg);
       this.begin('wall', cx, cz);
-      let lo = gy;
+      let lo = Math.min(g0, g1);
       if (y === null) for (const t of [-0.5, 0, 0.5]) for (const f of [-1, 1]) lo = Math.min(lo, this.world.heightAt(cx + ux * seg * t - uz * f * thick / 2, cz + uz * seg * t + ux * f * thick / 2));
-      const foot = lo - 0.3;
-      this.put(this.box(+(seg + 0.02).toFixed(3), +(gy + height - foot).toFixed(3), thick, 1.5), m.stone, cx, foot, cz, rot);
-      const cl = +(seg + 0.03).toFixed(2);
+      const foot = lo - 0.3 - Math.abs(g1 - g0) / 2;
+      this.put(this.box(+(seg + 0.02).toFixed(3), +(gm + height - foot).toFixed(3), thick, 1.5), m.stone, cx, foot, cz, rot, 1, 1, 1, 0, tilt);
+      const cl = +(seg / Math.cos(tilt) + 0.03).toFixed(2);
       const cap = (this.geo[`lowcap${thick}|${cl}`] ??= roundCoping(thick, cl));
-      this.put(cap, m.slab, cx, gy + height, cz, rot);
-      this.solidBox(cx, cz, seg / 2 + 0.01, thick / 2 + 0.06, rot, gy, height + 0.1);
+      this.put(cap, m.slab, cx, gm + height, cz, rot, 1, 1, 1, 0, tilt);
+      this.solidBox(cx, cz, seg / 2 + 0.01, thick / 2 + 0.06, rot, Math.min(g0, g1), height + Math.abs(g1 - g0) + 0.1);
     }
   }
 
@@ -427,7 +443,7 @@ export class TownKit {
   }
 
   // ---------------------------------------------------------------- wooden fence (kit pieces)
-  fence(a, b, name = 'Prop_WoodenFence_Single') {
+  fence(a, b, name = 'Prop_WoodenFence_Single', owner = null) {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (len < 0.3) return;
     const ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
@@ -439,20 +455,21 @@ export class TownKit {
       this.batch.add(name, cx, gy, cz, rot, seg / 2.0);
       const sh = this.colliders.addBox(cx, cz, seg / 2, 0.09, rot, gy - 0.5, gy + 0.85);
       sh.floor = true;
-      sh.owner = `fence@${a[0].toFixed(1)},${a[1].toFixed(1)}`;
+      sh.owner = owner ?? `fence@${a[0].toFixed(1)},${a[1].toFixed(1)}`;
     }
   }
 
   // A garden wicket: two posts either side of a gap and a small ledged gate standing open.
   // a, b are the gap's ends on the fence line; the gate opens toward `into` (a unit vector).
-  wicket(a, b, into) {
+  wicket(a, b, into, owner = null) {
     const { m } = this;
     const w = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / w, uz = (b[1] - a[1]) / w;
     for (const [px, pz] of [a, b]) {
       const y = this.world.heightAt(px, pz);
       this.begin('gate post', px, pz);
       this.put(this.timberBox(0.12, 1.15, 0.12, 'y'), m.timber, px, y - 0.1, pz, Math.atan2(-uz, ux));
-      this.solidCircle(px, pz, 0.08, y, 1.05);
+      const post = this.solidCircle(px, pz, 0.08, y, 1.05);
+      if (owner) post.owner = owner;
     }
     const L = w - 0.24, y = this.world.heightAt(a[0], a[1]);
     const lx = a[0] + into[0] * (0.08 + L / 2) + ux * 0.08, lz = a[1] + into[1] * (0.08 + L / 2) + uz * 0.08;
@@ -462,12 +479,13 @@ export class TownKit {
     for (let k = 0; k < 5; k++) this.put(this.timberBox(0.08, 0.95, 0.03, 'y'), m.oak, lx + into[0] * (-L / 2 + 0.06 + k * (L - 0.12) / 4), y + 0.08, lz + into[1] * (-L / 2 + 0.06 + k * (L - 0.12) / 4), rot);
     const sh = this.colliders.addBox(lx, lz, L / 2, 0.05, rot, y, y + 1.05);
     sh.noCamera = true;
-    sh.owner = this.cur.id;
+    sh.owner = owner ?? this.cur.id;
   }
 
   // ---------------------------------------------------------------- gates
   gate(g, signTexture) {
     const mat = signTexture ? texturedMaterial(signTexture, 0.85) : null;
+    if (mat) mat.userData.atlas = true; // a painted board, not a tiling surface
     return gatehouse(this, g, mat);
   }
 
@@ -480,8 +498,8 @@ export class TownKit {
     this.begin('signpost', x, z);
     const { m } = this;
     const y = this.world.heightAt(x, z);
-    this.put(this.timberBox(0.15, 3.2, 0.15, 'y'), m.timber, x, y - 0.15, z, rot + Math.PI / 4);
-    this.put(this.cyl(0.02, 0.13, 0.16, 4), m.timber, x, y + 3.05, z, rot);
+    this.put(this.timberBox(0.15, 3.75, 0.15, 'y'), m.timber, x, y - 0.15, z, rot + Math.PI / 4);
+    this.put(this.cyl(0.02, 0.13, 0.16, 4), m.timber, x, y + 3.6, z, rot);
     boards.forEach((b, i) => {
       const tex = textures[i];
       const front = texturedMaterial(tex[0], 0.85);
@@ -498,13 +516,13 @@ export class TownKit {
       }
       // materials: +x, -x, +y, -y, +z, -z; only the two big faces carry the text
       const mesh = new THREE.Mesh(geo, [m.timber, m.timber, m.timber, m.timber, front, back]);
-      mesh.position.set(x, y + 2.9 - i * 0.34, z); // lowest board's underside is above a head (1.8 m)
+      mesh.position.set(x, y + 3.35 - i * 0.3, z); // the lowest board's underside stays over 2.1 m (a head passes under)
       mesh.rotation.y = rot + b.turn;
       mesh.updateMatrixWorld(true);
       // Batcher splits multi-material meshes by geometry group.
       this.batch.addObject(mesh, new THREE.Matrix4(), this.cur);
     });
-    this.solidCircle(x, z, 0.13, y, 3.1);
+    this.solidCircle(x, z, 0.13, y, 3.6);
   }
 
   // ---------------------------------------------------------------- notice board
@@ -803,7 +821,7 @@ export class TownKit {
     for (const f of [-0.6, 0.6]) this.put(this.box(3.1, 0.2, 0.22), m.wood, x + s * f, y + 2.5, z + c * f, rot);
     this.put(this.box(0.2, 0.2, 1.4), m.wood, x, y + 2.9, z, rot);
     // Two pitched roof planes meeting at a ridge along the lane.
-    for (const k of [-1, 1]) this.put(this.box(1.3, 0.09, 3.5, 4.3), m.tiles, x + c * 0.58 * k, y + 2.72 - 0.1, z - s * 0.58 * k, rot, 1, 1, 1, 0, -0.5 * k);
+    for (const k of [-1, 1]) this.put(this.box(1.3, 0.09, 3.5), m.roofTiles, x + c * 0.58 * k, y + 2.72 - 0.1, z - s * 0.58 * k, rot, 1, 1, 1, 0, -0.5 * k);
     for (const k of [-1.35, 1.35]) for (const f of [-0.6, 0.6]) this.solidBox(x + c * k + s * f, z - s * k + c * f, 0.14, 0.14, rot, y, 2.7);
   }
 }
@@ -840,6 +858,109 @@ function noticeGeometry() {
     B.card([x, y + 0.02, 0.004 + i * 0.001], [c * w / 2, s * w / 2, 0], [-s * h / 2, c * h / 2, 0], [0, 0, 1], rect);
   });
   return B.build();
+}
+
+// A painted surface as a material (with the detail layer), fitted to `tile` metres a repeat by put().
+const surfaces = new Map();
+function surface(name, map, { roughness = 0.9, metalness = 0, color = 0xffffff, tile = [1, 1] } = {}) {
+  if (surfaces.has(name)) return surfaces.get(name);
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  const m = texturedMaterial(map, roughness);
+  m.metalness = metalness;
+  m.color = new THREE.Color(color);
+  m.name = name;
+  m.userData = { tile };
+  surfaces.set(name, m);
+  return m;
+}
+
+// Hammered iron: near black, with lighter worn highlights and rust bloom.
+function ironTexture(k = 1) {
+  return GR.canvasTexture(128, 128, (g, W) => {
+    const r = GR.seeded(19 + Math.round(k * 10));
+    g.fillStyle = '#2a2a2c';
+    g.fillRect(0, 0, W, W);
+    for (let i = 0; i < 260; i++) {
+      const rust = r() < 0.25 * k;
+      g.fillStyle = rust ? `rgba(${110 + r() * 40},${55 + r() * 25},${30 + r() * 15},${0.15 + r() * 0.25})` : `rgba(${60 + r() * 50},${60 + r() * 50},${62 + r() * 50},${0.1 + r() * 0.2})`;
+      g.beginPath();
+      g.ellipse(r() * W, r() * W, 2 + r() * 9, 1 + r() * 5, r() * 3, 0, Math.PI * 2);
+      g.fill();
+    }
+  }, { repeat: true });
+}
+
+// Twisted hemp: diagonal strands, light and shadow.
+function ropeTexture() {
+  return GR.canvasTexture(64, 64, (g, W) => {
+    g.fillStyle = '#8a7250';
+    g.fillRect(0, 0, W, W);
+    for (let i = -W; i < W * 2; i += 8) {
+      g.strokeStyle = 'rgba(60,45,25,0.55)';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(i, 0);
+      g.lineTo(i + W, W);
+      g.stroke();
+      g.strokeStyle = 'rgba(200,180,140,0.35)';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(i + 3, 0);
+      g.lineTo(i + 3 + W, W);
+      g.stroke();
+    }
+  }, { repeat: true });
+}
+
+// Planed wood: warm brown with long wavy grain lines.
+function planedTexture() {
+  return GR.canvasTexture(128, 128, (g, W) => {
+    const r = GR.seeded(41);
+    g.fillStyle = '#8a6440';
+    g.fillRect(0, 0, W, W);
+    for (let i = 0; i < 40; i++) {
+      const y0 = r() * W, a = 1 + r() * 3, f = 0.03 + r() * 0.05;
+      g.strokeStyle = r() < 0.5 ? 'rgba(90,60,35,0.45)' : 'rgba(170,130,90,0.3)';
+      g.lineWidth = 0.6 + r() * 1.6;
+      g.beginPath();
+      for (let x = 0; x <= W; x += 4) { const y = y0 + Math.sin(x * f + i) * a; x ? g.lineTo(x, y) : g.moveTo(x, y); }
+      g.stroke();
+    }
+  }, { repeat: true });
+}
+
+// Bark: grey-brown with dark fissures running up the pole.
+function barkTexture() {
+  return GR.canvasTexture(128, 128, (g, W) => {
+    const r = GR.seeded(31);
+    g.fillStyle = '#6b5a48';
+    g.fillRect(0, 0, W, W);
+    for (let i = 0; i < 26; i++) {
+      const x = r() * W, w = 2 + r() * 4;
+      g.fillStyle = `rgba(${40 + r() * 20},${32 + r() * 15},${24 + r() * 10},0.8)`;
+      g.fillRect(x, 0, w, W);
+    }
+    for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(${120 + r() * 50},${110 + r() * 40},${95 + r() * 30},0.25)`; g.fillRect(r() * W, r() * W, 2 + r() * 6, 4 + r() * 14); }
+  }, { repeat: true });
+}
+
+// A hedge's heart: dark twigs criss-crossing in deep green shade.
+function twigTexture() {
+  return GR.canvasTexture(128, 128, (g, W) => {
+    const r = GR.seeded(23);
+    g.fillStyle = '#172612';
+    g.fillRect(0, 0, W, W);
+    for (let i = 0; i < 90; i++) {
+      const x = r() * W, y = r() * W, a = r() * Math.PI, L = 10 + r() * 30;
+      g.strokeStyle = r() < 0.5 ? 'rgba(45,35,22,0.9)' : 'rgba(30,48,22,0.8)';
+      g.lineWidth = 1 + r() * 2;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L);
+      g.stroke();
+    }
+    for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(${40 + r() * 30},${70 + r() * 40},${30 + r() * 20},0.7)`; g.beginPath(); g.ellipse(r() * W, r() * W, 3 + r() * 4, 2 + r() * 2, r() * 3, 0, Math.PI * 2); g.fill(); }
+  }, { repeat: true });
 }
 
 // End grain for log ends: rings round a dark pith, radial cracks, a band of bark at the rim.

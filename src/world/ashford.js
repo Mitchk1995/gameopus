@@ -343,7 +343,7 @@ export const PLOTS = [
   plot('orchard', 14, 29, 34, 43, 'orchard', 's', { gateAt: 0.45 }),
   plot('cottage garden a', -50, 32.6, -44, 37.4, 'lawn', 'e', { back: 's', gateAt: 0.45 }),
   plot('cottage garden b', -35.2, 32.6, -29.2, 37.4, 'lawn', 'w', { back: 's', gateAt: 0.3 }),
-  plot('cottage garden d', -41, 58, -29, 62.2, 'cabbage', 'n', { gateAt: 0.55 }),
+  plot('cottage garden d', -41, 58.7, -29, 62.2, 'cabbage', 'n', { gateAt: 0.55 }),
 ];
 
 // Back doors: from a house into its back garden or yard. Data for the building rules (buildHouse makes a
@@ -486,7 +486,7 @@ put('well', WELL.x, WELL.z);
 put('flags', WELL.x, WELL.z, 0, { r0: 1.12, r1: 2.3, why: 'flagstones round the well' });
 put('treeBench', TOWN_TREES[0].x, TOWN_TREES[0].z, 0, { why: 'the bench round the great ash' });
 put('notice', -15.0, 3.2, 0, { why: 'notices, by the great ash' });
-put('handcart', 1.95, 18.6, Math.PI / 2 + 0.2, { why: 'a stallholder handcart between the stalls and the smithy' });
+put('handcart', -19.6, 12.2, 0.2, { why: 'a stallholder handcart by the west stalls' });
 put('basket', -11.9, 15.8, 0, { fill: 'apples', why: 'apples by the veg stall' });
 put('basket', -11.95, 16.5, 0, { fill: 'greens', why: 'greens by the veg stall' });
 put('basket', -4.1, 20.8, 0, { fill: 'apples', why: 'apples by the veg stall' });
@@ -524,7 +524,7 @@ put('washing', 17.3, -9.6, 0, { to: [17.3, -2.6], why: 'washing on the drying gr
 put('washing', 20.7, -9.6, 0, { to: [20.7, -2.6], why: 'washing on the drying green' });
 put('bleach', 19.0, -7.4, Math.PI / 2 + 0.06, { why: 'linen bleaching on the green' });
 put('bleach', 19.0, -4.4, Math.PI / 2 - 0.08, { why: 'linen bleaching on the green' });
-put('washtub', 21.2, -1.95, 0, { why: 'the wash tub on the drying green' });
+put('washtub', 21.1, -2.15, 0, { why: 'the wash tub on the drying green' });
 // The orchard (the old paddock): apple trees in rows, a ladder against one, baskets of picked apples,
 // bee skeps on their stand along the east fence.
 put('ladder', 21.9, 35.3, -0.6, { why: 'a ladder against an apple tree' });
@@ -544,3 +544,16 @@ put('haystack', 29.4, 55.6, 0, { r: 1.35, why: 'haystack in the farmyard' });
 put('haystack', 32.3, 51.8, 0, { r: 1.1, why: 'haystack in the farmyard' });
 put('pump', 23.8, 57.2, 0, { why: 'farmyard pump' });
 put('trough', 24.4, 60.2, Math.PI / 2, { why: 'trough by the farm gate' });
+
+// ---------------------------------------------------------------- promised
+// What the lore, the people and DESIGN.md promise the player will find: each must be built (a piece with
+// this label or kit name, near where it should be) and reachable on foot (town.py checks). `owner` marks
+// a promise that another part of the build keeps (reported, not failed, until it lands).
+export const PROMISED = [
+  { id: 'three town gates', label: 'gatehouse', count: 3, reach: 5, why: 'lore: "a stone or hedge wall round it and three gates"' },
+  { id: 'the well in the square', label: 'well', at: WELL, r: 1.5, why: 'lore: "the well in the middle"' },
+  { id: 'the stone bridge', label: 'bridge', at: { x: 90, z: 3 }, r: 25, reach: 6, why: 'lore: "over the stone bridge across the river"' },
+  { id: 'crates and barrels by Old Tam', kit: /^(Crate|Barrel)/, near: 'tam', r: 16, count: 2, why: 'DESIGN.md: the dock "with its crates and barrels by Old Tam"' },
+  { id: 'the hearth before the inn', station: 'fire', why: 'lore: the Crooked Pike "with a cooking fire and benches out front"' },
+  { id: 'the Crooked Pike sign', label: /inn sign|Crooked Pike/i, at: { x: 8, z: 6 }, r: 6, owner: 'buildings', why: 'lore: "the Crooked Pike inn"' },
+];

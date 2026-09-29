@@ -24,17 +24,24 @@ export function townWall(tk, a, b, out, { height = WALL.height, thick = WALL.thi
   const ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
   const rot = Math.atan2(-uz, ux);
   const n = Math.max(1, Math.round(len / 4.2)), seg = len / n;
+  // One height for the whole run (so neighbouring lengths' copings meet level): a head and a half over
+  // the terrace, or higher where the ground inside or out rises.
+  let top = TOWN.y + height;
+  for (let t = 0; t <= len; t += 1) for (const f of [-1, 1]) {
+    const h = tk.world.heightAt(a[0] + ux * t + out[0] * f * (thick / 2 + 0.15), a[1] + uz * t + out[1] * f * (thick / 2 + 0.15));
+    top = Math.max(top, h + (f > 0 ? 1.8 : 1.6));
+  }
   for (let i = 0; i < n; i++) {
     const cx = a[0] + ux * seg * (i + 0.5), cz = a[1] + uz * seg * (i + 0.5);
-    let lo = Infinity, loOut = Infinity, hiIn = -Infinity, hiOut = -Infinity;
+    let lo = Infinity, loOut = Infinity, hiIn = -Infinity;
     for (const t of [-0.5, -0.25, 0, 0.25, 0.5]) for (const f of [-1, 1]) {
       const h = tk.world.heightAt(cx + ux * seg * t + out[0] * f * (thick / 2 + 0.15), cz + uz * seg * t + out[1] * f * (thick / 2 + 0.15));
       lo = Math.min(lo, h);
-      if (f > 0) { loOut = Math.min(loOut, h); hiOut = Math.max(hiOut, h); }
+      if (f > 0) loOut = Math.min(loOut, h);
       else hiIn = Math.max(hiIn, h);
     }
     const gin = hiIn;
-    const foot = lo - 0.35, top = Math.max(TOWN.y + height, hiIn + 1.6, hiOut + 1.8);
+    const foot = lo - 0.35;
     tk.begin('town wall', cx, cz);
     tk.put(tk.box(+(seg + 0.02).toFixed(3), +(top - foot).toFixed(3), thick, 1.7), m.stone, cx, foot, cz, rot);
     // A base course a hand proud of both faces.
@@ -194,6 +201,7 @@ export function gatehouse(tk, g, signMat) {
   }
   const over = tk.colliders.addBox(g.x, g.z, half, G.depth / 2, rot, base + G.spring + half * 0.7, top + 0.8);
   over.noCamera = true;
+  over.owner = tk.cur.id;
   return { x: g.x, z: g.z, rot, half, width: G.width, top };
 }
 
@@ -256,4 +264,5 @@ export function fieldGate(tk, g) {
   tk.put(tk.timberBox(Math.hypot(L, 0.9), 0.07, 0.045, 'x'), m.timber, lx, y + 0.63, lz, sw, 1, 1, 1, 0, Math.atan2(0.9, L));
   const sh = tk.colliders.addBox(lx, lz, L / 2 + 0.05, 0.08, sw, y, y + 1.2);
   sh.noCamera = true;
+  sh.owner = tk.cur.id;
 }

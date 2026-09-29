@@ -106,6 +106,8 @@ export function addSolids(kit, colliders, name, px, py, pz, rot = 0, scale = 1) 
     const shape = sh.t === 'c' ? colliders.addCircle(tmp.x, tmp.z, sh.r * scale, y0, y1) : colliders.addBox(tmp.x, tmp.z, sh.hx * scale, sh.hz * scale, rot, y0, y1);
     if (sh.floor) shape.floor = true;
     shape.prop = name;
+    // One owner per placed prop, so the audit can tell two props meeting from one prop's own parts.
+    shape.owner = `${name}@${px.toFixed(2)},${pz.toFixed(2)}`;
     out.push(shape);
   }
   return out;
