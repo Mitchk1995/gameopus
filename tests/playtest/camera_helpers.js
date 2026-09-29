@@ -107,6 +107,9 @@ window.__cam = (() => {
     hold();
     prev = null;
     G.player.spawn(x, z, 0);
+    // Each spawn clears temporary combat protection. Camera probes deliberately
+    // cross enemy rooms, so restore their test-only protection after placement.
+    G.player.invulnerable = true;
     G.rig.yaw = yaw;
     G.rig.pitch = pitch;
     G.rig.snap();

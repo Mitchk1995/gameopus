@@ -247,7 +247,10 @@ export class CameraRig {
       this.curVel = 0;
       this.hold = HOLD;
     } else if (want > this.cur + BAND) {
-      // Room to spare: wait a moment, then spring out.
+      // A withdrawing shoulder has not cleared the doorway yet. Extending the boom
+      // during that transition can produce an out/in pulse as enclosure catches up.
+      if (this.sideHold > 0) this.hold = HOLD;
+      // Room to spare: wait a moment after both offsets settle, then spring out.
       this.hold -= dt;
       if (this.hold <= 0) {
         const w = OUT_W;

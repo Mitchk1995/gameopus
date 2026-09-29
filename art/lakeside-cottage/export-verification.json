@@ -1,0 +1,152 @@
+{
+  "verifiedAt": "2026-09-29T17:04:44.008Z",
+  "reports": [
+    {
+      "name": "rowan-cottage",
+      "triangles": 29980,
+      "meshes": 38,
+      "bytes": 13531920,
+      "bounds": {
+        "min": [
+          -4.469000190496445,
+          -0.3099999576807022,
+          -4.020000115036964
+        ],
+        "max": [
+          4.464999675750732,
+          6.820000171661377,
+          5.149999976158142
+        ]
+      },
+      "images": [
+        {
+          "name": "plaster_stone_wall_02_nor_gl",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "plaster_stone_wall_02_Diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "white_plaster_rough_01_nor_gl",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "limewash-warm",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "old_stone_wall_02_nor_gl",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "old_stone_wall_02_Diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "oak_wood_planks_nor_gl",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "oak-aged",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "oak_wood_planks_Diffuse",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "oak-floor-endgrain",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "linen_n",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "linen_a",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "roof_slates_03_nor_gl",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "slate-bluegrey",
+          "width": 1024,
+          "height": 1024
+        }
+      ],
+      "colliders": 45
+    },
+    {
+      "name": "elin-garden",
+      "triangles": 46413,
+      "meshes": 7,
+      "bytes": 5299956,
+      "bounds": {
+        "min": [
+          -2.049999989569187,
+          -0.08999999985098839,
+          -1.8299999237060547
+        ],
+        "max": [
+          2.104999989271164,
+          0.9599999636411667,
+          1.8299999237060547
+        ]
+      },
+      "images": [
+        {
+          "name": "oak_wood_planks_nor_gl",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "oak-aged",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "nettle_plant_nor_gl_1k",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "nettle_plant_diff_1k",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "nettle_plant_arm_1k",
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "name": "soil_n",
+          "width": 512,
+          "height": 512
+        },
+        {
+          "name": "soil_a",
+          "width": 512,
+          "height": 512
+        }
+      ],
+      "colliders": 18
+    }
+  ]
+}

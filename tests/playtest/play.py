@@ -10,20 +10,22 @@ here = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(os.path.dirname(here))
 scenario = os.path.abspath(sys.argv[1])
 ns = {}
-exec(open(scenario).read(), ns)
+exec(open(scenario, encoding='utf-8-sig').read(), ns)
 steps = []
 for s in ns['STEPS']:
     if 'eval' in s and s['eval'].startswith('@'):
-        s = dict(s, eval=open(os.path.join(os.path.dirname(scenario), s['eval'][1:])).read())
+        s = dict(s, eval=open(os.path.join(os.path.dirname(scenario), s['eval'][1:]), encoding='utf-8-sig').read())
     steps.append(s)
 out_dir = os.environ.get('SP') or os.path.join(here, 'out')
 os.makedirs(out_dir, exist_ok=True)
 env = dict(os.environ, STEPS=json.dumps(steps), SP=out_dir, HASH=ns.get('HASH', '#test'))
 if 'W' in ns: env['W'] = str(ns['W'])
 if 'H' in ns: env['H'] = str(ns['H'])
-out = subprocess.run(['node', 'scripts/playtest.mjs'], cwd=root, env=env, capture_output=True, text=True, errors='replace', timeout=1500)
-lines = [l for l in (out.stdout + out.stderr).splitlines() if ('rror' in l and '404' not in l) or l.startswith('EVAL') or 'timeout' in l]
+out = subprocess.run(['node', 'scripts/playtest.mjs'], cwd=root, env=env, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=1500)
+raw = out.stdout + out.stderr
+markers = ('EVAL', 'PAGEERROR', 'RUNNERERROR', 'REQUESTFAILED', 'HTTP ', 'error:', 'FAIL')
+lines = [l for l in raw.splitlines() if l.startswith(markers) or 'error' in l.lower() or 'timeout' in l.lower()]
 print('\n'.join(lines)[:60000])
 # Non-zero exit for CI: a missed check, a page error, or the game never starting.
-if out.returncode != 0 or any('FAIL' in l or 'PAGEERROR' in l or 'timeout' in l or l.startswith('error:') for l in lines):
+if out.returncode != 0 or any('FAIL' in l or l.startswith(('PAGEERROR', 'RUNNERERROR', 'REQUESTFAILED', 'HTTP ', 'error:')) or 'timeout' in l.lower() for l in raw.splitlines()):
     sys.exit(1)

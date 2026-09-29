@@ -10,6 +10,37 @@ code can be reused; its design direction is retired.
 
 ## Decisions from the player
 
+### Latest direction: 29 September 2026
+
+The owner rejected the current walled town's cramped layout, mismatched house designs,
+empty interiors and lack of residents. **Replace the village direction with an open,
+spread-out lakeside settlement:** gardens, workshops, footpaths, a lively central green,
+low coherent buildings and long landscape views. Keep the cozy, fairly bright look and
+convincing lighting/materials. This supersedes the older walled-market-town brief below.
+
+The owner approved `docs/design/ashford-lakeside-proposal-v1.png`, particularly its open
+landscape. Build one furnished home and household first for in-game judgment before
+propagating the architecture across town. Homes should have their own residents, routines,
+conversation and occasional jobs. Rowan and Elin's cottage is that first increment;
+the remaining old village has not been redesigned or approved.
+
+After seeing actual gameplay views of the finished cottage and garden, the owner said:
+"This feels like the right direction; keep developing it". The house style is approved as
+the basis for further development. This does not approve the old surrounding mountain bowl
+or remove the need to review the broader village layout.
+
+The player character must start from simple base clothing. No permanently attached hood,
+pauldrons, bracers or adventurer accessories: worn gear must follow equipped items, with the
+plain clothes restored when items are removed. This was explicitly requested after the
+first-house screenshots exposed the old permanently hooded ranger appearance.
+
+The desired first adventure balances town life, exploration, fighting and a useful reward.
+Begin by settling in: gather, craft and meet people, then venture into danger. Preserve
+the existing progression while making the opening easier to follow. Blender is permitted
+and installed at `D:\pokemon\tools\blender-5.2.2\blender.exe` (5.2.2 LTS verified).
+
+See `docs/design/lakeside-direction.md` for the agreed scope and concept provenance.
+
 | Topic | Decision |
 |---|---|
 | Camera and controls | Locked third-person over the shoulder. Mouse captured with a crosshair, WASD relative to the view, **E** interacts with what you look at, Esc frees the mouse. |

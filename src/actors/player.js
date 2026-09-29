@@ -66,7 +66,21 @@ export class Player {
     this.pos.set(x, this.world.groundAt(x, z, 1e4), z);
     this.yaw = facing;
     this.vel.set(0, 0, 0);
+    this.vy = 0;
+    this.grounded = true;
     this.state = 'move';
+    this.stateTime = 0;
+    this.invulnerable = false;
+    this.action = null;
+    this.knock = null;
+    this.gait = 'Idle_Loop';
+    this.swingW = this.leanW = this.recoverT = this.settle = 0;
+    this.wasAir = false;
+    this.airT = this.landT = 0;
+    this.aimPoint = this.aimTarget = this.aimYaw = null;
+    this.lastMove = null;
+    this.sinceSwing = 9;
+    this._moving = false;
     this.char.play('Idle_Loop', { fade: 0 });
     this.#sync();
   }
@@ -85,6 +99,8 @@ export class Player {
   // Plays a one-shot or looping action (chopping, crafting, talking); movement ends it
   // unless it's locked. onEnd runs when a one-shot clip finishes or the action is cut.
   perform(clip, { loop = false, locked = false, speed = 1, fade = 0.2, onEnd = null } = {}) {
+    if (this.state === 'dead') return null;
+    this.invulnerable = false;
     this.state = 'act';
     this.stateTime = 0;
     this.action = { clip, loop, locked, onEnd, ended: false };
@@ -114,6 +130,8 @@ export class Player {
   // A swing: the clip plays at the move's speed, in place unless the move has a `lunge` (none
   // do now: the owner wants swings to stay where they are), and onHit fires as the blade connects.
   startAttack(move, onHit) {
+    if (this.state === 'dead') return;
+    this.invulnerable = false;
     if (this.state === 'act') this.stopAction();
     // Coming out of the finisher (a low, twisted follow-through) the body straightens into
     // the next swing over a little longer, so it doesn't snap.
@@ -243,6 +261,8 @@ export class Player {
   // The guard: blade held upright in front, left forearm raised (anims/combat.glb, built by
   // scripts/compose-clips.mjs), with or without a shield. A blow on it jolts it back briefly.
   startBlock() {
+    if (this.state === 'dead') return;
+    this.invulnerable = false;
     if (this.state === 'act') this.stopAction();
     this.state = 'block';
     this.stateTime = 0;
@@ -264,6 +284,7 @@ export class Player {
 
   hurt(heavy, fromYaw) {
     if (this.state === 'dead') return;
+    this.invulnerable = false;
     if (this.state === 'act') this.stopAction();
     this.state = 'hurt';
     this.stateTime = 0;
@@ -273,6 +294,7 @@ export class Player {
   }
 
   die() {
+    this.invulnerable = false;
     if (this.state === 'act') this.stopAction();
     this.state = 'dead';
     this.stateTime = 0;
@@ -281,6 +303,7 @@ export class Player {
   }
 
   revive() {
+    this.invulnerable = false;
     this.state = 'move';
     this.gait = null;
     this.char.play('Idle_Loop', { fade: 0 });

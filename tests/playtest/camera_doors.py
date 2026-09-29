@@ -123,9 +123,11 @@ STEPS = [
     const L = d.layout;
     let seed = 777; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
     const cells = []; for (let j = 0; j < L.size; j++) for (let i = 0; i < L.size; i++) if (L.grid[j * L.size + i] === 1) cells.push([i, j]);
-    // Corridor mouths: floor cells with rock on both sides across one axis.
-    const isFloor = (i, j) => L.grid[j * L.size + i] === 1;
-    const mouths = cells.filter(([i, j]) => (!isFloor(i - 1, j) && !isFloor(i + 1, j) && (isFloor(i, j - 1) || isFloor(i, j + 1))) || (!isFloor(i, j - 1) && !isFloor(i, j + 1) && (isFloor(i - 1, j) || isFloor(i + 1, j))));
+    // The generator makes corridors three cells wide. Requiring adjacent rock
+    // selected zero cells and silently skipped this entire part of the test.
+    const isFloor = (i, j) => i >= 0 && j >= 0 && i < L.size && j < L.size && L.grid[j * L.size + i] === 1;
+    const mouths = cells.filter(([i, j]) => (!isFloor(i - 2, j) && !isFloor(i + 2, j) && isFloor(i, j - 1) && isFloor(i, j + 1)) || (!isFloor(i, j - 2) && !isFloor(i, j + 2) && isFloor(i - 1, j) && isFloor(i + 1, j)));
+    if (!mouths.length) throw new Error('FAIL dungeon corridor camera scan found no passages');
     const pool = mouths.length > 30 ? Array.from({ length: 30 }, () => mouths[Math.floor(rnd() * mouths.length)]) : mouths;
     let n = 0;
     // Dungeon walls are boxes: no mesh truth here (the old collider check in camera.py covers

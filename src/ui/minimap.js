@@ -154,11 +154,13 @@ export class Minimap {
     }
     const v = this.world.village;
     const houses = [...Object.values(v.places).filter((p) => p && p.w), ...(v.places.houses || [])];
+    const home = this.world.lakeside?.place;
+    if (home) houses.push({ ...home, w: home.width, d: home.depth, roofColor: '#65717b' });
     for (const h of houses) {
       g.save();
       g.translate(px(h.x), px(h.z));
       g.rotate(-h.rot);
-      g.fillStyle = '#8a4f3a';
+      g.fillStyle = h.roofColor || '#8a4f3a';
       g.strokeStyle = '#3a2418';
       g.lineWidth = 1;
       const w = (h.w / WORLD.size) * MAP, d = (h.d / WORLD.size) * MAP;

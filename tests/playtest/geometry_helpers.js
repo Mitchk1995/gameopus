@@ -793,7 +793,7 @@ window.__geo = (() => {
         }
         for (const t of triangles(m)) {
           if (!t.mat.map) continue;
-          const a = (acc[t.mat.name || t.mat.uuid] ??= { w: 0, u: 0, an: [], atlas: !!t.mat.userData?.atlas });
+          const a = (acc[t.mat.name || t.mat.uuid] ??= { w: 0, u: 0, an: [], atlas: !!t.mat.userData?.atlas, roofing: t.mat.userData?.roofing });
           a.w += t.wa; a.u += t.ua; a.an.push([t.aniso, t.wa]);
         }
       }
@@ -809,10 +809,13 @@ window.__geo = (() => {
           const ratio = dens / ref[mat];
           if (ratio < TOL.density[0] || ratio > TOL.density[1]) flag('texture', lab, `${f2(dens)} repeats per metre vs ${f2(ref[mat])} in the kit (${f2(ratio)}x: bricks ${ratio < 1 ? 'too big' : 'too small'})`);
         }
-        // A tiling texture blown up so the surface shows only a tile or two (the well roof's four giant
-        // tiles): over 1 m2, more than 3 m a repeat and fewer than 1.5 repeats across the surface.
+        // Multi-course photos contain many tiles in one image. Check their actual course size,
+        // rather than treating the whole image as one tile. A rescaled photo must still fail.
         const mpr = 1 / dens;
-        if (tiles(mat) && !a.atlas && a.w > 1 && mpr > 3.0 && Math.sqrt(a.w) / mpr < 1.5) flag('texture', lab, `a tiling texture ${f2(mpr)} m a repeat shows only ${f2(Math.sqrt(a.w) / mpr)} repeats across ${f2(a.w)} m2 (too few repeats: giant tiles)`);
+        if (a.roofing?.courses) {
+          const exposure = mpr / a.roofing.courses;
+          if (exposure < 0.07 || exposure > 0.3 || med > TOL.stretch) flag('texture', lab, `roof courses expose ${f2(exposure)} m with ${f2(med)}:1 stretch (expected 0.07–0.30 m courses)`);
+        } else if (tiles(mat) && !a.atlas && a.w > 1 && mpr > 3.0 && Math.sqrt(a.w) / mpr < 1.5) flag('texture', lab, `a tiling texture ${f2(mpr)} m a repeat shows only ${f2(Math.sqrt(a.w) / mpr)} repeats across ${f2(a.w)} m2 (too few repeats: giant tiles)`);
       }
     }
   }
@@ -1367,6 +1370,12 @@ window.__geo = (() => {
     for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 3.4 / 4.3, uv.getY(i) * 2.6 / 4.3);
     gr = fakeGroup('canary roof', roofG, round, 60, 5, 68);
     expect('a roof of four giant tiles', (R) => checkTextures(S, R), /texture canary roof.*giant tiles/);
+    drop(gr);
+    const slate = world.village.looks.roof('slate');
+    const slateG = new T.PlaneGeometry(3.4, 2.6), slateUV = slateG.attributes.uv;
+    for (let i = 0; i < slateUV.count; i++) slateUV.setXY(i, slateUV.getX(i) * 3.4 / 18, slateUV.getY(i) * 2.6 / 18);
+    gr = fakeGroup('canary slate', slateG, slate, 60, 5, 68);
+    expect('a multi-course slate photo blown up five times', (R) => checkTextures(S, R), /texture canary slate.*roof courses/);
     drop(gr);
     // A bank that lost its bars, a chapel that lost its bell: the role check must notice.
     const V = g.world.village;

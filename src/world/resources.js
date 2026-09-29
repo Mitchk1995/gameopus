@@ -4,7 +4,7 @@ import { Batcher } from './kit.js';
 import { rng } from './buildings.js';
 import { FIRE, KILN } from './ashford.js';
 import { placeProp, tag, fitUV, courseGeometry } from './props.js';
-import { TownKit } from './townkit.js';
+import { TownKit, grainUV } from './townkit.js';
 import { shed as hutBuild } from './grounds.js';
 import { ropeGeometry, canvasTexture, Builder } from './greens.js';
 import { Fire, fishingRings } from './effects.js';
@@ -369,16 +369,17 @@ export class Resources {
     // The bellows: its frame, the leather bag between two boards, the nozzle into the fire, the lever.
     const [bx, bz] = at(W / 2 + 0.55, 0.05);
     tk.begin('forge bellows', bx, bz);
-    const tim = L.timber('oak'), leather = (L.leather ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x4a2e1c, roughness: 0.8 }), { name: 'Leather' }));
-    for (const k of [-1, 1]) { const [px, pz] = at(W / 2 + 0.55 + k * 0.3, 0.05); tk.put(tk.box(0.08, 0.7, 0.08), tim, px, y, pz, rot); }
-    tk.put(tk.box(0.72, 0.06, 0.5), tim, bx, y + 0.7, bz, rot);
+    const tim = L.timber('oak'), leather = L.leather;
+    const grain = tim.userData.grain;
+    for (const k of [-1, 1]) { const [px, pz] = at(W / 2 + 0.55 + k * 0.3, 0.05); tk.put(tk.timberBox(0.08, 0.7, 0.08, 'y', grain), tim, px, y, pz, rot); }
+    tk.put(tk.timberBox(0.72, 0.06, 0.5, 'x', grain), tim, bx, y + 0.7, bz, rot);
     const wedge = new THREE.Shape([new THREE.Vector2(-0.45, 0), new THREE.Vector2(0.45, 0), new THREE.Vector2(0.45, 0.34), new THREE.Vector2(-0.45, 0.06)]);
     const wg = new THREE.ExtrudeGeometry(wedge, { depth: 0.46, bevelEnabled: false }).translate(0, 0, -0.23);
     tk.put(wg, leather, bx, y + 0.76, bz, rot + Math.PI / 2);
-    tk.put(tk.box(0.5, 0.04, 0.95), tim, bx, y + 0.96, bz, rot);
+    tk.put(tk.timberBox(0.5, 0.04, 0.95, 'z', grain), tim, bx, y + 0.96, bz, rot);
     const [nx, nz] = at(W / 2 + 0.2, 0.05);
     tk.put(tk.cyl(0.05, 0.03, 0.34, 8), iron, nx, y + 0.72, nz, rot, 1, 1, 1, 0, Math.PI / 2);
-    tk.put(tk.box(0.05, 0.05, 1.3), tim, bx, y + 1.0, bz, rot, 1, 1, 1, 0.5, 0);
+    tk.put(tk.timberBox(0.05, 0.05, 1.3, 'z', grain), tim, bx, y + 1.0, bz, rot, 1, 1, 1, 0.5, 0);
     this.world.colliders.addBox(bx, bz, 0.42, 0.3, rot, y - 0.5, y + 1.1);
     // The fire in the bed of coals, and its light.
     const fire = new Fire(this.scene, 0, 0, 0, { size: 0.42 });
@@ -399,12 +400,12 @@ export class Resources {
     const staves = 16, R = 0.38, H = 0.55;
     for (let i = 0; i < staves; i++) {
       const a = (i / staves) * Math.PI * 2;
-      tk.put(tk.box(0.155, H, 0.04), tim, x + Math.cos(a) * R, y, z + Math.sin(a) * R, -a + Math.PI / 2);
+      tk.put(tk.timberBox(0.155, H, 0.04, 'y', tim.userData.grain), tim, x + Math.cos(a) * R, y, z + Math.sin(a) * R, -a + Math.PI / 2);
     }
     for (const hy of [0.1, 0.45]) tk.put(new THREE.TorusGeometry(R + 0.02, 0.012, 5, 24).rotateX(Math.PI / 2), this.world.village.tk.m.iron, x, y + hy, z);
-    const water = (this.waterMat ??= new THREE.MeshStandardMaterial({ color: 0x223c44, roughness: 0.08 }));
+    const water = (this.waterMat ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x223c44, roughness: 0.08 }), { name: 'Water_Quench' }));
     tk.put(new THREE.CircleGeometry(R - 0.02, 20).rotateX(-Math.PI / 2), water, x, y + H - 0.08, z);
-    tk.put(tk.cyl(R, R, 0.03, 16), tim, x, y + 0.02, z);
+    tk.put(grainUV(tk.cyl(R, R, 0.03, 16).clone(), 'x', tim.userData.grain), tim, x, y + 0.02, z);
     this.world.colliders.addCircle(x, z, R + 0.04, y - 0.5, y + H).floor = true;
   }
 
@@ -525,7 +526,7 @@ export class Resources {
     const env = { kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders };
     const tk = this.#tk(batch);
     const L = this.world.village.looks;
-    const mat = (key, color, roughness) => (L[key] ??= Object.assign(new THREE.MeshStandardMaterial({ color, roughness }), { name: key }));
+    const mat = (key, color, roughness) => L.ceramic(key, color, roughness);
     const clay = mat('Clay', 0x8a6446, 0.55), green = mat('Greenware', 0xbcae98, 0.95), terra = mat('Terracotta', 0xa9573b, 0.8), glaze = mat('Glaze', 0x5d6f58, 0.35);
     const tim = L.timber('oak');
     // A floor of boards.

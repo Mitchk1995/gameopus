@@ -423,7 +423,7 @@ export const STALLS = [
 
 export const PEOPLE_AT = {
   mirelle: { x: -15.2, z: 9.4, facing: Math.PI / 2 },
-  garrow: { x: 35.4, z: 13.4, facing: 1.2 },
+  garrow: { x: 34.5, z: 16.1, facing: 1.2 },
   // Round the stalls, clear of the market cross and the ash's bench.
   wenna: { route: [[-17.2, 4.6], [-0.1, 4.6], [-0.1, 23.2], [-17.2, 23.2]] },
   hob: { route: [[4.2, 13.6], [4.2, 23.2], [-7.0, 24.2], [-8.4, 19.6], [-6.4, 19.2]], reverse: true },
@@ -444,7 +444,7 @@ const R = (role, n = 0) => BUILDINGS.filter((b) => b.role === role)[n];
 put('lantern', 6.6, 1.2, Math.PI * 0.75, { why: "lantern at the inn's corner, lighting Church Lane" });
 put('lantern', 5.9, 25.2, -2.4, { why: 'lantern at the foot of the square by the smithy' });
 put('lantern', -11.3, 44.4, Math.PI / 4, { why: 'lantern at the Lake Street crossroads' });
-put('lantern', 29.8, 11.9, 0, { why: 'lantern on Bridge Street by the watch house' });
+put('lantern', 30.8, 11.4, 0, { why: 'lantern in the gap between the stable and watch house' });
 put('brazier', -22.2, -31.0, 0, { why: 'the watch fire outside the north gate' });
 put('brazier', 41.2, 10.8, 0, { why: 'the watch fire outside the east gate, by Garrow' });
 put('brazier', -3.9, 60.6, 0, { why: 'the watch fire inside the south gate' });
@@ -487,7 +487,7 @@ kit('Bench', -5.4, 2.65, 0, { why: 'bank bench' });
   const w = (lx, lz) => toWorld(sm, lx, lz);
   put('trough', 11.2, 26.85, 0, { stone: true, why: "the farrier's trough by the smithy" });
   kit('Barrel', ...w(-2.6, 3.9), 0, { r: 0.4, why: 'smithy barrel' });
-  kit('Crate_Metal', ...w(-2.6, 4.9), 0.2, { r: 0.45, why: 'smithy coal' });
+  kit('Crate_Metal', ...w(-1.5, 3.9), 0.2, { r: 0.45, why: 'smithy coal beside the barrel, clear of the market hall' });
 }
 // Finished pottery stands on the workshop display, built in resources.js.
 // The cooper: his yard behind the workshop (the back door opens onto it): a cask being raised in its
@@ -602,5 +602,5 @@ export const PROMISED = [
   { id: 'the stone bridge', label: 'bridge', at: { x: 90, z: 3 }, r: 25, reach: 6, why: 'lore: "over the stone bridge across the river"' },
   { id: 'crates and barrels by Old Tam', kit: /^(Crate|Barrel)/, near: 'tam', r: 16, count: 2, why: 'DESIGN.md: the dock "with its crates and barrels by Old Tam"' },
   { id: 'the hearth before the inn', station: 'fire', why: 'lore: the Crooked Pike "with a cooking fire and benches out front"' },
-  { id: 'the Crooked Pike sign', label: /inn sign|Crooked Pike/i, at: { x: 8, z: 6 }, r: 6, owner: 'buildings', why: 'lore: "the Crooked Pike inn"' },
+  { id: 'the Crooked Pike sign', label: /inn sign|Crooked Pike/i, at: { x: 8, z: 6 }, r: 6, why: 'lore: "the Crooked Pike inn"' },
 ];

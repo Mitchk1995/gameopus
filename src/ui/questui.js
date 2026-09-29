@@ -24,13 +24,13 @@ export class QuestUI {
   // The tracker shows the quest you touched last, and where it stands.
   update() {
     const Q = this.quests, id = Q.tracked;
-    if (!id || !Q.active(id)) {
+    if (!id || Q.done(id)) {
       this.tracker.hidden = true;
     } else {
       const q = QUESTS[id], step = q.steps[Q.stage(id)];
       this.tracker.hidden = false;
       this.tracker.innerHTML = `<div class="qn">${icon('quest', 15)}<span>${q.name}</span></div><div class="qs"></div>`;
-      this.tracker.querySelector('.qs').textContent = step?.short || step?.text || '';
+      this.tracker.querySelector('.qs').textContent = step?.short || step?.text || q.start;
     }
     if (this.pane && !this.pane.hidden) this.render(this.pane);
   }
@@ -56,7 +56,7 @@ export class QuestUI {
       b.setAttribute('aria-expanded', String(this.open === id));
       b.addEventListener('click', () => {
         this.open = this.open === id ? null : id;
-        if (Q.active(id)) Q.tracked = id;
+        if (!Q.done(id)) Q.track(id);
         this.update();
         this.render(pane);
       });
@@ -77,7 +77,7 @@ export class QuestUI {
     }
     box.append(meta);
     const steps = Q.journal(id);
-    if (!steps.length) box.append(el('p', 'hint', 'Not started yet.'));
+    if (!steps.length) box.append(el('p', 'hint', 'Speak to the quest giver when you are ready. Their location is marked on your map.'));
     for (const s of steps) {
       const p = el('p', s.past ? 'past' : 'now');
       p.textContent = s.text;

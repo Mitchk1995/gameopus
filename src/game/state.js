@@ -19,11 +19,13 @@ export class GameState {
     this.bank = new Container(360, saved?.bank, { alwaysStack: true });
     this.equip = Object.fromEntries(SLOTS.map((s) => [s, saved?.equip?.[s] ?? null]));
     this.ammo = saved?.ammo ?? 0;
-    this.hp = saved?.hp ?? this.skills.level('hitpoints');
+    this.hp = Number.isFinite(saved?.hp) && saved.hp > 0 ? Math.min(saved.hp, this.maxHp) : this.maxHp;
     this.quests = saved?.quests ?? {};
     this.flags = saved?.flags ?? {};
     this.collection = saved?.collection ?? {};
-    this.pos = saved?.pos ?? null;
+    // Older saves could be written during the death animation. Return those
+    // characters to the safe starting point instead of waking in an enemy camp.
+    this.pos = saved?.hp <= 0 ? null : saved?.pos ?? null;
     this.played = saved?.played ?? 0;
     this.listeners = new Set();
     if (!saved) {

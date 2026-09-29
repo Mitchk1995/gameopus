@@ -42,11 +42,14 @@ export function framer(env, x, y, z, yaw = 0) {
       const [wx, wz] = f.at(lx, lz);
       const sh = tk.colliders.addBox(wx, wz, hx, hz, yaw + rot, y + y0, y + y1);
       if (floor) sh.floor = true;
+      if (f.owner != null) sh.owner = f.owner;
       return sh;
     },
     post(lx, lz, r, y0, y1) {
       const [wx, wz] = f.at(lx, lz);
-      return tk.colliders.addCircle(wx, wz, r, y + y0, y + y1);
+      const sh = tk.colliders.addCircle(wx, wz, r, y + y0, y + y1);
+      if (f.owner != null) sh.owner = f.owner;
+      return sh;
     },
   };
   return f;
@@ -93,6 +96,9 @@ export function chapel(env, nave, tower, base) {
   const stone = L.stone('grey'), dressed = L.dressed('grey'), slate = L.roof('slate-dark');
   const R = slate.userData.roofing;
   const f = framer(env, 0, base, 0, 0); // world-aligned frame at the plateau's height
+  // The nave, chancel and attached tower form one masonry assembly. Their wall
+  // colliders intentionally meet at corners; they are not separate loose props.
+  f.owner = `building${nave.key}`;
   const out = { parts: [], lancets: 0, belfry: 0, bell: null };
   const n = { x0: nave.x - nave.w / 2, x1: nave.x + nave.w / 2, z0: nave.z - nave.d / 2, z1: nave.z + nave.d / 2 };
   const T = 0.7, WALL = 5.2, PITCH = (52 * Math.PI) / 180;
@@ -357,7 +363,7 @@ export function hangingSign(env, x, y, z, yaw, text, icon, { reach = 1.1, w = 0.
   const { looks: L } = env;
   const f = framer(env, x, y, z, yaw);
   const mat = signMaterial(L, text, icon, colors);
-  f.begin('sign', 0, reach);
+  f.begin(`sign: ${text}`, 0, reach);
   // Bracket: a wall plate, the arm and a scrolled stay under it.
   f.put(new THREE.BoxGeometry(0.1, 0.5, 0.04), L.iron, f.M(0, -0.1, 0.02));
   f.put(new THREE.BoxGeometry(0.04, 0.05, reach + 0.1).translate(0, 0, (reach + 0.1) / 2), L.iron, f.M(0, 0.12, 0));
@@ -469,13 +475,17 @@ export function barn(env, b, y) {
   const [lint, lm] = timber(L, DW + 0.3, 0.25, 0.3, 'x', 'oak');
   f.put(lint, lm, f.M(0, DH - 0.12, hd - T / 2));
   for (const k of [-1, 1]) { const [pg, pm] = timber(L, 0.25, DH, 0.3, 'y', 'oak'); f.put(pg, pm, f.M(k * (DW / 2 + 0.12), DH / 2, hd - T / 2)); }
-  // Doors: two ledged leaves standing open against the front wall.
+  // Doors: two ledged leaves standing open against the front wall. Their thin
+  // boards do not obstruct the camera while walking through the doorway.
+  f.begin('barn door', 0, hd + 0.1);
+  tk.cur.thin = true;
   for (const k of [-1, 1]) {
     const [dg, dm] = timber(L, DW / 2 - 0.05, DH - 0.1, 0.08, 'y', 'oak');
     f.put(dg, dm, f.M(k * (DW / 2 + 0.2 + (DW / 2 - 0.05) / 2), DH / 2 - 0.02, hd + 0.08));
     for (const yy of [0.5, DH / 2, DH - 0.6]) { const [rg, rm] = timber(L, DW / 2 - 0.1, 0.14, 0.05, 'x', 'oak'); f.put(rg, rm, f.M(k * (DW / 2 + 0.2 + (DW / 2 - 0.05) / 2), yy, hd + 0.14)); }
     f.solid(k * (DW / 2 + 0.2 + (DW / 2 - 0.05) / 2), hd + 0.1, (DW / 2 - 0.05) / 2, 0.06, -0.5, DH);
   }
+  f.begin('barn', 0, hd);
   // Slatted vents in the long walls: tall narrow dark slits between the boards.
   L.shade ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x1c1712, roughness: 1 }), { name: 'Shade' });
   for (const s of [-1, 1]) for (const zz of [-hd * 0.5, 0, hd * 0.5]) f.put(new THREE.PlaneGeometry(0.16, 1.3), L.shade, f.M(s * (hw + 0.005), 2.0, zz, s * Math.PI / 2));
@@ -511,7 +521,9 @@ export function barn(env, b, y) {
   f.solid(0, 0, hw + 0.4, hd + 0.4, WH, WH + rise + 0.6).cameraOnly = true;
   // Hay stacked inside, where you can see it through the open doors.
   const hay = [];
-  for (const [lx, lz, lv, rot] of [[-2.2, -2.8, 0, 0], [-1.1, -2.8, 0, 0.05], [0.0, -2.8, 0, -0.04], [1.1, -2.9, 0, 0.02], [-1.6, -2.8, 1, 0.03], [-0.5, -2.85, 1, 0], [0.6, -2.8, 1, -0.05], [-1.0, -2.8, 2, 0.02], [2.4, -0.6, 0, 1.57], [2.4, 0.5, 0, 1.6]]) {
+  // Keep the threshing aisle in line with the doorway clear; stack hay in the side bays.
+  const Q = Math.PI / 2;
+  for (const [lx, lz, lv, rot] of [[-2.85, -3.7, 0, Q], [-2.85, -2.6, 0, Q + 0.04], [-2.85, -1.5, 0, Q - 0.03], [-2.85, -3.15, 1, Q + 0.02], [-2.85, -2.05, 1, Q], [-2.85, -2.6, 2, Q - 0.04], [2.85, -3.7, 0, Q], [2.85, -2.6, 0, Q - 0.03], [2.85, -3.15, 1, Q + 0.03]]) {
     const [wx, wz] = f.at(lx, lz);
     hay.push([wx, wz, lv, b.rot + rot]);
   }

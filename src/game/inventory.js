@@ -76,6 +76,22 @@ export class Container {
     return n - left;
   }
 
+  // Commit a whole trade only if every input exists and every output fits after
+  // those inputs leave. Listeners never see a half-finished inventory change.
+  exchange(take = [], give = [], prefer = -1) {
+    const next = new Container(this.size, this.slots, { alwaysStack: this.alwaysStack });
+    for (const [id, n] of take) {
+      if (!Number.isInteger(n) || n < 0 || next.count(id) < n) return false;
+      next.remove(id, n, prefer);
+    }
+    for (const [id, n] of give) {
+      if (!Number.isInteger(n) || n < 0 || next.add(id, n) !== n) return false;
+    }
+    this.slots = next.slots;
+    this.changed();
+    return true;
+  }
+
   swap(a, b) {
     [this.slots[a], this.slots[b]] = [this.slots[b], this.slots[a]];
     this.changed();

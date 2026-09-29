@@ -15,6 +15,18 @@ import { BANDIT_CAMP } from '../world/map.js';
 //   rewards      quest points, experience, items and a line about anything unlocked
 
 export const QUESTS = {
+  kindling: {
+    name: 'A Little Warmth',
+    giver: 'rowan',
+    difficulty: 'Novice',
+    length: 'Very short',
+    start: 'Meet Rowan at the stone cottage west of the lake jetty.',
+    requirements: 'An axe. The bronze axe in your starting pack will do.',
+    steps: {
+      1: { short: 'Bring Rowan three ordinary logs for the hearth.', text: 'Rowan and Elin need firewood for their cottage. Chop ordinary trees along the lake road until you have three logs, then bring them to Rowan. He works by the nets, at his indoor table and along the little path to the jetty.', goal: { npc: 'rowan' } },
+    },
+    rewards: { points: 1, items: [['trout', 2], ['coins', 25]] },
+  },
   gnasher: {
     name: 'The One That Got Away',
     giver: 'tam',

@@ -11,6 +11,7 @@ import { Falls } from './falls.js';
 import { Mood } from './mood.js';
 import { Village } from './village.js';
 import { Sites } from './sites.js';
+import { LakesideHome } from './lakeside-home.js';
 import { WORLD } from './map.js';
 
 export const STEP = 0.45;
@@ -40,6 +41,7 @@ export class World {
     this.plants = new Plants({ scene: this.scene, terrain: this.terrain, leaves: this.forest.leafTex });
     this.village = await new Village({ ...ctx, world: this }).load();
     this.sites = await new Sites({ ...ctx, world: this }).load();
+    this.lakeside = await new LakesideHome({ ...ctx, world: this }).load();
     this.updaters.push((dt) => this.sites.update(dt));
     this.falls = new Falls({ scene: this.scene, world: this });
     this.mood = new Mood({ scene: this.scene, sky: this.sky });

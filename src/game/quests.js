@@ -18,7 +18,12 @@ export class Quests {
     this.game = game;
     this.state = game.state;
     this.spots = [];
-    this.tracked = null;
+    const saved = this.state.flags.questTracked;
+    const active = Object.keys(QUESTS).find((id) => this.active(id));
+    const lead = ['kindling', 'gnasher'].find((id) => !this.done(id));
+    this.tracked = saved && QUESTS[saved] && !this.done(saved) ? saved
+      : active || (saved !== null ? lead || null : null);
+    this.state.flags.questTracked = this.tracked;
   }
 
   init(ui) {
@@ -37,8 +42,6 @@ export class Quests {
         this.spots.push(spot);
       }
     }
-    // Keep following whichever quest you touched last.
-    this.tracked = Object.keys(QUESTS).find((id) => this.active(id)) || null;
     this.ui.update();
   }
 
@@ -60,11 +63,24 @@ export class Quests {
     return Object.entries(QUESTS).reduce((t, [id, q]) => t + (this.done(id) ? q.rewards.points : 0), 0);
   }
 
+  // A lead may be followed before accepting it. Choosing a journal entry only
+  // changes guidance; dialogue still owns accepting and advancing each quest.
+  track(id) {
+    if (id !== null && (!QUESTS[id] || this.done(id))) return false;
+    this.tracked = id;
+    this.state.flags.questTracked = id;
+    this.ui?.update();
+    this.game.save();
+    return true;
+  }
+
   set(id, n) {
     const before = this.stage(id);
     if (n === before) return;
     this.state.quests[id] = n;
     this.tracked = id;
+    this.state.flags.questTracked = id;
+    if (this.game.realm === 'dungeon' && this.game.dungeon) this.dressDungeon(this.game.dungeon);
     const q = QUESTS[id];
     if (before === 0) {
       this.game.panels.message(`Quest started: ${q.name}`, 'quest');
@@ -98,6 +114,7 @@ export class Quests {
     if (r.unlocks) lines.push(r.unlocks);
     this.game.panels.message(`Congratulations, quest complete: ${q.name}!`, 'quest');
     if (this.tracked === id) this.tracked = Object.keys(QUESTS).find((k) => this.active(k)) || null;
+    this.state.flags.questTracked = this.tracked;
     this.ui.update();
     this.ui.complete(q, lines, (r.items || [])[0]?.[0]);
     this.game.audio.play('levelup');
@@ -139,6 +156,7 @@ export class Quests {
     for (const [item, n] of d.give || []) this.#give(item, n);
     if (d.quest) this.set(d.quest[0], d.quest[1]);
     if (d.complete) this.complete(d.complete);
+    if (d.track) this.track(d.track);
   }
 
   // ------------------------------------------------------------ what the map shows
@@ -157,8 +175,8 @@ export class Quests {
 
   goal() {
     const id = this.tracked;
-    if (!id || !this.active(id)) return null;
-    const goal = QUESTS[id].steps[this.stage(id)]?.goal;
+    if (!id || this.done(id)) return null;
+    const goal = this.stage(id) === 0 ? { npc: QUESTS[id].giver } : QUESTS[id].steps[this.stage(id)]?.goal;
     if (!goal) return null;
     if (goal.npc) {
       const npc = this.game.npcs.find((n) => n.def.id === goal.npc);
@@ -292,6 +310,7 @@ export class Quests {
   // Brom's strongbox waits by Grubnak while the quest needs it.
   dressDungeon(d) {
     if (!(this.stage('ledger') === 4 && !this.state.inv.count('ore_strongbox'))) return;
+    if (d.interactables.some((s) => s.questItem === 'ore_strongbox')) return;
     const p = d.bossPos;
     const cells = d.cellsOf(d.bossRoom).filter((c) => c.distanceTo(p) > 2.5 && c.distanceTo(p) < 6);
     const c = cells[0] || p.clone().add(new THREE.Vector3(3, 0, 0));
@@ -302,7 +321,7 @@ export class Quests {
     d.scene.add(box);
     const self = this;
     d.interactables.push({
-      kind: 'station', station: 'quest', def: { action: 'takeStrongbox' }, name: "Brom's strongbox", verb: 'Take', x: c.x, y: 0.3, z: c.z, r: 0.5, h: 0.8, reach: 2.2, model: box,
+      kind: 'station', station: 'quest', questItem: 'ore_strongbox', def: { action: 'takeStrongbox' }, name: "Brom's strongbox", verb: 'Take', x: c.x, y: 0.3, z: c.z, r: 0.5, h: 0.8, reach: 2.2, model: box,
       get hidden() { return self.stage('ledger') !== 4 || self.state.inv.count('ore_strongbox') > 0; },
     });
   }

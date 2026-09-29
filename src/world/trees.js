@@ -3,6 +3,7 @@ import { Tree } from '../vendor/ez-tree/tree.js';
 import { loadPreset } from '../vendor/ez-tree/presets/index.js';
 import { WORLD, VILLAGE, BANDIT_CAMP, LAKE, RIVER, forestDensity, roadDistance, noise, siteClearance, groveAt, rings, biomeAt, riverAt, shoreAt, lakeShoreAt } from './map.js';
 import { polyDistance, TOWN_TREES } from './ashford.js';
+import { homeTreeClearance } from './lakeside-plan.js';
 
 // Forests. Each species variant is generated once with ez-tree in two levels of
 // detail, plus a flat "impostor" picture of it for far away. Every tree in the world
@@ -94,6 +95,12 @@ export class Forest {
     for (const [species, def] of Object.entries(SPECIES))
       for (const preset of def.presets) this.variants.push(this.#variant(species, preset, seed++));
     this.#place();
+    // Reserve the household's sightline after the seeded placement pass. Doing
+    // this here preserves every other tree's random placement and resource id.
+    const keep = (tree) => homeTreeClearance(tree.x, tree.z) >= 0;
+    this.trees = this.trees.filter(keep);
+    for (const variant of this.variants) variant.trees = variant.trees.filter(keep);
+    for (const [key, trees] of this.cells) this.cells.set(key, trees.filter(keep));
     for (const v of this.variants) this.#instances(v);
     return this;
   }

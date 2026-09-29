@@ -60,14 +60,30 @@ STEPS += view('square', """
     const C = __game.world.village.places.well;
     __look(C.x + 3, 5.2, C.z + 13, C.x - 2, 5.0, C.z - 20);
 """)
-# Numbers: textures behind the hero, a villager and the village must be sharpened at
-# angles, and every material needs a normal map strong enough to catch light.
+# Numbers: textures must stay sharp at angles. Solid textured surfaces need authored
+# normal detail or the grain shader. Leaf cut-outs and smooth metal ornaments use
+# their geometric normals; adding fake normal maps to them would improve no pixels.
 STEPS += [{'eval': """(() => {
     const g = __game, out = [], fails = [];
     const check = (name, ok, info) => { out.push(name + ': ' + info); if (!ok) fails.push('FAIL ' + name + ' ' + info); };
+    const leafCards = new Set(['MI_Vine', 'Leaf_Hedge', 'Leaf_WindowBox', 'Leaf_Bean', 'Leaf_Herb', 'Leaf_Cabbage']);
+    const surfaceIssue = (m) => {
+      if (!m.map) return null;
+      if (!m.normalMap) {
+        if (leafCards.has(m.name) && m.alphaTest > 0) return null;
+        if (m.name === 'MI_MetalOrnaments' && m.metalness > 0.5 && m.roughnessMap) return null;
+        return 'missing normal detail';
+      }
+      const scales = [m.normalScale.x, m.normalScale.y];
+      if (scales.some(v => !Number.isFinite(v) || Math.abs(v) === 0)) return 'disabled or invalid normal scale';
+      const image = m.normalMap.image;
+      if (image?.width === 1 && image?.height === 1 && !m.userData.detail) return 'flat normal has no surface-detail shader';
+      return null;
+    };
     const scan = (root, label) => {
       const maps = new Set(), mats = new Set();
-      let aniso = 1e9, nrm = 0, weak = 0, noNormal = 0, patched = 0;
+      const issues = [];
+      let aniso = 1e9, nrm = 0, geometric = 0, patched = 0;
       root.traverse((o) => {
         if (!o.isMesh) return;
         for (const m of [o.material].flat()) {
@@ -77,16 +93,28 @@ STEPS += [{'eval': """(() => {
             const t = m[k];
             if (t && !maps.has(t)) { maps.add(t); aniso = Math.min(aniso, t.anisotropy); }
           }
-          if (m.normalMap) { nrm++; if (m.normalScale.x < 1) weak++; if (m.userData.detail) patched++; }
-          else if (m.map) noNormal++;
+          if (m.normalMap) { nrm++; if (m.userData.detail) patched++; }
+          else if (m.map) geometric++;
+          const issue = surfaceIssue(m);
+          if (issue) issues.push((m.name || '(unnamed)') + ': ' + issue);
         }
       });
       check(label + ' textures sharpened', maps.size > 0 && aniso > 1, maps.size + ' maps over ' + mats.size + ' materials, min anisotropy ' + aniso);
-      check(label + ' normal maps', nrm > 0 && noNormal === 0 && weak === 0 && patched === nrm, nrm + ' normal-mapped (' + patched + ' with surface detail), ' + noNormal + ' textured without a normal map, ' + weak + ' weak');
+      check(label + ' surface detail', nrm > 0 && issues.length === 0, nrm + ' normal-mapped (' + patched + ' with grain shader), ' + geometric + ' geometric-normal materials; ' + (issues.join('; ') || 'no missing detail'));
     };
     scan(g.hero.root, 'hero');
     scan(g.npcs.find((p) => p.def.id === 'garrow').char.root, 'villager');
     scan(g.world.village.mesh, 'village');
+    // Prove that the role exceptions still reject damaged real surfaces.
+    const solid = {name:'MI_Plaster',map:{},normalMap:null,userData:{}};
+    check('surface audit canaries',
+      !!surfaceIssue(solid) &&
+      !!surfaceIssue({...solid,normalMap:{image:{width:32,height:32}},normalScale:{x:0,y:1}}) &&
+      !!surfaceIssue({...solid,normalMap:{image:{width:1,height:1}},normalScale:{x:1,y:1}}) &&
+      !surfaceIssue({...solid,normalMap:{image:{width:32,height:32}},normalScale:{x:0.25,y:-0.25}}) &&
+      !surfaceIssue({...solid,name:'Leaf_WindowBox',alphaTest:0.5}) &&
+      !!surfaceIssue({...solid,name:'Leaf_WindowBox',alphaTest:0}),
+      'missing solid map, disabled map, inert flat map, subtle normal, leaf cut-out, and solid leaf impostor');
     const ren = g.renderer;
     // Cost of the detail layer at the square view, by mode (indicative only: headless GL is not a real GPU).
     const { detailUniforms } = window.__detail || {};

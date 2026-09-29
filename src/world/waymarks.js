@@ -40,6 +40,8 @@ class Atlas {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 8;
       s = { cv, g, tex, mat: texturedMaterial(tex, 0.85), x: 0, y: 0, rowH: 0 };
+      s.mat.name = 'Waymark_Lettering';
+      s.mat.userData.atlas = true;
       this.sheets.push(s);
     }
     return s;
@@ -230,7 +232,7 @@ export function buildWaymarks(sites) {
     const [x, z] = postSpot(sk, j.x, j.z, { around: j.at });
     const n = j.boards.length;
     // The lowest board's underside clears a tall head; the post rises above the top board.
-    const lowest = 2.05, height = lowest + n * STEP + 0.35;
+    const lowest = 2.2, height = lowest + n * STEP + 0.35;
     sk.begin('signpost', x, z);
     const y = post(x, z, height);
     j.boards.forEach((b, i) => {

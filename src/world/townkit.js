@@ -193,13 +193,13 @@ export class TownKit {
     if (this.extrasLoaded) return this;
     const m = this.m;
     const tex = (p, srgb = true, repeat = true) => assets.texture(p, { srgb, repeat });
-    const [pine, oak, leaf, hayA, hayN, soilA, soilN, linenA] = await Promise.all([
+    const [pine, oak, leaf, hayA, hayN, soilA, soilN, linenA, linenN] = await Promise.all([
       Promise.all(['color', 'normal', 'roughness'].map((k) => tex(`trees/pine_${k}.webp`, k === 'color'))),
       Promise.all(['color', 'normal', 'roughness'].map((k) => tex(`trees/oak_${k}.webp`, k === 'color'))),
       tex('trees/leaves_oak.webp', true, false),
       tex('props/hay_a.webp'), tex('props/hay_n.webp', false),
       tex('props/soil_a.webp'), tex('props/soil_n.webp', false),
-      tex('props/linen_a.webp'),
+      tex('props/linen_a.webp'), tex('props/linen_n.webp', false),
     ]);
     const bark = (t, color, name) => {
       const b = new THREE.MeshStandardMaterial({ map: t[0], normalMap: t[1], roughnessMap: t[2], color, roughness: 1 });
@@ -219,7 +219,11 @@ export class TownKit {
     m.soil.name = 'Soil';
     enhance(m.soil);
     const garments = GR.garmentTexture(linenA.image);
-    m.linen = new THREE.MeshStandardMaterial({ map: garments, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, vertexColors: true });
+    // garmentTexture tiles the source fabric four times across its atlas. Match
+    // that exact weave in the supplied normal map; silhouettes remain in albedo alpha.
+    const garmentNormal = linenN.clone();
+    garmentNormal.repeat.set(4, 4);
+    m.linen = new THREE.MeshStandardMaterial({ map: garments, normalMap: garmentNormal, normalScale: new THREE.Vector2(0.35, 0.35), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, vertexColors: true });
     m.linen.name = 'Cloth_Linen';
     m.linen.userData.atlas = true;
     m.bean = new THREE.MeshStandardMaterial({ map: GR.beanTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.8, vertexColors: true });
@@ -869,7 +873,7 @@ function surface(name, map, { roughness = 0.9, metalness = 0, color = 0xffffff, 
   m.metalness = metalness;
   m.color = new THREE.Color(color);
   m.name = name;
-  m.userData = { tile };
+  m.userData = { ...m.userData, tile };
   surfaces.set(name, m);
   return m;
 }

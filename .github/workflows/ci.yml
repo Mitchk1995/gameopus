@@ -25,6 +25,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: node --test tests/unit/*.test.mjs tests/game-transactions.mjs tests/npc-routines.mjs
       - run: node scripts/balance.mjs > /dev/null
       - uses: actions/upload-artifact@v4
         with:

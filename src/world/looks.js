@@ -32,8 +32,9 @@ export const ROOFING = {
   tile: { tex: 'tile', tint: [1, 1, 1], tu: 1.9, tv: 1.9 },
   'tile-red': { tex: 'tile', tint: [1.14, 0.88, 0.8], tu: 1.9, tv: 1.9 },
   'tile-brown': { tex: 'tile', tint: [0.8, 0.7, 0.64], tu: 1.9, tv: 1.9 },
-  slate: { tex: 'slate', tint: [1, 1, 1], tu: 3.6, tv: 3.6 },
-  'slate-dark': { tex: 'slate', tint: [0.78, 0.8, 0.86], tu: 3.6, tv: 3.6 },
+  // The source photograph contains 25 courses, so this repeat gives 14.4 cm exposures.
+  slate: { tex: 'slate', tint: [1, 1, 1], tu: 3.6, tv: 3.6, courses: 25 },
+  'slate-dark': { tex: 'slate', tint: [0.78, 0.8, 0.86], tu: 3.6, tv: 3.6, courses: 25 },
   thatch: { tex: 'thatch', tint: [1.12, 1.0, 0.8], tu: 2.6, tv: 0 },
 };
 // Door leaves: painted or plain oak.
@@ -69,6 +70,27 @@ export async function houseLooks(kit, assets, tk) {
   };
   const cache = new Map();
   const once = (key, make) => (cache.has(key) ? cache.get(key) : cache.set(key, make()).get(key));
+  // Fired and unfired clay share the kit's fine mineral grain, with their existing colours.
+  const ceramic = (name, color, roughness) => once(name, () => {
+    const m = base.plaster.clone();
+    m.name = name;
+    m.map = greyTexture(base.plaster.map);
+    m.color.set(color);
+    m.roughness = roughness;
+    m.normalScale.multiplyScalar(0.25);
+    return enhance(m);
+  });
+  // The props sheet's leather strip, isolated from its books, metal and pottery islands.
+  const hide = findMaterial(kit, 'MI_Trim_Props');
+  const leather = hide.clone();
+  leather.name = 'Leather';
+  for (const key of ['map', 'normalMap', 'roughnessMap', 'aoMap']) if (hide[key]) leather[key] = leatherBand(hide[key]);
+  leather.map = greyTexture(leather.map);
+  leather.color.set(0x4a2e1c);
+  leather.metalness = 0;
+  leather.metalnessMap = null;
+  leather.roughness = 0.8;
+  enhance(leather);
   const L = {
     xm,
     base,
@@ -106,7 +128,11 @@ export async function houseLooks(kit, assets, tk) {
       return enhance(m);
     }),
     brick: base.brick,
-    pot: new THREE.MeshStandardMaterial({ color: 0xa4553a, roughness: 0.85 }),
+    ceramic,
+    pot: ceramic('Chimney_Clay', 0xa4553a, 0.85),
+    leather,
+    // Cut-out foliage uses the same bundled leaf photo as the hedges.
+    leaf: Object.assign(new THREE.MeshStandardMaterial({ map: tk.m.hedgeLeaf.map, color: 0xc3d4a9, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9 }), { name: 'Leaf_WindowBox', userData: { atlas: true } }),
     iron: tk.m.iron,
     glass: glassMaterial('diamond'),
     glassSquare: glassMaterial('square'),
@@ -142,6 +168,20 @@ export async function houseLooks(kit, assets, tk) {
     }),
   };
   return L;
+}
+
+function leatherBand(tex) {
+  const img = tex.image, cv = document.createElement('canvas');
+  cv.width = img.width;
+  cv.height = Math.max(1, Math.round(img.height * 0.044));
+  cv.getContext('2d').drawImage(img, 0, Math.round(img.height * 0.106), img.width, cv.height, 0, 0, cv.width, cv.height);
+  const t = new THREE.CanvasTexture(cv);
+  t.flipY = tex.flipY;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = tex.colorSpace;
+  t.anisotropy = Math.max(8, tex.anisotropy || 1);
+  t.channel = tex.channel;
+  return t;
 }
 
 // Leaded lights: dark old glass with a soft sheen, held in lead cames laid in diamonds (casements) or

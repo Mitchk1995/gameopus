@@ -4,6 +4,12 @@ A single-player, OSRS-style world in three.js (r186, Vite). Read `DESIGN.md` for
 decisions and pillars; they outrank taste. `HANDOFF.md` holds the current state: what landed, what
 is in flight, and the next steps in order. Read it first, and rewrite it at the end of a session.
 
+Current continuation: `codex/playtest-readiness` integrates the interrupted work and contains
+the first approved lakeside cottage/household. See the rewritten handoff and
+`docs/design/lakeside-direction.md`; the old walled village brief is superseded. Blender 5.2.2
+is installed and the first editable assets are in `art/lakeside-cottage/`. This branch has a
+local owner-review playtest build; do not mistake it for a completed village release on main.
+
 ## Working with the owner
 
 - Mitchell is a game designer and does not care about programming or GitHub. Talk in game terms

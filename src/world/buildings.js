@@ -122,10 +122,14 @@ export function buildHouse(kit, batch, colliders, spec, groundY, env = {}) {
     mesh.matrix.copy(toWorld(local, lean));
     batch.addObject(mesh, new THREE.Matrix4(), tk.cur);
   };
+  // Thin facade dressing should not pull the camera into the player; the solid
+  // house walls and roof remain the camera's obstruction surfaces.
+  const THIN = new Set(['window', 'date stone']);
   const begin = (label, lx, lz, on = true) => {
     if (!tk) return;
     const p = new THREE.Vector3(lx, 0, lz).applyMatrix4(world);
     tk.begin(label, p.x, p.z, false, on);
+    if (THIN.has(label)) tk.cur.thin = true;
   };
   const hw = spec.w / 2, hd = spec.d / 2;
   const doors = (spec.doors || []).map((d) => ({ ...d }));
@@ -350,17 +354,34 @@ const FLOWERS = [0xc8402e, 0xe0a0b8, 0xe8d25a, 0xf2eee2, 0x8c4fb0];
 function flowerBox(put, at, timber, L, lean, seed) {
   const box = grainUV(new THREE.BoxGeometry(1.15, 0.2, 0.24).translate(0, 0.1, 0), 'x', timber.userData.grain || [2.2, 0.645]);
   put(box, timber, at(0, OPEN.y0 - 0.26, 0.14), lean);
-  L.leaf ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x3f6a2e, roughness: 0.9 }), { name: 'Leaf' });
   L.flowerMats ??= FLOWERS.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
-  const leafG = (L.leafG ??= new THREE.SphereGeometry(0.1, 8, 6).scale(1.3, 0.8, 1));
+  const leafG = (L.leafG ??= new THREE.PlaneGeometry(0.24, 0.26));
   const headG = (L.headG ??= new THREE.SphereGeometry(0.035, 6, 5));
+  const stemG = (L.stemG ??= new THREE.CylinderGeometry(0.0025, 0.0035, 1, 5));
+  const stemMat = (L.stemMat ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x476532, roughness: 0.9 }), { name: 'Flower_Stem' }));
   let s = seed * 9301 + 49297;
   const r = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
   const col = L.flowerMats[seed % L.flowerMats.length], col2 = L.flowerMats[(seed + 2) % L.flowerMats.length];
   for (let i = 0; i < 5; i++) {
     const x = -0.44 + i * 0.22;
-    put(leafG, L.leaf, at(x, OPEN.y0 - 0.06 + r() * 0.04, 0.14), lean);
-    for (let k = 0; k < 3; k++) put(headG, k === 2 ? col2 : col, at(x + (r() - 0.5) * 0.18, OPEN.y0 + 0.02 + r() * 0.08, 0.1 + r() * 0.12), lean);
+    // Two crossed sprays keep visible leaf silhouettes from either end of the street;
+    // their photographed stems descend into the planter rather than floating above it.
+    const leafY = OPEN.y0 - 0.06 + r() * 0.04;
+    for (const turn of [-0.65, 0.65]) {
+      const m = at(x, leafY, 0.14).multiply(new THREE.Matrix4().makeRotationY(turn));
+      m.multiply(new THREE.Matrix4().makeRotationZ((r() - 0.5) * 0.3));
+      put(leafG, L.leaf, m, lean);
+    }
+    for (let k = 0; k < 3; k++) {
+      const hx = x + (r() - 0.5) * 0.18, hy = OPEN.y0 + 0.02 + r() * 0.08, hz = 0.1 + r() * 0.12;
+      const baseY = OPEN.y0 - 0.1;
+      const axis = new THREE.Vector3(hx - x, hy - baseY, hz - 0.14), length = axis.length();
+      const turn = new THREE.Quaternion().setFromUnitVectors(Y, axis.normalize());
+      const stem = at((x + hx) / 2, (baseY + hy) / 2, (0.14 + hz) / 2)
+        .multiply(new THREE.Matrix4().makeRotationFromQuaternion(turn)).multiply(new THREE.Matrix4().makeScale(1, length, 1));
+      put(stemG, stemMat, stem, lean);
+      put(headG, k === 2 ? col2 : col, at(hx, hy, hz), lean);
+    }
   }
 }
 
@@ -428,7 +449,7 @@ function hallFrame(put, begin, mats, L, w, d, roof) {
     const geo = r ? bx(0.05, 0.22, 0.9, 'z') : bx(0.9, 0.22, 0.05, 'x');
     put(geo, mats.timber, T(cx + a * 0.5, y + 0.45 + k * 0.27, cz + b * 0.5, r ? 0 : 0.5 * b, r ? -0.5 * a : 0));
   }
-  const cap = fitUV(new THREE.ConeGeometry(0.92, 0.75, 4, 1, false).rotateY(Math.PI / 4), 3.6);
+  const cap = fitUV(new THREE.ConeGeometry(0.92, 0.75, 4, 1, false).rotateY(Math.PI / 4), mats.roof.userData.roofing.tu);
   put(cap, mats.roof, T(cx, y + 1.25 + 0.375, cz));
   put(new THREE.CylinderGeometry(0.025, 0.025, 1.0, 6), L.iron, T(cx, y + 2.1, cz));
   put(new THREE.SphereGeometry(0.07, 10, 8), L.iron, T(cx, y + 1.95, cz));

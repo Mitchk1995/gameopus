@@ -1,0 +1,80 @@
+{
+  "url": "https://upload.wikimedia.org/wikipedia/commons/7/7c/Kale_and_Cabbage_in_Raised_Garden_Beds_%2849200262267%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+  "descriptionurl": "https://commons.wikimedia.org/wiki/File:Kale_and_Cabbage_in_Raised_Garden_Beds_(49200262267).jpg",
+  "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=84937145",
+  "extmetadata": {
+    "DateTime": {
+      "value": "2019-12-16 01:45:32",
+      "source": "mediawiki-metadata",
+      "hidden": ""
+    },
+    "ObjectName": {
+      "value": "Kale and Cabbage in Raised Garden Beds (49200262267)",
+      "source": "mediawiki-metadata"
+    },
+    "CommonsMetadataExtension": {
+      "value": 1.2,
+      "source": "extension",
+      "hidden": ""
+    },
+    "Categories": {
+      "value": "Brassica oleracea|Cabbage|CC-Zero|Vegetable gardens|Flickr images reviewed by FlickreviewR 2",
+      "source": "commons-categories",
+      "hidden": ""
+    },
+    "Assessments": {
+      "value": "",
+      "source": "commons-categories",
+      "hidden": ""
+    },
+    "ImageDescription": {
+      "value": "ACES | Bruce Dupree",
+      "source": "commons-desc-page"
+    },
+    "DateTimeOriginal": {
+      "value": "2016-10-02 16:13",
+      "source": "commons-desc-page"
+    },
+    "Credit": {
+      "value": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/photos/alabama_extension/49200262267/\">Kale and Cabbage in Raised Garden Beds</a>",
+      "source": "commons-desc-page"
+    },
+    "Artist": {
+      "value": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/people/184594136@N08\">Alabama Extension</a>",
+      "source": "commons-desc-page"
+    },
+    "LicenseShortName": {
+      "value": "CC0",
+      "source": "commons-desc-page",
+      "hidden": ""
+    },
+    "UsageTerms": {
+      "value": "Creative Commons Zero, Public Domain Dedication",
+      "source": "commons-desc-page"
+    },
+    "AttributionRequired": {
+      "value": "false",
+      "source": "commons-desc-page",
+      "hidden": ""
+    },
+    "LicenseUrl": {
+      "value": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "source": "commons-desc-page"
+    },
+    "Copyrighted": {
+      "value": "True",
+      "source": "commons-desc-page",
+      "hidden": ""
+    },
+    "Restrictions": {
+      "value": "",
+      "source": "commons-desc-page",
+      "hidden": ""
+    },
+    "License": {
+      "value": "cc0",
+      "source": "commons-templates",
+      "hidden": ""
+    }
+  }
+}

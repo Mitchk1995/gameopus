@@ -23,6 +23,7 @@ import { Chat } from './chat.js';
 import { QuestUI } from '../ui/questui.js';
 import { AimRig } from '../actors/aim.js';
 import { Ranged } from './ranged.js';
+import { EquipmentAppearance } from '../actors/equipment.js';
 
 // The game on top of the world: what you're looking at and can use, skilling loops
 // that run on 0.6 s ticks, the inventory and bank, shops, villagers and saving.
@@ -95,6 +96,9 @@ export class Game {
     this.state.skills.listeners.add(({ after, before }) => after > before && this.audio.play('levelup'));
     this.#hand();
     this.#showHeld();
+    this.appearance = new EquipmentAppearance(this.hero, assets);
+    this.appearance.update(this.state.equip);
+    this.state.listeners.add((what) => what === 'equip' && this.appearance.update(this.state.equip));
     // Put the player back where they left off, if that spot is from the world as it is laid out now.
     const p = this.state.pos;
     if (p && Number.isFinite(p.x) && p.layout === LAYOUT) this.player.spawn(p.x, p.z, p.yaw ?? SPAWN.facing);
@@ -145,10 +149,11 @@ export class Game {
   save() {
     // Down in the Old Warren the player's position is in the dungeon's own space: save the cave
     // mouth instead, where leaving the dungeon puts you.
-    const e = this.realm === 'dungeon' ? this.resources.caveExit : null;
+    const dead = this.player.state === 'dead' || this.state.hp <= 0;
+    const e = dead ? SPAWN : this.realm === 'dungeon' ? this.resources.caveExit : null;
     const at = e ? { x: e.x, z: e.z, yaw: e.facing } : { x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw };
     this.state.pos = { x: +at.x.toFixed(2), z: +at.z.toFixed(2), yaw: +at.yaw.toFixed(3), layout: LAYOUT };
-    this.state.save();
+    this.state.save(dead ? { hp: this.state.maxHp } : {});
   }
 
   // ------------------------------------------------------------ interface state
@@ -203,7 +208,7 @@ export class Game {
     // No prompt for what you're already doing.
     const busyWith = this.activity && this.activity.target === this.target;
     this.hud.setPrompt(this.target && !busyWith ? this.#prompt(this.target) : null);
-    if (input.hit('KeyE')) {
+    if (input.hit('KeyE') && this.player.state !== 'dead') {
       if (this.activity?.strike) this.activity.onStrike();
       else if (this.target && !(this.activity && this.activity.target === this.target)) this.#interact(this.target);
     }
@@ -222,6 +227,7 @@ export class Game {
       for (const n of this.npcs) n.update(dt, this.player);
       this.resources.update(dt);
       this.world.village.update(dt);
+      this.world.lakeside?.update(dt);
       this.world.sites.step(dt);
     }
     this.fight.update(dt);
@@ -259,7 +265,14 @@ export class Game {
     const cam = this.camera.position, fwd = this.rig.forward(new THREE.Vector3());
     const P = this.player.pos;
     let best = null, bestT = Infinity;
-    const cands = this.#candidates();
+    const cands = this.#candidates().filter((c) => {
+      if (c.kind === 'npc' && !this.#canSeeNpc(c.npc)) return false;
+      if (c.access) {
+        const eye = P.clone().add(new THREE.Vector3(0, 1.35, 0));
+        if (this.activeWorld.lineOfSight(eye, c.access, 0.03) < 0.99) return false;
+      }
+      return true;
+    });
     for (const c of cands) {
       const reachGap = Math.hypot(c.x - P.x, c.z - P.z) - (c.r || 0);
       if (reachGap > c.reach) continue;
@@ -283,6 +296,17 @@ export class Game {
       }
     }
     return best;
+  }
+
+  #canSeeNpc(npc) {
+    const from = this.player.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
+    const to = npc.pos.clone().add(new THREE.Vector3(0, 1.2, 0));
+    const ray = to.clone().sub(from), distance = ray.length();
+    if (distance < 0.6) return true;
+    // Stop before a standing villager's own collision circle; only the wall or
+    // door between the two people should block a conversation.
+    to.addScaledVector(ray, -0.52 / distance);
+    return this.activeWorld.lineOfSight(from, to, 0.03) >= 0.99;
   }
 
   #prompt(t) {
@@ -526,6 +550,7 @@ export class Game {
     this.resources.add({ kind: 'station', station: 'well', name: 'Well', verb: 'Draw water at', x: w.x, y: VILLAGE.y + 0.9, z: w.z, r: 1.2, h: 1.8, reach: 2.4 });
     // Doors swing on E; private houses only answer a knock.
     for (const d of this.world.village.doors) this.resources.add(d.target);
+    for (const target of this.world.lakeside?.interactables || []) this.resources.add(target);
     // The notices out in the vale: the ways out, the signposts, the sites' name boards.
     for (const s of this.world.sites.interactables) this.resources.add(s);
   }
@@ -698,20 +723,30 @@ export class Game {
       clip, interval: TICK * ticks, tool, ticksFirst: 1,
       tick: () => {
         if (!can() || made >= qty) return this.stop();
-        this.audio.play(r.cook ? 'sizzle' : skill === 'smithing' && tool === 'hammer' ? 'hammer' : skill === 'smithing' ? 'fire' : 'click', target);
-        for (const [id, n] of needs) this.state.inv.remove(id, n);
-        made++;
-        if (r.cook) {
+        const burned = r.cook && (() => {
           const c = r.cook, lvl = this.state.skills.level('cooking');
           const burn = lvl >= c.stopBurn ? 0 : c.burn * (1 - (lvl - c.level) / (c.stopBurn - c.level));
-          if (Math.random() < burn) {
-            this.state.inv.add('burnt_fish', 1);
-            this.panels.message('You accidentally burn it.', 'bad');
-          } else this.#gain(r.out, 1, 'cooking', c.xp, `You cook the ${ITEMS[c.raw].name.replace('Raw ', '').toLowerCase()}.`);
-        } else if (r.success !== undefined && Math.random() > r.success) {
+          return Math.random() < burn;
+        })();
+        const failed = !r.cook && r.success !== undefined && Math.random() > r.success;
+        const out = burned ? 'burnt_fish' : r.out;
+        if (!this.state.inv.exchange(needs, failed ? [] : [[out, r.n || 1]])) {
+          this.panels.message('Your pack is too full to hold what you make.', 'bad');
+          return this.stop();
+        }
+        this.audio.play(r.cook ? 'sizzle' : skill === 'smithing' && tool === 'hammer' ? 'hammer' : skill === 'smithing' ? 'fire' : 'click', target);
+        made++;
+        if (r.cook) {
+          const c = r.cook;
+          if (burned) this.panels.message('You accidentally burn it.', 'bad');
+          else {
+            this.state.skills.add('cooking', c.xp);
+            this.pets.roll('cooking');
+            this.panels.message(`You cook the ${ITEMS[c.raw].name.replace('Raw ', '').toLowerCase()}.`);
+          }
+        } else if (failed) {
           this.panels.message('The ore is too impure and you fail to refine it.', 'bad');
         } else {
-          this.state.inv.add(r.out, r.n || 1);
           if (skill) this.state.skills.add(skill, r.xp);
           this.panels.message(text || `You make ${aOrSome(ITEMS[r.out].name.toLowerCase(), r.n)}.`);
         }
@@ -773,39 +808,43 @@ export class Game {
   }
 
   equip(i) {
-    const s = this.state.inv.slots[i], it = ITEMS[s.id];
+    const s = this.state.inv.slots[i], it = s && ITEMS[s.id];
+    if (!it?.equip) return false;
     const miss = this.state.unmet(s.id);
     if (miss) return this.panels.message(`You need ${SKILL[miss.skill].name} level ${miss.lvl} to ${it.equip === 'weapon' ? 'wield' : 'wear'} that.`, 'bad');
     const slot = it.equip;
     if (slot === 'ammo') {
-      const n = s.n;
-      if (this.state.equip.ammo && this.state.equip.ammo !== s.id) this.unequip('ammo');
-      this.state.inv.remove(s.id, n, i);
+      const n = s.n, old = this.state.equip.ammo, same = old === s.id;
+      const give = old && !same ? [[old, this.state.ammo]] : [];
+      if (!this.state.inv.exchange([[s.id, n]], give, i)) return this.panels.message('You have no room in your pack.', 'bad');
       this.state.equip.ammo = s.id;
-      this.state.ammo += n;
+      this.state.ammo = (same ? this.state.ammo : 0) + n;
     } else {
-      this.state.inv.remove(s.id, 1, i);
-      const old = this.state.equip[slot];
-      if (old) this.state.inv.add(old, 1);
+      const removedSlots = [slot];
+      if (it.twoHanded && this.state.equip.shield) removedSlots.push('shield');
+      if (slot === 'shield' && ITEMS[this.state.equip.weapon]?.twoHanded) removedSlots.push('weapon');
+      const give = removedSlots.map((key) => this.state.equip[key]).filter(Boolean).map((id) => [id, 1]);
+      if (!this.state.inv.exchange([[s.id, 1]], give, i)) return this.panels.message('You have no room in your pack.', 'bad');
+      for (const key of removedSlots) this.state.equip[key] = null;
       this.state.equip[slot] = s.id;
-      if (it.twoHanded && this.state.equip.shield) this.unequip('shield');
-      if (slot === 'shield' && ITEMS[this.state.equip.weapon]?.twoHanded) this.unequip('weapon');
     }
     this.panels.renderWorn();
     this.#showHeld();
     this.state.changed('equip');
+    return true;
   }
 
   unequip(slot) {
     const id = this.state.equip[slot];
     if (!id) return;
     const n = slot === 'ammo' ? this.state.ammo : 1;
-    if (this.state.inv.room(id) < (ITEMS[id].stack ? 1 : n)) return this.panels.message('You have no room in your pack.', 'bad');
-    this.state.inv.add(id, n);
+    if (!this.state.inv.exchange([], [[id, n]])) return this.panels.message('You have no room in your pack.', 'bad');
     this.state.equip[slot] = null;
     if (slot === 'ammo') this.state.ammo = 0;
     this.panels.renderWorn();
     this.#showHeld();
+    this.state.changed('equip');
+    return true;
   }
 
   #useOn(a, b) {
@@ -894,12 +933,10 @@ export class Game {
             if (!bought) this.panels.message("You don't have enough coins.", 'bad');
             break;
           }
-          if (!this.state.inv.room(s.id)) {
+          if (!this.state.inv.exchange([['coins', s.price]], [[s.id, 1]])) {
             this.panels.message("You don't have enough inventory space.", 'bad');
             break;
           }
-          this.state.inv.remove('coins', s.price);
-          this.state.inv.add(s.id, 1);
           s.n--;
           bought++;
         }
@@ -915,8 +952,10 @@ export class Game {
     if (s.id === 'coins') return;
     if (!this.#buys(this.currentShop, s.id)) return this.panels.message(`${this.currentShop.owner} isn't interested in that.`, 'bad');
     const id = s.id, price = this.#sellPrice(id);
-    const count = this.state.inv.remove(id, Math.min(n, this.state.inv.count(id)), i);
-    if (price * count > 0) this.state.inv.add('coins', price * count);
+    const count = Math.min(n, this.state.inv.count(id));
+    if (!this.state.inv.exchange([[id, count]], price * count > 0 ? [['coins', price * count]] : [], i)) {
+      return this.panels.message('You need room in your pack for the coins.', 'bad');
+    }
     const stock = this.currentShop.stock.find((x) => x.id === id);
     if (stock) stock.n += count;
     else if (this.currentShop.buys === 'all') this.currentShop.stock.push({ id, n: count, price: Math.max(1, Math.ceil(ITEMS[id].value * 1.2)) });
@@ -936,6 +975,9 @@ export class Game {
       } else if (a.station) {
         const st = this.resources.items.find((o) => o.station === a.station);
         Object.assign(d, { x: st.x + a.dx, z: st.z + a.dz, facing: a.facing });
+      } else if (a.routine) {
+        const routine = a.routine;
+        Object.assign(d, { routine, x: routine[0].x, z: routine[0].z, facing: routine[0].facing, routineDoor: this.world.lakeside?.door });
       } else if (a.route) {
         const route = a.reverse ? [...a.route].reverse() : a.route;
         Object.assign(d, { route, x: route[0][0], z: route[0][1] });
@@ -946,11 +988,14 @@ export class Game {
       } else Object.assign(d, { x: a.x, z: a.z, facing: a.facing ?? 0 });
       const ch = await this.factory.create(p.look);
       this.scene.add(ch.root);
-      this.npcs.push(new Npc(d, ch, this.world));
+      const npc = new Npc(d, ch, this.world);
+      npc.neighbours = this.npcs;
+      this.npcs.push(npc);
     }
     // The bank counter doubles as a booth.
     const counter = v.at(v.places.bank, 0, -1.4);
     this.resources.add({ kind: 'station', station: 'bank', name: 'Bank counter', verb: 'Bank at', x: counter.x, y: VILLAGE.y + 0.9, z: counter.z, r: 1.2, h: 1.2, reach: 2.0 });
+    if (this.world.lakeside) this.world.lakeside.occupants = () => [this.player, ...this.npcs];
   }
 
   #talkTo(npc) {

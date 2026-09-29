@@ -1,7 +1,7 @@
 # Art credits
 
-Everything here is free for any use. `scripts/fetch-assets.mjs` downloads and optimizes it;
-nothing in this folder needs an account or a purchase to re-create.
+Sources and licenses for the bundled assets are listed below. Most third-party game assets
+are CC0; fonts and tree textures have their own included licenses. No purchased assets are required.
 
 | Folder | What | Source | Licence |
 |---|---|---|---|
@@ -14,6 +14,8 @@ nothing in this folder needs an account or a purchase to re-create.
 | `sky/`, `ground/` | Kloofendal 48d partly cloudy (pure sky) HDRI; ground textures | Poly Haven, https://polyhaven.com | CC0 |
 | `trees/` | Bark and leaf textures from ez-tree | Daniel Greenheck, https://github.com/dgreenheck/ez-tree | MIT |
 | `world/` | Height and ground maps baked by `scripts/bake-world.mjs` | this project | (project) |
+| `fonts/` | Cinzel and Alegreya Sans, bundled by `scripts/fetch-fonts.mjs` | Google Fonts, https://fonts.google.com | SIL Open Font License 1.1; licenses included in `fonts/` |
+| `lakeside/` | Original cottage, furniture and cabbage garden; CC0 stone, slate, plaster, oak textures and scanned nettle plants | This project and Poly Haven, https://polyhaven.com; detailed attribution and source files in `art/lakeside-cottage/REFERENCE-NOTES.md` | Original project geometry plus CC0 source materials/plant |
 
 Looked at for animations and not shipped (see DESIGN.md, "Art sources"): KayKit Character
 Animations by Kay Lousberg (CC0, https://kaylousberg.itch.io/kaykit-character-animations);

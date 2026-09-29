@@ -1,0 +1,755 @@
+{
+  "asset": "rowan-cottage",
+  "version": 2,
+  "units": "metres",
+  "upAxis": "Y",
+  "front": "+Z",
+  "footprint": [
+    8,
+    7
+  ],
+  "floorY": 0,
+  "eavesY": 3.15,
+  "ridgeY": 5.55,
+  "chimneyY": 6.82,
+  "doorway": {
+    "center": [
+      0,
+      1.2,
+      3.5
+    ],
+    "width": 1.5,
+    "height": 2.4,
+    "leafWidth": 1.49,
+    "leafHeight": 2.35,
+    "leafThickness": 0.08,
+    "hinge": [
+      -0.75,
+      0,
+      3.56
+    ],
+    "node": "door_leaf",
+    "closedRotationY": 0,
+    "openRotationY": 1.5707963267948966,
+    "opens": "inward; tip moves toward -Z"
+  },
+  "hearthFire": [
+    -3.4,
+    0.4,
+    -0.5
+  ],
+  "boundsExpected": {
+    "x": [
+      -4.47,
+      4.47
+    ],
+    "y": [
+      -0.31,
+      6.82
+    ],
+    "z": [
+      -4.02,
+      5.15
+    ]
+  },
+  "navigation": {
+    "clearCentreLane": [
+      [
+        -0.52,
+        -2.3
+      ],
+      [
+        0.98,
+        3.5
+      ]
+    ],
+    "hearthStop": [
+      -2.05,
+      0,
+      -0.5
+    ],
+    "tableStop": [
+      1,
+      0,
+      1
+    ],
+    "porchStop": [
+      2,
+      0,
+      4.8
+    ]
+  },
+  "colliders": [
+    {
+      "id": "wall_front",
+      "center": [
+        -3.59,
+        1.575,
+        3.5
+      ],
+      "size": [
+        1.0999999999999996,
+        3.15,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_front",
+      "center": [
+        -2.45,
+        0.51,
+        3.5
+      ],
+      "size": [
+        1.18,
+        1.02,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_front",
+      "center": [
+        -2.45,
+        2.76,
+        3.5
+      ],
+      "size": [
+        1.18,
+        0.7799999999999998,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_front",
+      "center": [
+        -1.3050000000000002,
+        1.575,
+        3.5
+      ],
+      "size": [
+        1.11,
+        3.15,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_front",
+      "center": [
+        0.0,
+        2.775,
+        3.5
+      ],
+      "size": [
+        1.5,
+        0.75,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_front",
+      "center": [
+        1.3050000000000002,
+        1.575,
+        3.5
+      ],
+      "size": [
+        1.11,
+        3.15,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_front",
+      "center": [
+        2.45,
+        0.51,
+        3.5
+      ],
+      "size": [
+        1.18,
+        1.02,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_front",
+      "center": [
+        2.45,
+        2.76,
+        3.5
+      ],
+      "size": [
+        1.18,
+        0.7799999999999998,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_front",
+      "center": [
+        3.59,
+        1.575,
+        3.5
+      ],
+      "size": [
+        1.0999999999999996,
+        3.15,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_back",
+      "center": [
+        -3.55,
+        1.575,
+        -3.5
+      ],
+      "size": [
+        1.1799999999999997,
+        3.15,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_back",
+      "center": [
+        -2.4,
+        0.525,
+        -3.5
+      ],
+      "size": [
+        1.1199999999999999,
+        1.05,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_back",
+      "center": [
+        -2.4,
+        2.7249999999999996,
+        -3.5
+      ],
+      "size": [
+        1.1199999999999999,
+        0.8500000000000001,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_back",
+      "center": [
+        0.029999999999999916,
+        1.575,
+        -3.5
+      ],
+      "size": [
+        3.74,
+        3.15,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_back",
+      "center": [
+        2.4699999999999998,
+        0.525,
+        -3.5
+      ],
+      "size": [
+        1.1400000000000001,
+        1.05,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_back",
+      "center": [
+        2.4699999999999998,
+        2.7249999999999996,
+        -3.5
+      ],
+      "size": [
+        1.1400000000000001,
+        0.8500000000000001,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_back",
+      "center": [
+        3.59,
+        1.575,
+        -3.5
+      ],
+      "size": [
+        1.0999999999999996,
+        3.15,
+        0.28
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_left",
+      "center": [
+        -4,
+        1.575,
+        -1.105
+      ],
+      "size": [
+        0.28,
+        3.15,
+        4.51
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_left",
+      "center": [
+        -4,
+        0.51,
+        1.75
+      ],
+      "size": [
+        0.28,
+        1.02,
+        1.2000000000000002
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_left",
+      "center": [
+        -4,
+        2.76,
+        1.75
+      ],
+      "size": [
+        0.28,
+        0.7799999999999998,
+        1.2000000000000002
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_left",
+      "center": [
+        -4,
+        1.575,
+        2.855
+      ],
+      "size": [
+        0.28,
+        3.15,
+        1.0099999999999998
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_right",
+      "center": [
+        4,
+        1.575,
+        -1.105
+      ],
+      "size": [
+        0.28,
+        3.15,
+        4.51
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_right",
+      "center": [
+        4,
+        0.51,
+        1.75
+      ],
+      "size": [
+        0.28,
+        1.02,
+        1.2000000000000002
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_right",
+      "center": [
+        4,
+        2.76,
+        1.75
+      ],
+      "size": [
+        0.28,
+        0.7799999999999998,
+        1.2000000000000002
+      ],
+      "floor": false
+    },
+    {
+      "id": "wall_right",
+      "center": [
+        4,
+        1.575,
+        2.855
+      ],
+      "size": [
+        0.28,
+        3.15,
+        1.0099999999999998
+      ],
+      "floor": false
+    },
+    {
+      "id": "interior_floor",
+      "center": [
+        0,
+        -0.08,
+        0
+      ],
+      "size": [
+        7.74,
+        0.16,
+        6.74
+      ],
+      "floor": true
+    },
+    {
+      "id": "porch_floor",
+      "center": [
+        0,
+        -0.06,
+        4.25
+      ],
+      "size": [
+        3.05,
+        0.15,
+        1.8
+      ],
+      "floor": true
+    },
+    {
+      "id": "front_window_glazing",
+      "center": [
+        -2.45,
+        1.695,
+        3.5
+      ],
+      "size": [
+        1.18,
+        1.35,
+        0.06
+      ],
+      "floor": false
+    },
+    {
+      "id": "front_window_glazing",
+      "center": [
+        2.45,
+        1.695,
+        3.5
+      ],
+      "size": [
+        1.18,
+        1.35,
+        0.06
+      ],
+      "floor": false
+    },
+    {
+      "id": "rear_window_glazing",
+      "center": [
+        -2.4,
+        1.6749999999999998,
+        -3.5
+      ],
+      "size": [
+        1.12,
+        1.2499999999999998,
+        0.06
+      ],
+      "floor": false
+    },
+    {
+      "id": "rear_window_glazing",
+      "center": [
+        2.47,
+        1.6749999999999998,
+        -3.5
+      ],
+      "size": [
+        1.12,
+        1.2499999999999998,
+        0.06
+      ],
+      "floor": false
+    },
+    {
+      "id": "side_window_glazing",
+      "center": [
+        -4,
+        1.695,
+        1.75
+      ],
+      "size": [
+        0.06,
+        1.35,
+        1.18
+      ],
+      "floor": false
+    },
+    {
+      "id": "side_window_glazing",
+      "center": [
+        4,
+        1.695,
+        1.75
+      ],
+      "size": [
+        0.06,
+        1.35,
+        1.18
+      ],
+      "floor": false
+    },
+    {
+      "id": "porch_post",
+      "center": [
+        -1.18,
+        1.2,
+        4.87
+      ],
+      "size": [
+        0.2,
+        2.4,
+        0.2
+      ],
+      "floor": false
+    },
+    {
+      "id": "porch_post",
+      "center": [
+        1.18,
+        1.2,
+        4.87
+      ],
+      "size": [
+        0.2,
+        2.4,
+        0.2
+      ],
+      "floor": false
+    },
+    {
+      "id": "hearth",
+      "center": [
+        -3.36,
+        1.1,
+        -0.5
+      ],
+      "size": [
+        1.23,
+        2.2,
+        1.86
+      ],
+      "floor": false
+    },
+    {
+      "id": "table",
+      "center": [
+        2.3,
+        0.43,
+        0.8
+      ],
+      "size": [
+        1.72,
+        0.86,
+        1.03
+      ],
+      "floor": false
+    },
+    {
+      "id": "dining_chair",
+      "center": [
+        2.37,
+        0.53,
+        -0.02
+      ],
+      "size": [
+        0.56,
+        1.06,
+        0.57
+      ],
+      "floor": false
+    },
+    {
+      "id": "mending_chair",
+      "center": [
+        2.36,
+        0.53,
+        1.67
+      ],
+      "size": [
+        0.56,
+        1.06,
+        0.57
+      ],
+      "floor": false
+    },
+    {
+      "id": "pantry",
+      "center": [
+        -3.46,
+        0.99,
+        -2.5
+      ],
+      "size": [
+        0.6,
+        1.98,
+        1.8
+      ],
+      "floor": false
+    },
+    {
+      "id": "bed",
+      "center": [
+        2.58,
+        0.42,
+        -2.04
+      ],
+      "size": [
+        1.72,
+        0.84,
+        2.19
+      ],
+      "floor": false
+    },
+    {
+      "id": "chest",
+      "center": [
+        3.12,
+        0.395,
+        -0.3
+      ],
+      "size": [
+        1.1,
+        0.79,
+        0.56
+      ],
+      "floor": false
+    },
+    {
+      "id": "bedside_stool",
+      "center": [
+        1.2,
+        0.25,
+        -2.48
+      ],
+      "size": [
+        0.49,
+        0.5,
+        0.49
+      ],
+      "floor": false
+    },
+    {
+      "id": "net_basket",
+      "center": [
+        2.64,
+        0.27,
+        3.96
+      ],
+      "size": [
+        0.78,
+        0.54,
+        0.78
+      ],
+      "floor": false
+    },
+    {
+      "id": "herb_pot",
+      "center": [
+        -2.34,
+        0.18,
+        3.96
+      ],
+      "size": [
+        0.52,
+        0.36,
+        0.52
+      ],
+      "floor": false
+    },
+    {
+      "id": "herb_pot",
+      "center": [
+        -3.2,
+        0.18,
+        3.87
+      ],
+      "size": [
+        0.52,
+        0.36,
+        0.52
+      ],
+      "floor": false
+    }
+  ],
+  "materialSources": [
+    {
+      "id": "plaster_stone_wall_02",
+      "url": "https://polyhaven.com/a/plaster_stone_wall_02",
+      "licence": "CC0"
+    },
+    {
+      "id": "old_stone_wall_02",
+      "url": "https://polyhaven.com/a/old_stone_wall_02",
+      "licence": "CC0"
+    },
+    {
+      "id": "oak_wood_planks",
+      "url": "https://polyhaven.com/a/oak_wood_planks",
+      "licence": "CC0"
+    },
+    {
+      "id": "white_plaster_rough_01",
+      "url": "https://polyhaven.com/a/white_plaster_rough_01",
+      "licence": "CC0"
+    },
+    {
+      "id": "roof_slates_03",
+      "url": "https://polyhaven.com/a/roof_slates_03",
+      "licence": "CC0"
+    },
+    {
+      "id": "rough_linen",
+      "url": "https://polyhaven.com/a/rough_linen",
+      "licence": "CC0"
+    }
+  ],
+  "integrationNotes": [
+    "Load all static meshes with castShadow/receiveShadow. door_leaf is an Empty carrying its door mesh children; rotate it around local Y.",
+    "Collider positions and full sizes use model-space game XYZ; world integration owns static body registration.",
+    "floor colliders have walkable tops; other boxes are solid. Glazing boxes close real window openings.",
+    "roof_* and upper_* can be culled on interior views if needed, though this asset uses an open rafter ceiling.",
+    "Exclude door descendants from static camera triangle index; retain a dynamic closed-door blocker. Glass and fine exterior ornament need no camera blocking."
+  ],
+  "triangles": 29980,
+  "meshCount": 38
+}

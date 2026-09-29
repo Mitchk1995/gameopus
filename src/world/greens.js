@@ -503,6 +503,11 @@ export function cabbageGeometry(seed) {
   head.translate(0, R * 0.78, 0);
   const uv = head.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.12 + uv.getX(i) * 0.26, 1 - (0.25 + uv.getY(i) * 0.5));
+  // The shared cabbage material uses vertex colours, so the head needs the same
+  // attribute as its leaves instead of relying on an absent shader input.
+  const tint = new Float32Array(head.attributes.position.count * 3);
+  for (let i = 0; i < tint.length; i += 3) tint.set([0.84, 0.94, 0.88], i);
+  head.setAttribute('color', new THREE.BufferAttribute(tint, 3));
   head.userData.wuv = true;
   return { leaves, head };
 }

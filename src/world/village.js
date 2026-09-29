@@ -4,7 +4,7 @@ import { buildHouse, doorLantern, rng, STOREY } from './buildings.js';
 import { VILLAGE, ROADS, SPAWN, MINE_ENTRANCE, BANDIT_CAMP, BRIDGE } from './map.js';
 import * as A from './ashford.js';
 import { TownKit, boardTexture, texturedMaterial } from './townkit.js';
-import { placeProp } from './props.js';
+import { placeProp, fitUV } from './props.js';
 import { Door } from './doors.js';
 import { wallTower } from './townwall.js';
 import * as G from './grounds.js';
@@ -167,7 +167,7 @@ export class Village {
       const put = (geo, mat, lx, y, lz, rx = 0) => { const w = q(lx, lz); this.tk.put(geo, mat, w.x, p.y + y, w.z, p.rot, 1, 1, 1, rx, 0); };
       for (const k of [-1, 1]) put(new THREE.BoxGeometry(0.22, 0.42, 0.5), dressed, door.lx + k * 0.95, 2.62, p.d / 2 + 0.25);
       put(new THREE.BoxGeometry(2.3, 0.14, 0.66), dressed, door.lx, 3.04, p.d / 2 + 0.33);
-      put(new THREE.BoxGeometry(2.4, 0.06, 0.78), slate, door.lx, 3.18, p.d / 2 + 0.33, -0.22);
+      put(fitUV(new THREE.BoxGeometry(2.4, 0.06, 0.78), slate.userData.roofing.tu), slate, door.lx, 3.18, p.d / 2 + 0.33, -0.22);
       const tab = q(door.lx, p.d / 2 + 0.03);
       this.tk.begin('bank name', tab.x, tab.z, false, true);
       this.tk.put(new THREE.BoxGeometry(1.7, 0.42, 0.06), L.carved('COUNTING HOUSE', { w: 512, h: 128 }), tab.x, p.y + 3.62, tab.z, p.rot);
@@ -189,6 +189,7 @@ export class Village {
       const v = new THREE.Vector3(0, 0, c.z).applyMatrix4(m);
       const sh = this.world.colliders.addBox(v.x, v.z, 0.7, 0.3, P.store.rot, m.elements[13] - 0.5, m.elements[13] + 1.0);
       sh.floor = true;
+      sh.owner = `building${P.store.key}`; // the hinged counter is part of the store wall
     }
     // The inn's yard arch, between the inn and the stable, onto Bridge Street.
     const stable = H('stable');
@@ -524,7 +525,7 @@ export class Village {
     put(inn, 'Mug', -1.6, -3.85, 0.4, it - y, false);
     put(inn, 'Mug', -1.2, -3.95, 2.1, it - y, false);
     put(inn, 'Bottle_1', 0.4, -3.9, 0, it - y, false);
-    put(inn, 'Barrel_Holder', 1.9, -5.25, 0);
+    put(inn, 'Barrel_Holder', 2.9, -5.25, 0); // keep the back door into the yard clear
     put(inn, 'Shelf_Small_Bottles', -3.0, -inn.d / 2 + 0.28, 0, 1.3, false);
     // Tables with chairs and a bench.
     put(inn, 'Table_Large', 0.4, 1.4, Math.PI / 2);

@@ -1,30 +1,51 @@
-// Puts the app `npm run package` just built (release/build/win-unpacked) where the owner plays it:
-// release/Aldermere/Aldermere.exe, replacing the previous copy. If that folder can't be replaced
-// (the game is open, or another program still holds a file in it), the new build goes next to it
-// as release/Aldermere-<date>-<time> and this says so, so a packaging run never fails half-way
-// and never leaves the owner's copy half-deleted.
-import { existsSync } from 'node:fs';
+// Swap in a complete desktop build, preserving the previous one until placement
+// succeeds. An in-use app stays put while the new build gets its own launch path.
+import { existsSync, statSync } from 'node:fs';
 import { rename, rm } from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const BUILT = 'release/build/win-unpacked';
-const HOME = 'release/Aldermere';
-
-if (!existsSync(BUILT)) {
-  console.error(`place-app: nothing at ${BUILT}; run electron-builder first`);
-  process.exit(1);
-}
-let dest = HOME;
-if (existsSync(HOME)) {
-  // Moving the folder aside is all-or-nothing on Windows: it fails if any file in it is in use.
-  const old = `release/.old-${Date.now()}`;
-  try {
-    await rename(HOME, old);
-    await rm(old, { recursive: true, force: true }).catch(() => console.warn(`place-app: couldn't delete ${old}; delete it later`));
-  } catch (e) {
-    const d = new Date(), p = (n) => String(n).padStart(2, '0');
-    dest = `release/Aldermere-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
-    console.warn(`place-app: ${HOME} is in use (${e.code}), so this build goes to ${dest} instead`);
+export async function placeApp({ root = process.cwd(), move = rename, remove = rm, log = console } = {}) {
+  const release = path.resolve(root, 'release');
+  const built = path.join(release, 'build', 'win-unpacked');
+  const usual = path.join(release, 'Aldermere');
+  if (!existsSync(built) || !statSync(built).isDirectory() || !existsSync(path.join(built, 'Aldermere.exe'))) {
+    throw new Error(`No complete app at ${built}; run electron-builder first`);
   }
+  const stamp = `${Date.now()}-${process.pid}`;
+  let destination = usual, previous = null;
+  if (existsSync(usual)) {
+    const backup = path.join(release, `.old-${stamp}`);
+    try {
+      await move(usual, backup);
+      previous = backup;
+    } catch (error) {
+      destination = path.join(release, `Aldermere-${stamp}`);
+      log.warn(`place-app: current app is in use (${error.code}); placing the new build at ${destination}`);
+    }
+  }
+  try {
+    await move(built, destination);
+  } catch (error) {
+    if (previous) {
+      try { await move(previous, usual); }
+      catch (restoreError) {
+        throw new Error(`New build could not be placed (${error.message}). Previous app is preserved at ${previous}; restoration failed (${restoreError.message}).`);
+      }
+    }
+    throw new Error(`New build could not be placed; previous app preserved. ${error.message}`);
+  }
+
+  if (previous) {
+    // Verify the exact backup remains inside this release directory before cleanup.
+    if (path.dirname(previous) !== release || !path.basename(previous).startsWith('.old-')) throw new Error('Invalid app backup path');
+    await remove(previous, { recursive: true, force: true }).catch(() => log.warn(`place-app: previous backup remains at ${previous}`));
+  }
+  log.log(`place-app: the game is at ${path.join(destination, 'Aldermere.exe')}`);
+  return destination;
 }
-await rename(BUILT, dest);
-console.log(`place-app: the game is at ${dest}/Aldermere.exe`);
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try { await placeApp(); }
+  catch (error) { console.error(`place-app: ${error.message}`); process.exitCode = 1; }
+}

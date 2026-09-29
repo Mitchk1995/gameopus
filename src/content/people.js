@@ -7,7 +7,7 @@
 //              (local metres), { station, dx, dz, facing } beside a workstation,
 //              { x, z, facing } in the world, { loop: [radius, angle, points] } for a
 //              walk around the well, or { route: [[x, z], ...] } for a walk along a
-//              path (positions for the town live in src/world/ashford.js)
+//              path; { routine: [{ x, z, wait, facing, idle, door }] } for a household round
 //   persona    who they are, for typed chat (Claude answers in their voice)
 //   dialogue   the reply tree (see src/game/dialogue.js for the format)
 //
@@ -18,13 +18,15 @@
 // { questBefore }, { done: id }, { has: [item, n] }, { lacks: item },
 // { level: [skill, n] }, { not: condition }, { any: [conditions] }.
 // Effects: { quest: [id, stage] }, { complete: id }, { give / take: [[item, n]] },
-// { shop: id }, { bank: true }.
+// { shop: id }, { bank: true }, { track: id } (guidance without accepting a quest).
 
 import { PEOPLE_AT } from '../world/ashford.js';
+import { LAKESIDE_HOUSEHOLD } from './lakeside-household.js';
 
 const bye = { text: 'Goodbye.', end: true };
 
 export const PEOPLE = [
+  ...LAKESIDE_HOUSEHOLD,
   {
     id: 'aldwyn', name: 'Aldwyn', role: 'banker',
     // Sober and prosperous: a wine-dark coat over black, iron-grey hair neatly parted, a pale indoor face.
@@ -73,8 +75,9 @@ Cheerful, chatty and practical, the first person newcomers ask for advice. Knows
       },
       advice: {
         say: [
-          'Grab an axe and try the trees along the road, or take a pickaxe to the quarry up the north-west road.',
-          'Brom will show you the furnace once you have ore, and Old Tam at the lake can always use a hand.',
+          'Start with Old Tam at the lake jetty, south of town. He has a fish problem, and a great deal to say about it.',
+          'You already have the basic tools in your pack. Copper and tin come from the mine beside the Old Warren, along the north-west road. Brom has a furnace here in the square.',
+          'Bring a few fish back to the cooking hearth outside the inn. A full belly is better company than a brave speech once you leave the roads.',
         ],
         options: [{ text: "Let's trade.", do: { shop: 'general' } }, bye],
       },
@@ -384,8 +387,13 @@ Sells bread and ale. Knows everyone's business and loves to share it, kindly. Ha
         options: [
           { text: 'What have you got?', do: { shop: 'inn' } },
           { text: 'Heard any rumours?', go: 'rumour' },
+          { text: 'Can I cook something here?', go: 'cooking' },
           bye,
         ],
+      },
+      cooking: {
+        say: ['Of course. The hearth outside is for everyone. Catch a few shrimp at the lake with your net, then bring them here and use the fire.', 'Keep the cooked ones in your pack. Eat when you are hurt, and take a few with you before you trouble the goblins. Burn the first batch and I promise to look the other way.'],
+        options: [{ text: 'What have you got?', do: { shop: 'inn' } }, bye],
       },
       rumour: {
         say: [{ pick: [

@@ -8,6 +8,7 @@ import { buildItem } from '../ui/itemart.js';
 import { Fire } from '../world/effects.js';
 import { BANDIT_CAMP, SPAWN } from '../world/map.js';
 import { placeProp, restY, tag } from '../world/props.js';
+import { meleeReach } from './melee-reach.js';
 
 // Fighting: enemy camps, the player's attacks, blocks and parries, lock-on, stamina,
 // damage and experience, loot on the ground, and dying (you wake at the village well).
@@ -378,7 +379,8 @@ export class Fight {
       if (!e.alive || e.realm !== g.realm) continue;
       const to = new THREE.Vector3(e.pos.x - P.pos.x, 0, e.pos.z - P.pos.z);
       const d = to.length() - e.radius;
-      if (d > move.range + (e === this.swingTarget ? 0.3 : 0)) continue;
+      const range = move.range + (e === this.swingTarget ? 0.3 : 0);
+      if (d > range || !meleeReach(g.activeWorld, P.pos, e.pos, range, 1.8, e.height, e.radius)) continue;
       // The foe under the crosshair counts even if the swing ended a touch off it.
       if (e !== this.swingTarget && to.normalize().dot(fwd) < Math.cos((move.arc * Math.PI) / 180)) continue;
       const kind = move.kind === 'riposte' && e.state !== 'parried' ? 'light' : move.kind;
@@ -457,10 +459,11 @@ export class Fight {
       this.game.rig.shake = 1.2;
       this.game.audio.play('crit', e.pos);
       if (Math.hypot(P.pos.x - cx, P.pos.z - cz) > a.aoe) return;
+      if (!meleeReach(g.activeWorld, e.pos, P.pos, a.aoe, e.height, 1.8, 0, { x: cx, z: cz })) return;
     } else if (d > a.range || to.normalize().dot(fwd) < Math.cos((a.arc * Math.PI) / 180)) {
       g.audio.play('swing', e.pos, 0.7);
       return;
-    }
+    } else if (!meleeReach(g.activeWorld, e.pos, P.pos, a.range, e.height, 1.8, 0.35)) return;
     if (P.invulnerable) {
       const perfect = P.stateTime < PERFECT_DODGE;
       this.ui.splat(at, perfect ? 'Perfect dodge' : 'Dodged', 'word');

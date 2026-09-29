@@ -1,0 +1,288 @@
+{
+  "asset": "elin-garden",
+  "units": "metres",
+  "upAxis": "Y",
+  "placeAtCottageLocal": [
+    -7.5,
+    0,
+    5.8
+  ],
+  "size": [
+    4.21,
+    0.96,
+    3.66
+  ],
+  "soilTop": 0.02,
+  "colliders": [
+    {
+      "id": "garden_border",
+      "center": [
+        -1.9699999999999998,
+        0.045,
+        0
+      ],
+      "size": [
+        0.07,
+        0.2,
+        3.54
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_border",
+      "center": [
+        -0.32999999999999996,
+        0.045,
+        0
+      ],
+      "size": [
+        0.07,
+        0.2,
+        3.54
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_border",
+      "center": [
+        -1.15,
+        0.045,
+        -1.76
+      ],
+      "size": [
+        1.7,
+        0.2,
+        0.065
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_border",
+      "center": [
+        -1.15,
+        0.045,
+        1.76
+      ],
+      "size": [
+        1.7,
+        0.2,
+        0.065
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_corner_peg",
+      "center": [
+        -2.01,
+        0.09,
+        -1.79
+      ],
+      "size": [
+        0.08,
+        0.28,
+        0.08
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_corner_peg",
+      "center": [
+        -2.01,
+        0.09,
+        1.79
+      ],
+      "size": [
+        0.08,
+        0.28,
+        0.08
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_corner_peg",
+      "center": [
+        -0.2899999999999999,
+        0.09,
+        -1.79
+      ],
+      "size": [
+        0.08,
+        0.28,
+        0.08
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_corner_peg",
+      "center": [
+        -0.2899999999999999,
+        0.09,
+        1.79
+      ],
+      "size": [
+        0.08,
+        0.28,
+        0.08
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_soil",
+      "center": [
+        -1.15,
+        -0.035,
+        0
+      ],
+      "size": [
+        1.62,
+        0.11,
+        3.42
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_border",
+      "center": [
+        0.32999999999999996,
+        0.045,
+        0
+      ],
+      "size": [
+        0.07,
+        0.2,
+        3.54
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_border",
+      "center": [
+        1.9699999999999998,
+        0.045,
+        0
+      ],
+      "size": [
+        0.07,
+        0.2,
+        3.54
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_border",
+      "center": [
+        1.15,
+        0.045,
+        -1.76
+      ],
+      "size": [
+        1.7,
+        0.2,
+        0.065
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_border",
+      "center": [
+        1.15,
+        0.045,
+        1.76
+      ],
+      "size": [
+        1.7,
+        0.2,
+        0.065
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_corner_peg",
+      "center": [
+        0.2899999999999999,
+        0.09,
+        -1.79
+      ],
+      "size": [
+        0.08,
+        0.28,
+        0.08
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_corner_peg",
+      "center": [
+        0.2899999999999999,
+        0.09,
+        1.79
+      ],
+      "size": [
+        0.08,
+        0.28,
+        0.08
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_corner_peg",
+      "center": [
+        2.01,
+        0.09,
+        -1.79
+      ],
+      "size": [
+        0.08,
+        0.28,
+        0.08
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_corner_peg",
+      "center": [
+        2.01,
+        0.09,
+        1.79
+      ],
+      "size": [
+        0.08,
+        0.28,
+        0.08
+      ],
+      "floor": true
+    },
+    {
+      "id": "garden_soil",
+      "center": [
+        1.15,
+        -0.035,
+        0
+      ],
+      "size": [
+        1.62,
+        0.11,
+        3.42
+      ],
+      "floor": true
+    }
+  ],
+  "triangles": 46413,
+  "materialSources": [
+    {
+      "id": "nettle_plant",
+      "url": "https://polyhaven.com/a/nettle_plant",
+      "licence": "CC0",
+      "use": "Scanned nettle geometry, leaf maps and cabbage leaf micro-normal detail"
+    },
+    {
+      "id": "farm_soil",
+      "url": "https://polyhaven.com/a/farm_soil",
+      "licence": "CC0"
+    }
+  ],
+  "notes": [
+    "Two low timber raised beds. Centre walkway is clear. Border/soil boxes are walkable; foliage stays soft.",
+    "Cabbages are original curved leaf meshes with visible ribs, based on the CC0 Alabama Extension raised-bed photograph; they are not harvested by this asset alone."
+  ]
+}

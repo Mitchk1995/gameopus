@@ -10,6 +10,7 @@
 // (`surface0`), so a road profile never depends on itself.
 
 import { TOWN, OUTLINE, polyDistance, riseAt, townGround } from './ashford.js';
+import { homeGrade, homeGround, homeClearance } from './lakeside-plan.js';
 
 export const WORLD = { size: 800, half: 400, water: 0 };
 
@@ -1123,7 +1124,7 @@ export function heightAt(x, z) {
   h = gorgeFloorSet(h, x, z);
   // The North Pass's porch is set into the rock at the end of the Highroad.
   h = portalFace(h, x, z);
-  return Math.min(h, 320);
+  return Math.min(homeGrade(h, x, z), 320);
 }
 
 // ------------------------------------------------------------------ ground cover
@@ -1137,7 +1138,7 @@ export function groundAt(x, z) {
   const [tDirt, tCobble] = townGround(x, z);
   // The forecourts of the gatehouse and the toll bar are paved.
   const cobble = Math.min(1, Math.max(tCobble, exitApron(x, z, n)) * (0.86 + 0.28 * n));
-  path = Math.max(path, tDirt * (0.8 + 0.4 * n));
+  path = Math.max(path, tDirt * (0.8 + 0.4 * n), homeGround(x, z));
   let forest = 0;
   for (const f of FORESTS) {
     const d = Math.hypot(x - f.x, z - f.z) / f.r;
@@ -1386,7 +1387,7 @@ const WRECK = (() => {
 // ford, the falls pool, every signpost and warning post, the wrecked cart and the town. Trees, rocks
 // and bushes keep a few metres more than this from them; roads are checked with roadDistance.
 export function siteClearance(x, z) {
-  let d = Infinity;
+  let d = homeClearance(x, z);
   for (const [px, pz, r] of PADS) d = Math.min(d, Math.hypot(x - px, z - pz) - r);
   for (const f of FARMS) d = Math.min(d, fieldDistance(f, x, z) - 1.5);
   for (const e of EXITS) d = Math.min(d, Math.hypot(x - e.x, z - e.z) - 18);

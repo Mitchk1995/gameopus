@@ -1,4 +1,5 @@
 window.__q = {
+  check(ok, message) { if (!ok) throw new Error('FAIL ' + message); },
   said: () => document.querySelector('.talk .said').textContent,
   opts: () => [...document.querySelectorAll('.talk .opt')].map((b) => b.textContent.replace(/^\d+\./, '')),
   click(txt) { const b = [...document.querySelectorAll('.talk .opt')].find((x) => x.textContent.includes(txt)); if (!b) throw new Error('no option ' + txt + ' in ' + this.opts().join('|')); b.click(); },

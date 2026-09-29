@@ -1,0 +1,5 @@
+*.blend1
+*.blend2
+build.log
+garden-build.log
+validation.log

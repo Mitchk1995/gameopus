@@ -26,7 +26,11 @@ async function start() {
   hud.progress(0.9, 'Waking the villagers');
   const factory = new CharacterFactory(assets);
   await factory.loadAnimations();
-  const hero = await factory.create({ outfit: 'male_ranger', body: 'male', hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular', hairColor: 'darkbrown' });
+  const hero = await factory.create({
+    outfit: 'male_peasant', body: 'male', addons: [],
+    hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular', hairColor: 'darkbrown', skin: 'fair',
+    dye: { torso: 0xcfcaaf, arms: 0xcfcaaf, legs: 0x383d3e, feet: 0x453a31 },
+  });
   scene.add(hero.root);
 
   const input = new Input(renderer.domElement);
@@ -80,7 +84,8 @@ async function start() {
   game.tick = (dt) => {
     setPaused(!TEST && !input.locked && !game.uiOpen);
     // Hit-stop and slow motion scale the simulation, not the camera.
-    const sdt = dt * game.timeStep(dt);
+    // Keep the body pose, hit timing and hit-stop on the same clock while paused.
+    const sdt = paused ? 0 : dt * game.timeStep(dt);
     if (!paused) {
       game.update(sdt);
       player.update(sdt, rig.yaw);
