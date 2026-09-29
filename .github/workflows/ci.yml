@@ -42,6 +42,8 @@ jobs:
         shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -57,13 +59,30 @@ jobs:
           SOFTWARE_GL: '1'
           READY_TIMEOUT: '240000'
           SHARD: ${{ matrix.shard }}
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           export CHROME="$(node -e "import('playwright-core').then(m => console.log(m.chromium.executablePath()))")"
+          # On a pull request, a scenario whose first line says `# ci paths=a,b` only runs when
+          # the PR touches one of those path prefixes (or the CI/test plumbing). Everything
+          # runs on pushes to main and manual runs.
+          changed=""
+          if [ "$EVENT" = pull_request ]; then changed="$(git diff --name-only "$BASE_SHA" HEAD)"; fi
+          wanted() {
+            [ -z "$changed" ] && return 0
+            paths="$(head -1 "$1" | sed -n 's/.*paths=\([^ ]*\).*/\1/p')"
+            [ -z "$paths" ] && return 0
+            for p in ${paths//,/ } .github/ scripts/playtest.mjs tests/playtest/play.py package.json; do
+              echo "$changed" | grep -q "^$p" && return 0
+            done
+            return 1
+          }
           status=0
           i=0
           for f in $(grep -l '^# ci' tests/playtest/*.py | sort); do
             if [ $((i % 4)) -eq "$SHARD" ]; then
               scenario=$(basename "$f" .py)
+              if ! wanted "$f"; then echo "skipping $scenario (nothing it covers changed)"; i=$((i + 1)); continue; fi
               echo "::group::$scenario"
               # The texture comparison renders a lot of frames; a small window keeps it quick.
               if [ "$scenario" = look ]; then export W=640 H=360; else unset W H; fi
