@@ -692,7 +692,8 @@ export function groundAt(x, z) {
   let path = smooth(rw + 0.9, rw - 0.6, rd + (n - 0.5) * 1.6) * paintK;
   // Ashford's streets and square are cobbled; lanes and yards are trodden earth.
   const [tDirt, tCobble] = townGround(x, z);
-  const cobble = Math.min(1, tCobble * (0.86 + 0.28 * n));
+  // The forecourts of the gatehouse and the toll bar are paved.
+  const cobble = Math.min(1, Math.max(tCobble, exitApron(x, z, n)) * (0.86 + 0.28 * n));
   path = Math.max(path, tDirt * (0.8 + 0.4 * n));
   let forest = 0;
   for (const f of FORESTS) {
@@ -746,6 +747,7 @@ const EXIT_DEFS = [
     id: 'east', name: 'East Pass', kind: 'gatehouse', road: 'eastroad', at: [318.5, 105.4], locked: true,
     leads: 'Redwater Keep',
     gorge: { from: 12, narrow: 5.2, wide: 11.5, span: 22 },
+    apron: { from: -13, to: 4, half: 9 },
     clear: [14, 16],
     sign: {
       title: 'The East Gate is barred',
@@ -760,6 +762,7 @@ const EXIT_DEFS = [
     id: 'south', name: 'South Pass', kind: 'toll', road: 'harbour', at: [55.5, 313.5], locked: true,
     leads: 'Saltmere Harbour',
     gorge: { from: 180, narrow: 5.2, wide: 9.6, span: 16 },
+    apron: { from: -8, to: 1.5, half: 7.2 },
     clear: [12, 12],
     sign: {
       title: 'The toll bar is shut',
@@ -801,6 +804,20 @@ export const PORTAL = (() => {
   const e = EXITS.find((q) => q.kind === 'tunnel');
   return { ...e.portal, x: e.x, z: e.z, tx: e.tx, tz: e.tz };
 })();
+// How much a paved forecourt covers (x, z): 1 in the yard in front of (and under) a closure, fading over a couple of
+// metres and ragged at the edge. `apron` on an EXITS row gives its length along the road (from / to, metres from the
+// closure, negative in front of it) and its half-width across.
+function exitApron(x, z, n) {
+  let k = 0;
+  for (const e of EXITS) {
+    if (!e.apron) continue;
+    const dx = x - e.x, dz = z - e.z;
+    if (Math.abs(dx) > 30 || Math.abs(dz) > 30) continue;
+    const u = dx * e.tx + dz * e.tz, v = dz * e.tx - dx * e.tz, j = (n - 0.5) * 2.4;
+    k = Math.max(k, smooth(e.apron.from - 1.5, e.apron.from + 1.5, u + j) * smooth(e.apron.to + 1.5, e.apron.to - 1.5, u + j) * smooth(e.apron.half + 1.4, e.apron.half - 1.4, Math.abs(v) + j));
+  }
+  return k;
+}
 function portalFace(h, x, z) {
   const P = PORTAL, dx = x - P.x, dz = z - P.z;
   const u = dx * P.tx + dz * P.tz, v = dz * P.tx - dx * P.tz;
@@ -905,4 +922,3 @@ export const WARNINGS = [
   { id: 'warn_bandits', x: 218, z: 51, board: 'BANDIT COUNTRY', text: ['Bandits hold the road east of here. The tolls they take are paid in blood. Turn back unless you can fight.'], face: 1.7 },
   { id: 'warn_highroad', x: -90, z: -226, board: 'HIGHROAD CLOSED', text: ['The Highroad is closed ahead at the fallen tunnel. There is nothing beyond but rock.'], face: -1.4 },
 ];
-export const __dbg = { land0, notches, gorgeWall, gorgeHalfWidth };

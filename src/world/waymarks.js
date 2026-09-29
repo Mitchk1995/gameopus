@@ -283,6 +283,8 @@ export function buildWaymarks(sites) {
     const cell = atlas.cell(384, 130, (g, cw, ch) => drawName(g, cw, ch, p.name));
     const yaw = Math.atan2(ux, uz);
     board(bx + Math.sin(yaw) * 0.09, by + 1.18, bz + Math.cos(yaw) * 0.09, yaw, 1.3, 0.44, cell, cell);
+    // The board sticks out either side of its post at chest height: it is solid too.
+    sk.colliders.addBox(bx + Math.sin(yaw) * 0.09, bz + Math.cos(yaw) * 0.09, 0.66, 0.1, yaw, by + 1.1, by + 1.7);
     read(p.name, x, by + 1.0, z, p.name, [p.note]);
     out.cairns.push({ id: p.id, x, z });
   }

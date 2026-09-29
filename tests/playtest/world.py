@@ -139,6 +139,19 @@ STEPS = [
     }
     return out.join(' | ');
   })()"""},
+  # --- canary: the walk test must notice a hole. Take a closure's shutting solids away (leaving it 'locked') and it must fail.
+  {'eval': """(() => {
+    const W = __world, g = W.g(), M = W.map(), out = [];
+    for (const e of M.EXITS) {
+      const p = W.parts().exits.byId[e.id];
+      p.apply(1);
+      const r = W.walk(e, { lat: 0, from: 14, ticks: 420 });
+      p.apply(0);
+      if (r.maxU > p.openU) out.push('PASS canary: with the ' + e.id + ' solids taken away the walk gets through, so the walk test can see a hole');
+      else W.fail('canary: the walk test did not notice the ' + e.id + ' closure with its solids taken away (got ' + r.maxU.toFixed(1) + ' m past)');
+    }
+    return out.join(' | ');
+  })()"""},
   # --- the notices: stand in front of one, look at it, press E, and the text opens
   {'eval': """(() => {
     const W = __world, g = W.g(), M = W.map(), out = [];
