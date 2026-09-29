@@ -491,6 +491,7 @@ export class Fight {
         return this.#damagePlayer(roll.damage, at, e, true);
       }
       g.audio.play('block', P.pos);
+      P.blockHit();
       if (roll.damage > 0) g.state.skills.add('defence', Math.max(1, roll.damage - taken) * 2);
       if (taken > 0) this.#damagePlayer(taken, at, e, false, true);
       else this.ui.splat(at, '0', 'zero me');

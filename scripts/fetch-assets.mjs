@@ -1,14 +1,16 @@
 // Downloads the game's free art (CC0/MIT) and optimizes it into public/assets/.
-//   node scripts/fetch-assets.mjs [step ...]     steps: quaternius, polyhaven, trees (default: all)
+//   node scripts/fetch-assets.mjs [step ...]     steps: quaternius, combat, polyhaven, trees (default: all)
+//   node scripts/fetch-assets.mjs kaykit         (opt-in) KayKit clips retargeted, for the animation lab
 // Raw downloads are cached in .asset-cache/ (gitignored); the optimized output is committed.
 import { mkdir, writeFile, readdir, copyFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { makeIO, optimizeDoc } from './optimize-gltf.mjs';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.asset-cache');
 const OUT = path.join(ROOT, 'public/assets');
 const steps = process.argv.slice(2);
@@ -25,12 +27,12 @@ const PACKS = {
   'bestiary-dungeon-monsters-kit': 'bestiary',
 };
 
-async function itchDownload(slug) {
+async function itchDownload(slug, user = 'quaternius') {
   const dir = path.join(CACHE, 'itch', slug);
   await mkdir(dir, { recursive: true });
   const done = (await readdir(dir)).find((f) => f.endsWith('.zip'));
   if (done) return path.join(dir, done);
-  const page = `https://quaternius.itch.io/${slug}`;
+  const page = `https://${user}.itch.io/${slug}`;
   let cookie = '';
   const req = async (url, opts = {}) => {
     const r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), cookie } });
@@ -47,7 +49,7 @@ async function itchDownload(slug) {
   for (const [, id, name] of uploads) {
     const j = await (await req(`${page}/file/${id}?source=view_game&as_props=1&after_download_lightbox=true`, { method: 'POST', body })).json();
     console.log('  downloading', name);
-    const file = path.join(dir, name);
+    const file = path.join(dir, name.endsWith('.zip') ? name : `${name}.zip`);
     const r = await fetch(j.url);
     await writeFile(file, Buffer.from(await r.arrayBuffer()));
     return file;
@@ -159,6 +161,61 @@ async function quaternius() {
   }
 }
 
+// ---------------------------------------------------------------- composed combat clips (CC0)
+// A sword guard you can hold and a blow landing on it, built from pieces of the library's own
+// clips (the library has neither). See scripts/compose-clips.mjs.
+async function combat() {
+  console.log('Composed combat clips');
+  const { composeCombat } = await import('./compose-clips.mjs');
+  const size = await composeCombat(path.join(OUT, 'anims'));
+  console.log(`  anims/combat.glb ${(size / 1024).toFixed(0)} KB`);
+}
+
+// ---------------------------------------------------------------- KayKit animations (CC0), lab only
+// Not shipped. KayKit's 150 clips retarget cleanly onto our rig (scripts/retarget.mjs), but they
+// are made for chunky toy proportions and read stiff on our people (DESIGN.md, Art sources).
+// This writes them to .asset-cache/lab/kaykit.glb, for side-by-side sheets:
+//   LAB_LOAD=lab/kaykit.glb LAB_CLIPS=KK_Dodge_Forward python tests/playtest/anim_sheet.py
+async function kaykit() {
+  console.log('KayKit animations (lab)');
+  const zip = await itchDownload('kaykit-character-animations', 'kaylousberg');
+  const dir = path.join(CACHE, 'unpacked', 'kaykit');
+  if (!existsSync(dir)) {
+    await mkdir(dir, { recursive: true });
+    execFileSync('unzip', ['-q', '-o', zip, '-d', dir]);
+  }
+  const { skeleton, retargetClip, addClip, sampleClip } = await import('./retarget.mjs');
+  const { clearAnimations } = await import('./compose-clips.mjs');
+  const io = await makeIO();
+  const out = await io.read(path.join(OUT, 'anims/ual1.glb'));
+  const bones = new Set(out.getRoot().listAnimations()[0].listChannels().map((c) => c.getTargetNode().getName()));
+  const grip = sampleClip(out, 'Sword_Idle', 0);
+  clearAnimations(out);
+  const tgt = { skel: skeleton(out) };
+  tgt.skel.list = tgt.skel.list.filter((b) => bones.has(b.name) || b.name === 'Armature');
+  const fixed = new Map([...grip].filter(([n]) => /^(thumb|index|middle|ring|pinky)_/.test(n)));
+  const MAP = {
+    pelvis: 'hips', spine_01: 'spine', spine_03: 'chest', Head: 'head',
+    upperarm_l: 'upperarm.l', lowerarm_l: 'lowerarm.l', hand_l: 'hand.l', upperarm_r: 'upperarm.r', lowerarm_r: 'lowerarm.r', hand_r: 'hand.r',
+    thigh_l: 'upperleg.l', calf_l: 'lowerleg.l', foot_l: 'foot.l', ball_l: 'toes.l', thigh_r: 'upperleg.r', calf_r: 'lowerleg.r', foot_r: 'foot.r', ball_r: 'toes.r',
+  };
+  let n = 0;
+  for (const part of ['CombatMelee', 'MovementAdvanced', 'MovementBasic', 'General']) {
+    const doc = await io.read(await findFile(dir, `Rig_Medium_${part}.glb`));
+    const src = { skel: skeleton(doc) };
+    // Leg length (hip joint height) ours / KayKit's: scales the hips' movement.
+    for (const anim of doc.getRoot().listAnimations()) {
+      if (/T-Pose|_Pose$/.test(anim.getName())) continue;
+      addClip(out, tgt.skel, `KK_${anim.getName()}`, retargetClip(src, tgt, anim, MAP, { legScale: 0.932 / 0.519, fixed }), { only: bones });
+      n++;
+    }
+  }
+  await optimizeDoc(out, { dropMeshes: true });
+  await mkdir(path.join(CACHE, 'lab'), { recursive: true });
+  await io.write(path.join(CACHE, 'lab/kaykit.glb'), out);
+  console.log(`  .asset-cache/lab/kaykit.glb (${n} clips)`);
+}
+
 // ---------------------------------------------------------------- Poly Haven (CC0)
 const SKY = 'kloofendal_48d_partly_cloudy_puresky';
 const GROUND = {
@@ -240,6 +297,8 @@ async function trees() {
 
 await mkdir(OUT, { recursive: true });
 if (want('quaternius')) await quaternius();
+if (want('combat')) await combat();
 if (want('polyhaven')) await polyhaven();
 if (want('trees')) await trees();
+if (steps.includes('kaykit')) await kaykit();
 console.log('done');

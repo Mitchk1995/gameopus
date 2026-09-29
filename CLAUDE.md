@@ -103,7 +103,8 @@ is in flight, and the next steps in order. Read it first, and rewrite it at the 
   window), `aimPitch`/`aimReach` (where the blade passes at `hit`; re-measure by sampling the clip
   when a clip or hit time changes, see the comment above `PLAYER_MOVES`). A light swing starts moving
   in one frame and lands in about 0.2 s (heavy 0.38 s, finisher 0.18 s). The chain is A (right to
-  left), B (back to the right), C (low sweep to the left, first half of its clip only); a press
+  left), B (back to the right), C (the heavy's diagonal cut, high right to low left, started from the
+  top of its wind-up; Sword_Regular_C was dropped because its sweep turns into a full spin); a press
   during a swing cuts in at the chain window, and a dodge, block or hit drops the combo and any
   queued swing. The layered swing subtracts the jump/jog pelvis tilt (`#overlay`), which is what used
   to send airborne swings overhead. Swings end through the recovery clip (`Recover` gait).
@@ -111,8 +112,22 @@ is in flight, and the next steps in order. Read it first, and rewrite it at the 
   animation must call `char.mark(bone)` first (`Character.update` restores marked bones); otherwise
   steady bones accumulate the layer every frame. `tests/playtest/melee_aim.py` measures swing start,
   blade-through-crosshair (ground, moving, jumping, looking up and down), hits on the crosshair
-  target, chain order and sides, pops and resets. Open questions for the owner: the finisher arches
-  the back up to about 50 degrees at chest-height aim, and it lost its old second spin.
+  target, chain order and sides, pops and resets. Open question for the owner: C and the heavy now
+  share one cut (the heavy has the long wind-up).
+- **Animations.** Clips are Quaternius Universal Animation Library 1 and 2 (the free Standard sets;
+  every sword clip in them has been judged, see DESIGN.md "Art sources" for the sources checked and
+  why the rest were turned down) plus `anims/combat.glb`, which `scripts/compose-clips.mjs` builds from
+  pieces of those clips: `Sword_Guard_Loop` (the guard: stance legs and breathing, Sword_Block's
+  upright blade, the shield idle's raised forearm), `Sword_Guard_Hit` (a blow landing on it;
+  `Player.blockHit`, called by `Fight` on a block that isn't a parry) and `Roll_Tuck` (the dodge:
+  the library roll with its long flat dive swept through in 0.07 s). `tests/playtest/anim_sheet.py`
+  draws contact sheets for judging animation by eye (`LAB_CLIPS`: clips on the hero every 0.05 s from
+  the side and behind; `LAB_LIVE=chain,guard,heavy`: the game itself with scripted input);
+  `scripts/retarget.mjs` moves clips from another humanoid rig onto ours at build time (proven on
+  KayKit, which was not shipped). `tests/playtest/guard.py` checks the guard. Gaps: guarding while
+  moving slides the feet (no strafe clips), there is no side or back dodge (every dodge is a forward
+  roll turned to face the way you go), and no dedicated parry or riposte motion; the paid Quaternius
+  sets (same rig) or Mixamo would fill them.
 - **Camera.** The camera collides with the real rendered geometry, not hand-placed boxes.
   `src/world/solids.js` indexes the triangles of every static solid mesh (the kit `Batcher` flags
   all its output `camSolid`, dropping decorative parts under 0.5 m and door leaves via a

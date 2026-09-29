@@ -17,8 +17,9 @@ export class CharacterFactory {
   }
 
   async loadAnimations() {
-    const [a, b] = await Promise.all([this.assets.model('anims/ual1.glb'), this.assets.model('anims/ual2.glb')]);
-    for (const clip of [...a.animations, ...b.animations]) {
+    // combat.glb holds clips built from pieces of the other two (scripts/compose-clips.mjs).
+    const files = await Promise.all(['ual1', 'ual2', 'combat'].map((f) => this.assets.model(`anims/${f}.glb`)));
+    for (const clip of files.flatMap((f) => f.animations)) {
       // Keep the hips' height but drop horizontal root drift so clips play in place.
       for (const t of clip.tracks) {
         if (t.name === 'root.position' || t.name === 'pelvis.position') {
