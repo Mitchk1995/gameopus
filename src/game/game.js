@@ -71,7 +71,7 @@ export class Game {
         unlocksAt: (skill, lvl) => this.unlockList.filter((u) => u.skill === skill && u.level === lvl).map((u) => u.label.toLowerCase()),
       },
     });
-    this.menus = new Menus({ state: this.state, studio: this.studio, onClose: (kind) => this.#afterClose(kind) });
+    this.menus = new Menus({ state: this.state, studio: this.studio, onClose: (kind) => this.#afterClose(kind), showMenu: (x, y, o) => this.panels.showMenu(x, y, o) });
     this.talk = new Talk();
     this.chat = new Chat(this);
     this.chat.connect();
@@ -866,6 +866,7 @@ export class Game {
     this.panels.open('inv');
     this.menus.openShop({
       name: shop.name, owner: shop.owner, stock: shop.stock,
+      onExamine: (s, text) => this.panels.message(text),
       onBuy: (s, n) => {
         let bought = 0;
         for (let k = 0; k < n; k++) {
