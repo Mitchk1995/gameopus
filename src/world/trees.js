@@ -260,6 +260,8 @@ export class Forest {
     this.pv ??= new THREE.Matrix4();
     this.frustum.setFromProjectionMatrix(this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const sphere = this.sphere ??= new THREE.Sphere();
+    // Overview renders (tests and plans) can ask for the mid-detail crowns everywhere.
+    const nearD = this.forceLod === 'mid' ? -1 : NEAR, midD = this.forceLod === 'mid' ? 1e9 : MID;
     for (const v of this.variants) {
       const M = v.meshes;
       M.nearB.count = M.nearL.count = M.midB.count = M.midL.count = M.far.count = M.shadowB.count = M.shadowL.count = 0;
@@ -277,10 +279,10 @@ export class Forest {
           sphere.radius = v.height * t.scale * 0.62;
           if (!this.frustum.intersectsSphere(sphere)) continue;
         }
-        if (d < NEAR) {
+        if (d < nearD) {
           M.nearB.setMatrixAt(M.nearB.count++, t.matrix);
           M.nearL.setMatrixAt(M.nearL.count++, t.matrix);
-        } else if (d < MID) {
+        } else if (d < midD) {
           M.midB.setMatrixAt(M.midB.count++, t.matrix);
           M.midL.setMatrixAt(M.midL.count++, t.matrix);
         } else {

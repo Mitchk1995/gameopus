@@ -23,9 +23,11 @@ export class Terrain {
   }
 
   async load() {
-    const [buf, ground, albedo, nr] = await Promise.all([
+    const [buf, ground, biomeA, biomeB, albedo, nr] = await Promise.all([
       fetchBinary('world/height.bin'),
       this.assets.texture('world/ground.png', { srgb: false, repeat: false, anisotropy: 4 }),
+      this.assets.texture('world/biome_a.png', { srgb: false, repeat: false, anisotropy: 1 }),
+      this.assets.texture('world/biome_b.png', { srgb: false, repeat: false, anisotropy: 1 }),
       Promise.all(LAYERS.map((l) => this.assets.image(`ground/${l}_a.webp`))),
       Promise.all(LAYERS.map((l) => this.assets.image(`ground/${l}_nr.webp`))),
     ]);
@@ -42,10 +44,15 @@ export class Terrain {
     this.heightTex = heightTex;
 
     // The bake writes row 0 at the north edge (z = -half), which is v = 0 here.
-    ground.flipY = false;
-    ground.generateMipmaps = true;
+    for (const t of [ground, biomeA, biomeB]) {
+      t.flipY = false;
+      t.generateMipmaps = true;
+    }
     this.groundTex = ground;
-    this.material = this.#material(heightTex, ground, arrayTexture(albedo, true), arrayTexture(nr, false));
+    // Biome weights (meadow, heath, marsh / dry scrub, woodland moss, mine dust): painted by the bake.
+    this.biomeA = biomeA;
+    this.biomeB = biomeB;
+    this.material = this.#material(heightTex, ground, biomeA, biomeB, arrayTexture(albedo, true), arrayTexture(nr, false));
     this.#buildChunks();
     return this;
   }
@@ -106,11 +113,13 @@ export class Terrain {
       }
   }
 
-  #material(heightTex, ground, albedo, nr) {
+  #material(heightTex, ground, biomeA, biomeB, albedo, nr) {
     const mat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, envMapIntensity: 0.6 });
     const uniforms = {
       uHeight: { value: heightTex },
       uGround: { value: ground },
+      uBiomeA: { value: biomeA },
+      uBiomeB: { value: biomeB },
       uAlb: { value: albedo },
       uNrm: { value: nr },
       uHalf: { value: WORLD.half },
@@ -138,7 +147,7 @@ export class Terrain {
           vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
-          uniform sampler2D uGround;
+          uniform sampler2D uGround, uBiomeA, uBiomeB;
           uniform highp sampler2DArray uAlb;
           uniform highp sampler2DArray uNrm;
           uniform float uHalf, uN, uTile[8];
@@ -174,12 +183,18 @@ export class Terrain {
           float tE = clamp(max(length(tdx), length(tdy)) * 1.5, 1.0, 6.0);
           vec3 tn = normalize(vec3(tH(tp.xz - vec2(tE, 0.0)) - tH(tp.xz + vec2(tE, 0.0)), 2.0 * tE,
                                    tH(tp.xz - vec2(0.0, tE)) - tH(tp.xz + vec2(0.0, tE))));
-          vec3 cover = texture2D(uGround, tp.xz / (uHalf * 2.0) + 0.5).rgb;
+          vec2 tUV = tp.xz / (uHalf * 2.0) + 0.5;
+          vec3 cover = texture2D(uGround, tUV).rgb;
+          // Biomes: A = meadow, rocky heath, marsh; B = dry scrub, woodland moss, mine dust.
+          vec3 bioA = texture2D(uBiomeA, tUV).rgb;
+          vec3 bioB = texture2D(uBiomeB, tUV).rgb;
           float macro = tNoise(tp.xz * 0.018) * 0.65 + tNoise(tp.xz * 0.07) * 0.35;
           float mixK = clamp(0.5 + (tNoise(tp.xz * 0.05 + 7.0) - 0.5) * 1.4, 0.0, 1.0);
           float slope = 1.0 - tn.y;
           float wobble = (macro - 0.5);
-          float wRock = max(smoothstep(0.12, 0.24, slope + wobble * 0.1), smoothstep(20.0, 40.0, tp.y + wobble * 16.0) * smoothstep(0.05, 0.15, slope + 0.04));
+          // High ground goes stony, except in the meadows (Abbey Hill is grass to the top).
+          float altRock = smoothstep(20.0, 40.0, tp.y + wobble * 16.0) * smoothstep(0.05, 0.15, slope + 0.04) * (1.0 - bioA.r * 0.85);
+          float wRock = max(smoothstep(0.12, 0.24, slope + wobble * 0.1), altRock);
           float wCliff = smoothstep(0.3, 0.46, slope + wobble * 0.12);
           float wSnow = smoothstep(74.0, 96.0, tp.y + wobble * 34.0) * smoothstep(0.66, 0.4, slope + wobble * 0.1);
           float wSand = smoothstep(1.35, 0.45, tp.y + wobble * 0.9);
@@ -191,7 +206,9 @@ export class Terrain {
           layerT[5] = wSand;
           layerT[3] = smoothstep(0.2, 0.75, cover.r);
           layerT[4] = smoothstep(0.2, 0.7, cover.b);
-          layerT[2] = wRock * (1.0 - layerT[4]);
+          // Heath and mine spoil are patchy stone; the road stays a road.
+          float stony = max(bioA.g * smoothstep(0.32, 0.6, macro + (tNoise(tp.xz * 0.4) - 0.5) * 0.55), bioB.b * smoothstep(0.15, 0.5, bioB.b + (tNoise(tp.xz * 0.16) - 0.5) * 0.4));
+          layerT[2] = max(wRock, stony * (1.0 - layerT[3])) * (1.0 - layerT[4]);
           layerT[6] = wCliff;
           layerT[7] = wSnow;
           int order[7] = int[7](1, 5, 3, 4, 2, 6, 7);
@@ -218,9 +235,19 @@ export class Terrain {
             tSample(0, tp.xz, tdx.xz, tdy.xz, mixK, ga, gn, 1.0);
             float lum = dot(ga, vec3(0.3, 0.55, 0.15));
             float dry = smoothstep(0.38, 0.78, tNoise(tp.xz * 0.011 + 3.0) * 0.7 + tNoise(tp.xz * 0.045) * 0.3);
-            vec3 lush = mix(vec3(0.065, 0.14, 0.028), vec3(0.15, 0.16, 0.055), dry) * (0.55 + lum * 2.2);
+            vec3 green = mix(vec3(0.065, 0.14, 0.028), vec3(0.15, 0.16, 0.055), dry);
+            green = mix(green, vec3(0.085, 0.165, 0.032), bioA.r * 0.6);       // meadow: fresh and bright
+            green = mix(green, vec3(0.25, 0.185, 0.07), bioB.r * 0.85);        // dry scrub: straw and dust
+            green = mix(green, vec3(0.05, 0.08, 0.04), bioA.b * 0.8);          // marsh: dark and wet
+            green = mix(green, vec3(0.17, 0.125, 0.115), bioA.g * 0.6);        // heath: heather browns
+            vec3 lush = green * (0.55 + lum * 2.2);
             tAlb += mix(ga, lush, 0.62) * w[0];
             tNr += gn * w[0];
+            // Meadow flowers: little dots of colour scattered through the grass.
+            vec2 fc = floor(tp.xz * 2.4);
+            float fh = tHash(fc);
+            float fl = step(0.955, fh) * bioA.r * smoothstep(0.4, 0.62, tNoise(tp.xz * 0.09)) * w[0];
+            tAlb += mix(vec3(0.42, 0.36, 0.05), mix(vec3(0.5, 0.5, 0.55), vec3(0.34, 0.13, 0.32), step(0.5, tHash(fc + 3.0))), step(0.5, tHash(fc + 7.0))) * fl * 0.55;
           }
           if (w[6] > 0.004) {
             // Cliffs are projected from the sides as well, so steep faces don't smear.
@@ -234,6 +261,9 @@ export class Terrain {
             float rl = dot(ra, vec3(0.3, 0.55, 0.15));
             ra = mix(vec3(rl), ra, 0.3) * vec3(0.95, 0.97, 1.02);
             ra = pow(ra, vec3(1.15)) * 0.95;
+            // Strata: pale and dark bands running along the face.
+            float strata = 0.8 + 0.4 * tNoise(vec2(tp.y * 0.5 + tNoise(tp.xz * 0.04) * 3.0, (tp.x + tp.z) * 0.03));
+            ra *= strata;
             tAlb += ra * w[6];
             tNr += rn * w[6];
           }
@@ -245,8 +275,12 @@ export class Terrain {
             tNr += sn * w[7];
           }
           tAlb *= 0.84 + macro * 0.32;
+          // The mood of each ring in the ground: mossy woods, dusty bandit country, sooty mine hill.
+          tAlb *= mix(vec3(1.0), vec3(0.8, 0.97, 0.88), bioB.g);
+          tAlb *= mix(vec3(1.0), vec3(1.1, 0.98, 0.8), bioB.r * 0.6);
+          tAlb *= mix(vec3(1.0), vec3(0.86, 0.84, 0.82), bioB.b * 0.6);
           diffuseColor.rgb *= tAlb;
-          float tRough = tNr.b;`)
+          float tRough = mix(tNr.b, 0.5, bioA.b * 0.8);`)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = clamp(tRough, 0.35, 1.0);')
         .replace('#include <normal_fragment_maps>', `
           vec2 nxy = tNr.rg * 2.0 - 1.0;
