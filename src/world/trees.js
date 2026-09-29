@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Tree } from '../vendor/ez-tree/tree.js';
 import { loadPreset } from '../vendor/ez-tree/presets/index.js';
 import { WORLD, VILLAGE, BANDIT_CAMP, LAKE, RIVER, forestDensity, roadDistance, noise, siteClearance, groveAt, rings, biomeAt, riverAt, shoreAt, lakeShoreAt } from './map.js';
-import { polyDistance } from './ashford.js';
+import { polyDistance, TOWN_TREES } from './ashford.js';
 
 // Forests. Each species variant is generated once with ez-tree in two levels of
 // detail, plus a flat "impostor" picture of it for far away. Every tree in the world
@@ -47,6 +47,17 @@ const SPECIES = {
     o.leaves.tint = 0xc8b54a;
     o.leaves.size *= 0.75;
     o.leaves.count = Math.round(o.leaves.count * 1.3);
+  } },
+  // Apple trees for the town orchard: a short, leaning trunk under a low spreading crown.
+  apple: { presets: ['Oak Small'], scale: [0.13, 0.15], trunk: 0.45, tweak: (o) => {
+    o.branch.length[0] *= 0.5;
+    o.branch.angle[1] = 64;
+    o.branch.angle[2] = 62;
+    o.branch.gnarliness[0] = 0.16;
+    o.branch.length[1] = (o.branch.length[1] || 5) * 1.6;
+    o.leaves.tint = 0xb4d28a;
+    o.leaves.count = Math.round(o.leaves.count * 2.4);
+    o.leaves.size *= 0.95;
   } },
 };
 let NEAR = 40;
@@ -213,7 +224,7 @@ export class Forest {
     };
     const plant = (species, px, pz, scale = null) => {
       const options = this.variants.filter((v) => v.species === species);
-      const v = species === 'oak' && scale ? options[options.length - 1] : options[Math.floor(rnd() * options.length)];
+      const v = scale ? options[options.length - 1] : options[Math.floor(rnd() * options.length)];
       const [s0, s1] = SPECIES[species].scale;
       const s = scale ?? s0 + (s1 - s0) * rnd();
       const tree = { x: px, z: pz, y: T.heightAt(px, pz) - 0.2, rot: rnd() * Math.PI * 2, scale: s, variant: v, radius: SPECIES[species].trunk * s * 5, id: this.trees.length };
@@ -277,6 +288,11 @@ export class Forest {
       const off = lr + 4 + rnd() * 6, px = LAKE.x + Math.cos(a) * off, pz = LAKE.z + Math.sin(a) * off;
       if (rings(px, pz).wall > 0.2 || !ok(px, pz, 3) || !spaced(px, pz, 6)) continue;
       plant('willow', px, pz);
+    }
+    // The town's own trees (ashford.js): the great ash on the square and the orchard's apple trees.
+    for (const t of TOWN_TREES) {
+      plant(t.species, t.x, t.z, t.scale ?? null);
+      this.trees[this.trees.length - 1].town = t.id;
     }
   }
 

@@ -1,14 +1,15 @@
 // Downloads the game's free art (CC0/MIT) and optimizes it into public/assets/.
-//   node scripts/fetch-assets.mjs [step ...]     steps: quaternius, polyhaven, trees (default: all)
+//   node scripts/fetch-assets.mjs [step ...]     steps: quaternius, polyhaven, props, trees (default: all)
 // Raw downloads are cached in .asset-cache/ (gitignored); the optimized output is committed.
 import { mkdir, writeFile, readdir, copyFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { makeIO, optimizeDoc } from './optimize-gltf.mjs';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.asset-cache');
 const OUT = path.join(ROOT, 'public/assets');
 const steps = process.argv.slice(2);
@@ -222,6 +223,44 @@ async function polyhaven() {
   }
 }
 
+// Surfaces for the town's grounds (hay, tilled soil, linen), two textures each at 512 px:
+//   props/<id>_a.webp : albedo, props/<id>_n.webp : OpenGL normal map
+const PROPS = { hay: 'reed_roof_04', soil: 'farm_soil', linen: 'rough_linen' };
+
+// The thatch scan has its mossy ridge along the top: cut it off, then cross-fade the bottom rows into
+// the top ones so the straw tiles vertically without a seam.
+async function seamless(file, cropTop) {
+  const img = sharp(file).removeAlpha();
+  const { width: W, height: H } = await img.metadata();
+  const top = Math.round(H * cropTop), fade = Math.round(H * 0.12);
+  const raw = await sharp(file).removeAlpha().extract({ left: 0, top, width: W, height: H - top }).raw().toBuffer();
+  const h = H - top, out = Buffer.alloc(W * (h - fade) * 3);
+  for (let y = 0; y < h - fade; y++)
+    for (let x = 0; x < W * 3; x++) {
+      const k = y < fade ? y / fade : 1;
+      const a = raw[(y + fade) * W * 3 + x], b = y < fade ? raw[(h - fade + y) * W * 3 + x] : a;
+      out[y * W * 3 + x] = Math.round(a * k + b * (1 - k));
+    }
+  return sharp(out, { raw: { width: W, height: h - fade, channels: 3 } });
+}
+
+async function propTextures() {
+  console.log('Poly Haven (props)');
+  await mkdir(path.join(OUT, 'props'), { recursive: true });
+  for (const [id, asset] of Object.entries(PROPS)) {
+    const f = await (await fetch(`https://api.polyhaven.com/files/${asset}`)).json();
+    const diff = await cached(f.Diffuse['1k'].jpg.url, `${asset}_diff.jpg`);
+    const nor = await cached(f.nor_gl['1k'].jpg.url, `${asset}_nor.jpg`);
+    const src = async (file) => (id === 'hay' ? seamless(file, 0.075) : sharp(file).removeAlpha());
+    let a = (await src(diff)).resize(512, 512);
+    // Linen is dyed in the game (vertex colours), so it starts out as undyed grey-white cloth.
+    if (id === 'linen') a = a.grayscale().linear(1.15, 12);
+    await a.webp({ quality: 86 }).toFile(path.join(OUT, `props/${id}_a.webp`));
+    await (await src(nor)).resize(512, 512).webp({ quality: 90 }).toFile(path.join(OUT, `props/${id}_n.webp`));
+    console.log(`  props/${id} (${asset})`);
+  }
+}
+
 // ---------------------------------------------------------------- ez-tree textures (MIT)
 async function trees() {
   console.log('Tree textures');
@@ -241,5 +280,6 @@ async function trees() {
 await mkdir(OUT, { recursive: true });
 if (want('quaternius')) await quaternius();
 if (want('polyhaven')) await polyhaven();
+if (want('polyhaven') || want('props')) await propTextures();
 if (want('trees')) await trees();
 console.log('done');
