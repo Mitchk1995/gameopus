@@ -7,6 +7,7 @@ import { raySphere } from '../actors/aim.js';
 import { buildItem } from '../ui/itemart.js';
 import { Fire } from '../world/effects.js';
 import { BANDIT_CAMP, SPAWN } from '../world/map.js';
+import { placeProp, restY, tag } from '../world/props.js';
 
 // Fighting: enemy camps, the player's attacks, blocks and parries, lock-on, stamina,
 // damage and experience, loot on the ground, and dying (you wake at the village well).
@@ -105,7 +106,7 @@ export class Fight {
     const pole = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.9 });
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2 + 0.6, r = camp.r + 2.5;
-      const x = camp.x + Math.cos(a) * r, z = camp.z + Math.sin(a) * r, y = w.heightAt(x, z);
+      const x = camp.x + Math.cos(a) * r, z = camp.z + Math.sin(a) * r, y = restY((px, pz) => w.heightAt(px, pz), x, z, 1.5) + 0.01;
       const tent = new THREE.Group();
       const shape = new THREE.Shape();
       shape.moveTo(-1.6, 0);
@@ -124,7 +125,7 @@ export class Fight {
       }
       tent.position.set(x, y - 0.05, z);
       tent.rotation.y = -a;
-      g.scene.add(tent);
+      g.scene.add(tag(tent, 'Tent'));
       w.colliders.addBox(x, z, 1.6, 1.6, -a, y - 1, y + 1.9);
     }
     const fy = w.heightAt(camp.x, camp.z);
@@ -133,15 +134,11 @@ export class Fight {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.16, 6, 14), new THREE.MeshStandardMaterial({ color: 0x5c5650, roughness: 1 }));
     ring.rotation.x = Math.PI / 2;
     ring.position.set(camp.x, fy + 0.06, camp.z);
-    g.scene.add(ring);
+    g.scene.add(tag(ring, 'FireRing'));
     w.colliders.addCircle(camp.x, camp.z, 0.85, fy - 1, fy + 0.5);
     for (const [dx, dz, name] of [[3.2, 2.6, 'Crate_Wooden'], [3.9, 1.8, 'Barrel'], [-3.4, 2.9, 'Crate_Wooden'], [-2.2, -3.6, 'WeaponStand']]) {
       const x = camp.x + dx, z = camp.z + dz;
-      const o = kit.instance(name);
-      o.position.set(x, w.heightAt(x, z), z);
-      o.rotation.y = Math.atan2(dx, dz);
-      g.scene.add(o);
-      w.colliders.addCircle(x, z, 0.45, o.position.y - 1, o.position.y + 1);
+      placeProp({ kit, scene: g.scene, colliders: w.colliders }, name, x, restY((px, pz) => w.heightAt(px, pz), x, z, 0.45), z, Math.atan2(dx, dz), { live: true });
     }
   }
 

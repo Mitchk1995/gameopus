@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Tree } from '../vendor/ez-tree/tree.js';
 import { loadPreset } from '../vendor/ez-tree/presets/index.js';
 import { WORLD, VILLAGE, FARMS, BANDIT_CAMP, LAKE, forestDensity, roadDistance, noise } from './map.js';
+import { polyDistance } from './ashford.js';
 
 // Forests. Each species variant is generated once with ez-tree in two levels of
 // detail, plus a flat "impostor" picture of it for far away. Every tree in the world
@@ -163,7 +164,7 @@ export class Forest {
       const h = T.heightAt(x, z);
       if (h < 0.9 || h > 72) return false;
       if (T.normalAt(x, z).y < 0.8) return false;
-      if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.r + 8) return false;
+      if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) < VILLAGE.r + 8 || polyDistance(x, z) < 8) return false;
       if (Math.hypot(x - BANDIT_CAMP.x, z - BANDIT_CAMP.z) < BANDIT_CAMP.r) return false;
       const [rd, rw] = roadDistance(x, z);
       if (rd < rw + clearance) return false;

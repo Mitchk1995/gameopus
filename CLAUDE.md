@@ -29,6 +29,13 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
 - `src/world/`: terrain, sky, water, forest, grass, village (modular buildings), mine,
   fishing spots and stations, colliders (2D grid of circles and boxes with height spans;
   only shapes flagged `floor` count as ground, `noCamera` shapes don't block the camera).
+- Ashford's plan is data in `src/world/ashford.js` (outline, gates, streets, square, building rows, plots,
+  props with reasons, stall/well/fire/kiln spots, where Mirelle, Garrow, Wenna and Hob stand). `village.js`
+  builds it, `townkit.js` makes the street furniture the kits lack (lamps, walls, hedges, gates, signs,
+  crops, hay), `map.js` grades and paints the ground from it. After editing `ashford.js` or `map.js` run
+  `node scripts/bake-world.mjs` (height and ground maps) and `node scripts/town-plan.mjs` (top-down plan),
+  then `python tests/playtest/play.py tests/playtest/town.py` (a `# ci` scenario: reachability, overlaps,
+  slopes, doors, NPC spots, gates and roads, orphan props).
 - `src/actors/`: player controller (states: move, act, roll, attack, block, hurt, dead),
   camera rig, characters (Quaternius modular outfits on one skeleton), NPCs, enemies,
   `aim.js` (upper-body aim layer + two-bone IK for bows and casting).
@@ -109,6 +116,34 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   offset backs off to centre when it would shorten the view (door jambs, corners); pull-in is
   instant, ease-out is smooth. `tests/playtest/camera.py` checks it numerically. Known gap: with a
   wall right behind the player the camera comes all the way in to the head and the hero hides.
+- Ashford v2 (done): the ring of houses is now a walled market town (see DESIGN.md, 'Ashford v2'):
+  Lake Street from the south gate to a rectangular square with the bank at its head, store, inn (with the
+  cooking hearth) and open-fronted smithy and potter around it, cottage rows, Wren and Stable lanes, a
+  chapel on a rise, three gates. Buildings still come from `buildHouse` untouched. Known gaps: all roofs
+  are the same tile colour (kit limit), no bridge over the river yet (the east road stops at the water),
+  and the hero's camera is tight in the 5 m streets.
+
+- Building quality (done): `src/world/props.js` holds the real solid shape of every prop that matters
+  (`SOLIDS`: a stall is a counter block plus posts, a bench is a jumpable slab, a lantern is a lamp on
+  a bracket) and `placeProp` places a prop with its colliders; use it for anything new (walk-through
+  props are a bug). Shapes flagged `floor` are standable (tops up to about 1 m are jumpable). Procedural
+  meshes get world-scale UVs (`fitUV`, `courseGeometry`, 2 m per repeat like the kit) and call `tag()` so
+  the audit sees them. Houses (`buildings.js`) put windows in every other bay, mirrored about the door,
+  stacked per floor; shutters only on the front, all alike. Doors (`doors.js`) are scaled to their frame,
+  solid when shut, swing on E; bank, store and inn doors start open, private houses stay shut and answer
+  a knock. `tests/playtest/geometry.py` (+ `geometry_helpers.js`, in CI via its `# ci` first line) is
+  the automatic geometry audit: floating, clipping, door fit, collider coverage both ways, window
+  density, texture stretch, plus a canary that must catch deliberately broken pieces. It scans whatever
+  the world and dungeon contain (Batcher logs, tagged meshes, `colliders.doors/buildings`), so new
+  props are checked for free; a FAIL line names the piece and its position.
+  The town (`ashford.js` plan, `townkit.js` street furniture, `village.js`) obeys the same rules:
+  kit props go through `#prop`/`placeProp` (solids table, `floor` tops), `Lantern_Wall` and doors come from
+  the building rules, stall goods are packed onto the counter by `#goods`, and every `TownKit` method
+  calls `begin(label, x, z)` so the audit can group its meshes (soft things such as crops and washing
+  are walk-through; pass `on` for a piece resting on another). `TownKit.put` fits UVs to the material's
+  kit tile size (`TILE`), so new furniture gets un-stretched brick and wood by default. The audit also
+  fails a piece of furniture whose parts don't touch (a hovering lantern or beam) and walls with a gap under
+  them on falling ground. Kit props using the page material (`Scroll_*`, `Book_*`) fail `look.py`: leave them out.
 
 ## Open feedback from the player (do these next)
 

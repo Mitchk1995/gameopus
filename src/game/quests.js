@@ -5,6 +5,7 @@ import { SKILL } from './skills.js';
 import { TICK } from './content.js';
 import { ROADS, MINE_ENTRANCE } from '../world/map.js';
 import { boulder } from '../world/resources.js';
+import { tag, addSolids } from '../world/props.js';
 import { buildItem } from '../ui/itemart.js';
 
 // Runs the quests in src/content/quests.js: their stages, the conditions and effects
@@ -341,15 +342,23 @@ export class Quests {
     const cart = kit.instance('Prop_Wagon');
     cart.position.set(x, y - 0.25, z);
     cart.rotation.set(0, Math.atan2(tx, tz) + 0.5, 0.22);
+    cart.userData.audit = { kit: 'Prop_Wagon', tilted: true };
     this.game.scene.add(cart);
-    w.colliders.addBox(x, z, 1.0, 1.9, cart.rotation.y, y - 1, y + 1.4);
+    // Its bed and hay heap (the tilt is a few degrees, so the same shapes serve).
+    addSolids(kit, w.colliders, 'Prop_Wagon', x, y - 0.25, z, cart.rotation.y);
+    // Crates split open and a barrel on its side, lying where they fell.
     const junk = [['Crate_Wooden', 1.8, 1.2, 0.9, 1.3], ['Crate_Wooden', -1.6, 2.2, 2.2, 1.57], ['Barrel', 2.4, -0.8, 0.3, 1.57]];
     for (const [name, dx, dz, ry, rz] of junk) {
       const o = kit.instance(name);
       const px = x + dx, pz = z + dz;
-      o.position.set(px, w.heightAt(px, pz) + (rz ? 0.3 : 0), pz);
+      const gy = w.heightAt(px, pz);
+      o.position.set(px, gy + (rz ? 0.3 : 0), pz);
       o.rotation.set(0, ry, rz);
+      o.userData.audit = { kit: name, tilted: true };
       this.game.scene.add(o);
+      // Lying on its side: about a crate's width across and a barrel's width high.
+      if (name === 'Barrel') w.colliders.addBox(px, pz, 0.47, 0.36, ry, gy - 0.2, gy + 0.7).floor = true;
+      else w.colliders.addBox(px, pz, 0.46, 0.46, ry, gy - 0.2, gy + 0.9).floor = true;
     }
     // Ore spilled along the ruts toward the woods.
     const ore = new THREE.MeshStandardMaterial({ color: 0x6b3a26, roughness: 0.8, metalness: 0.3 });

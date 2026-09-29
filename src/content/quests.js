@@ -45,7 +45,7 @@ export const QUESTS = {
     start: 'Talk to Brom at the smithy in Ashford.',
     requirements: 'You must be able to defeat the bandit captain (level 32) and Grubnak, the Warren King (level 26).',
     steps: {
-      1: { short: 'Ask Garrow the guard about the missing carts.', text: "Brom's carts of iron ore keep vanishing on the road from the quarry. Ask Garrow the guard what he knows; he keeps watch where the east road leaves the square.", goal: { npc: 'garrow' } },
+      1: { short: 'Ask Garrow the guard about the missing carts.', text: "Brom's carts of iron ore keep vanishing on the road from the quarry. Ask Garrow the guard what he knows; he keeps watch at the east gate.", goal: { npc: 'garrow' } },
       2: { short: 'Search the wrecked cart on the east road.', text: 'Garrow says the last cart was found wrecked on the east road, past the farms, where the woods begin. Search it.', goal: { spot: 'wreck' } },
       3: { short: 'Defeat the bandit captain in the eastern woods.', text: 'In the wreck you found a scrap of bandit cloth and cart tracks heading east. The bandit captain, in the eastern woods, will know where the ore went.', goal: { x: BANDIT_CAMP.x, z: BANDIT_CAMP.z } },
       4: { short: "Find Brom's strongbox in the Old Warren.", text: "The captain's ledger says the ore was sold to \"the King under the hill\", and that the King kept Brom's strongbox. Find it in the Old Warren, down the shaft at the quarry.", goal: { spot: 'cave' } },
