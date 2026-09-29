@@ -25,8 +25,8 @@ is in flight, and the next steps in order. Read it first, and rewrite it at the 
   `release/build/` and `scripts/place-app.mjs` swaps the result into `release/Aldermere/`; if that
   folder is in use (the game is open, or the Claude app still holds `app.asar` because a tool read
   inside it; never Glob or Read inside `release/`), the build lands in `release/Aldermere-<time>/`
-  instead, and you must tell the owner that path. To check a build, launch it with
-  `--user-data-dir=<temp>` so the owner's save isn't touched. npm 11 skips Electron's download step: if
+  instead, and you must tell the owner that path. To check a build, run `node scripts/smoke-app.mjs`
+  (a throwaway profile, so the owner's save isn't touched; `--owner-save` starts from a copy of it). npm 11 skips Electron's download step: if
   `npx electron` says it failed to install, unzip the cached zip in
   `%LOCALAPPDATA%\electron\Cache` into `node_modules/electron/dist` and write `electron.exe` to
   `node_modules/electron/path.txt`.
@@ -186,6 +186,20 @@ is in flight, and the next steps in order. Read it first, and rewrite it at the 
   meshes, `colliders.doors/buildings`), so new props are checked for free; a FAIL line names the
   piece and its position. `tests/playtest/town.py` checks the town's layout: reachability, overlaps,
   slopes, doors, NPC spots, gates and roads, orphan props.
+
+- **Ashford Vale v2 (in progress, branch `world-v2`, PR #15 held with `hold`).** DESIGN.md "Ashford
+  Vale v2" has the plan and a done/not-done checklist. `src/world/map.js` is the whole region as data:
+  `RIM` (foot of the mountain wall), hills, `ROADS` (roads in classes road/track/path, each with a
+  cut-and-fill profile made on first use), `JUNCTIONS` (signpost boards computed from the road graph),
+  `EXITS` (three sealed passes, `locked: true`), `POIS` (flattened pads for sites), `LANDMARKS`,
+  `WARNINGS`, `rings(x, z)` and `biomeAt(x, z)`. `node scripts/bake-world.mjs` writes `height.bin`,
+  `ground.png` and the biome maps; `node scripts/vale-plan.mjs out.jpg [--px 4 --box x0,z0,x1,z1]`
+  draws the plan. Structures go through `SiteKit` (`sitekit.js`, a `TownKit` with frames, blocks and
+  profiles; its audit ids start at 1e6 so they never clash with the village's) and `Sites` (`sites.js`,
+  built after the village, in its own Batcher so the camera collides with it). Roads follow
+  `surface0` (land plus pads, before roads, river and lake), so a road that climbs faster than its
+  grade shows as a deep cutting: check profile deviations after moving waypoints. The town terrace is
+  never cut by roads (they only cut beyond 12 m outside the wall).
 
 ## Next
 

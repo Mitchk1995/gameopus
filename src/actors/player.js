@@ -410,8 +410,8 @@ export class Player {
   #steer(dt, wish, moving, cap, turn) {
     const input = this.input;
     let target = moving ? (this.walking ? SPEED.walk : input.down('ShiftLeft') || input.down('ShiftRight') ? SPEED.sprint : SPEED.jog) : 0;
-    // Shallow water slows you down.
-    const depth = this.world.waterDepth(this.pos.x, this.pos.z);
+    // Shallow water slows you down, but only where your feet are in it (not on a bridge deck above it).
+    const depth = Math.min(this.world.waterDepth(this.pos.x, this.pos.z), WORLD.water - this.pos.y);
     if (depth > 0.15) target *= 1 - Math.min(0.55, depth * 0.6);
     target = Math.min(target, cap);
     if (this.aimYaw != null) target = Math.min(target, SPEED.aim);

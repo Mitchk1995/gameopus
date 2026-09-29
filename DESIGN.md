@@ -102,6 +102,36 @@ licences that allow redistribution qualify.
 | MoCap Online, T.C. Sword free pack | free; MoCap Online EULA (not open) | UE/FBX mocap | Out unless its EULA allows raw files in a public repo. |
 | CMU mocap (RancidMilk conversions), Bandai Namco dataset | free / CC BY-NC-ND | various | Out: no sword combat, or no derivatives allowed. |
 
+No more outfits exist for our skeleton. The free Standard download of Modular Character Outfits
+(Fantasy) holds only the Peasant and Ranger outfits, male and female; its other ten outfits are in the
+paid Source edition (we only use what is free), and Quaternius has published no other outfit pack for the
+Universal Base Characters rig as of September 2026 (checked on quaternius.com and quaternius.itch.io; the
+older Ultimate Modular Men/Women packs are on a different rig).
+People are therefore told apart by what the character factory can do with those four outfits.
+
+### Villagers who look like themselves
+
+The owner noticed a villager in their own green ranger outfit, and a critic found the town full of
+clones (two peasants in one look, three in the ranger's, every head of hair the same silver). Now a
+look (`look` in `src/content/people.js`, fields listed at the top of `src/actors/character.js`) is
+built from these levers, so ten people share four outfits and nobody is a copy:
+
+- **Pieces.** Garments can come from different outfits of the same body (`parts`: a ranger torso and
+  boots over peasant trousers), and the ranger's hood, pauldron, bracers and belts are options (`addons`).
+- **Dyes.** `dye` colours each garment: the peasant cloth is multiplied by it, and on the ranger
+  outfit it *replaces the green* cloth while leaving leather, metal and trim alone (`leather` colours
+  those). The green ranger outfit is the player's; anyone else wearing ranger pieces has them dyed.
+- **Hair.** The hair files are grey, so `hairColor` (black, darkbrown, brown, chestnut, auburn, ginger,
+  blond, fair, grey, white, or a hex) tints hair, beard and brows; `beardColor` and `browColor` override.
+- **Skin, height, build.** `skin` (pale to dark, or a hex) tints the face and hands together; `scale`
+  and `build` are height and width, within a few percent.
+- **Gear.** A few things are built in code and hung on the rig: an `apron` and a `tabard` (cloth
+  panels skinned to spine, hips and legs so they follow the body), and `hat`s (straw, knit, pointed).
+
+`tests/playtest/npc_looks.py` fails if two villagers, or a villager and the player, are too alike
+(a "look distance" summed over garments, colours in Lab, hair, beard, skin, gear, height and build),
+or if anyone wears the ranger's green. It also photographs the cast (`docs/town/after/npc_lineup.jpg`, with `npc_lineup_left.jpg` and `npc_lineup_right.jpg` close-ups).
+
 ## Roadmap
 
 - [x] M1 World and feel: sky and sun, terrain, water, trees and grass, the village, the
@@ -168,3 +198,134 @@ of the market stalls and Hob shuttles between the hearth and the well.
 
 **Kept.** Roads keep their far endpoints (mine, bandit woods, jetty), the mine and cave did not move,
 building generation and colliders are untouched.
+
+## Ashford Vale v2 (the region plan)
+
+The owner's note on the first version of the valley: "an area surrounded by trees and mountains in the
+distance is not a game lol. It is kind of ridiculous that this is even an area." It was a scenic bowl:
+an 800 m valley, a ring of mountain wallpaper, an invisible clamp at the edge, a river with no source, a road
+that stopped at the water. Nothing pulled you outward. Vale v2 keeps the town, the mine, the lake, both
+camps and every quest spot where they were, and makes the valley the first region of a real map:
+**it has walls you can see, three named ways out that are clearly meant to lead somewhere (all sealed for
+now), a hierarchy of roads that go places, rings of danger with their own look, and landmarks you
+can see from the square that make you want to walk to them.**
+
+Coordinates: +x east, +z south, y up, water at y = 0. The data lives in `src/world/map.js` (`EXITS`,
+`POIS`, `ROADS`, `NODES`, the rim, the rings); `node scripts/vale-plan.mjs` draws it top-down
+(`docs/world/plan.jpg`), and `node scripts/bake-world.mjs` bakes the height and ground maps from it.
+
+```
+                        NORTH  (dwarf mountains, snow)
+       . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+     . ^^^^^^^^^^^^^^^^^^^^[N PASS]^^^^^^^^^^^^^^^^^Falls^^^^^^^^^ .
+    . ^^^                   ||  Highroad                |  ~ river   ^^^ .
+   . ^^^   MINE HILL        ||                     ABBEY      ~        ^^^ .
+  . ^^  [headframe+smoke]   ||   .-'-.     ruin on   HILL      ~   [quarry]^ .
+  .^^   (Old Warren mouth)--'   /valley\   the crown           ~ BEACON RIDGE ^ .
+  .^   .. quarry road ..       col       .. footpath ..        ~   . [sawmill]  ^ .
+ W.^   GOBLIN WOODS   [goblin camp]      stones o o o          ~      .  ^
+ E.^ dark oak / ash /pine  ..  [Ashford]= = = = = = = = BRIDGE ==~== [beacon tower]
+ S.^   [hermit]  woodcutters   (walled  ) Bridge Street          ~  farms  waystation .
+ T.^^        track ....... . (  town    )                         ~ fields   |   [fort]== E PASS
+  .^^^   birch grove   .   Lake Street                          ~     old      |  BANDIT COUNTRY
+   .^^^^        .  .  .  [fishing hamlet]                     ~   battlefield  |    (gatehouse)
+    .^^^^^ marsh  [dock][lighthouse]                        ~ ~                  |
+     .^^^^^^ (sunken ruin) LAKE ~~~~~ .. Harbour Road ..~ ~                     |
+       .^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[S PASS toll bar]^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        SOUTH  (the sea, Saltmere harbour)
+```
+
+**The rim.** The mountains are a real wall now: a cliff face, then ridges, then snow. The foot of the
+wall is a hand-drawn line (`RIM` in map.js) so the shape is designed, not noise: buttresses and coves, a cove for
+the river's falls in the north, a lake that laps against the south cliffs. The last 60 m before the map
+edge are always sheer rock or deep water, so the map edge is a place you can't reach, not a wall of air.
+Three passes cut through it, each a gorge with cliffs on both sides:
+- **North Pass (the Highroad, to the dwarf mountains).** From the quarry the Highroad climbs the valley between Mine
+  Hill and Abbey Hill and switchbacks up the wall to a stone tunnel portal. The tunnel has collapsed: rubble fills it
+  and the Delvers' notice tells you why. The Old Warren under Mine Hill is the way the goblins got at the props.
+- **East Pass (bandit country, to Redwater Keep).** Bridge Street runs over the bridge, through the farms, past the
+  waystation and the bandit fort, into a gorge that a barred gatehouse closes. The Warden's notice says it stays shut
+  while the bandits hold the road.
+- **South Pass (the Harbour Road, to Saltmere).** Lake Street ends at the dock; the Harbour Road follows the
+  lakeshore round to a toll bar across a rock shelf. The toll keeper's notice says why the road is shut.
+Each exit is a row in `EXITS` (id, position, facing, closure kind, sign text, `locked: true`), so a quest that
+sets `locked: false` opens the way (`world.sites.setLocked(id, false)`).
+
+**Roads (a hierarchy you can read on the ground).** Cobbled main streets inside the town; wide dirt roads
+gate to gate (Quarry Road and the Highroad, Bridge Street and the East Road, Lake Street and the Harbour Road);
+narrower tracks for farm lane, woodcutters' track and the ridge track; footpaths to camps and sites. Roads follow the
+contours and climb in switchbacks, they are cut into slopes, and they ford or bridge the river: **the bridge is real**
+(a stone arch, walkable deck, parapets, colliders). Every junction has a signpost with destinations and distances,
+computed from the road graph, so a sign never lies. Danger boundaries have warning posts.
+
+**Rings of danger.** Each ring has its own ground, plants and light:
+1. *Town* (safe): cobbles, lamps, warm light.
+2. *Farmland and meadow*: bright grass with flowers, golden fields, hedgerows, lone oaks, birch stands. Clear light.
+3. *The woods, goblin country* (west and north-west): dark mossy floor, dense oak, ash and pine, cool green mist.
+4. *Bandit country* (east): scorched dry grass, pines and dead snags, a fort with a palisade and a watch tower on a rise, hazy amber light.
+5. *Mine Hill and the Old Warren* (north-west): bare grey rock, scree and spoil heaps, a smoking headframe, cold grey light.
+Around the edges, *the wall* (cliffs) and *the passes* (bleak, windy, snow on the ridges).
+
+**Landmarks you can see from the square** (each a distinct silhouette, built from kit pieces and procedural geometry):
+the **beacon tower** on the knoll at the far end of Bridge Street, the **mine headframe with its smoke plume** on the
+north-west hill, the **ruined abbey** on Abbey Hill straight up Lake Street over the bank, and the **lighthouse** and
+**lantern-lit dock** on the lake to the south.
+
+**The land tells its story.** The river is born at Whitespring Falls under the north cliffs, runs down the east
+side of the vale past a sawmill site, under the bridge, through the farms, into the lake. The lake has a
+reed marsh on its west and south-west shores. Inside the vale there is meadow, a birch grove, a rocky heath
+with a standing-stone hill, the marsh, farmland, woods and dry scrub, each with its own ground texture and trees.
+
+**Anchors for the points of interest** (`POIS` in map.js: flattened pads with roads or footpaths to them, a cairn or
+post on each, no buildings yet): hermit's hut, standing-stones shrine, sunken ruin in the lake shallows,
+waystation inn, stone quarry, sawmill on the river, fishing hamlet, old battlefield.
+
+**Deliberately not done here.** No new enemies (the two camps are re-dressed, not moved); no other regions
+behind the passes (they are sealed and end in rock); quests only got new geography in their text, no new steps.
+
+The real layout, drawn from the data: `docs/world/plan.jpg` (exits red, points of interest yellow, landmarks
+blue, junction posts white squares); a 3D overhead is `docs/world/overhead.jpg`.
+
+### Status (first session; the branch is a work in progress)
+
+Done and checked:
+- [x] Terrain shape in `map.js`: the rim wall (`RIM`, stepped face, spurs, named peaks), Abbey Hill, beacon knoll and
+      east ridge, fort rise, mine hill, rocky-heath bumps, marsh band; river with a real source pool at the north cliffs
+      and a course to the lake; the lake nestled against the south cliffs. Reachability by foot stays inside the wall
+      (checked in Node, `.scratch`-style flood; a proper `world.py` check is still to write).
+- [x] Road network as data (`ROADS`: 22 roads in three classes) with cut-and-fill profiles that follow the land at a gentle
+      grade, junction detection and signpost boards computed from the roads (`JUNCTIONS`), warning posts (`WARNINGS`).
+- [x] `EXITS` (north tunnel, east gatehouse, south toll bar, all `locked: true`, with notice text) and the gorge
+      carved beyond the east and south closures; `POIS` (the eight pads, flattened, each on a path); `LANDMARKS` positions.
+- [x] Biome maps baked (`biome_a.png`, `biome_b.png`) and read by the terrain shader (meadow flowers, heath stone, dark wet
+      marsh, scorched dry scrub, mossy woods, sooty mine spoil, cliff strata).
+- [x] The stone **bridge** on Bridge Street (arch, humped walkable deck, kerbs, timber rails, lamps), through `SiteKit`
+      (`sitekit.js`, `bridge.js`, `sites.js`); passes the geometry audit; `town.py` still passes.
+- [x] `scripts/vale-plan.mjs` (top-down plan, `--box`/`--px` for zoomed crops, `--ascii`).
+
+Not done yet (next steps, in this order):
+- [ ] **Closures** (`exits.js`): collapsed-tunnel portal with rubble, barred gatehouse, toll bar with hut; colliders at least
+      2.4 m tall so they can't be hopped; `world.sites.setLocked(id, on)`; notice interactables (`station: 'sign'` in
+      `game.js` `#station`, shown with `talk.show(..., { kind: 'narrate' })` like the wrecked cart). The gorges beyond the
+      east and south closures need the `w` (floor half-width) widened to about 11 m at the closure so towers stand on level ground.
+- [ ] **Signposts** (`waymarks.js`): one post per `JUNCTIONS` row using `TownKit.sign`, the `WARNINGS` posts, a cairn and name
+      board on every POI pad.
+- [ ] **Landmarks** (`landmarks.js`): abbey ruin on Abbey Hill (long south wall with pointed windows, tower stump, gable end),
+      beacon tower with a fire on the knoll, mine headframe + boiler shed + smoke plume at `LANDMARKS.headframe`,
+      lighthouse on the east shore and lantern posts along the jetty. Check by screenshot that three show from the spawn or square.
+- [ ] **Bandit fort** (palisade radius ~19 m round `BANDIT_CAMP`, west and east gates open, watch tower; `fight.js` is off limits
+      and keeps its tents and fire) and goblin camp re-dress (stake arcs, totems) in a new `fort.js`.
+- [ ] **River source** (waterfall ribbon + spray at `FALLS`), reeds in the marsh, tree kinds per ring (`forestDensity`:
+      birch groves, willows, dead pines, heath gorse), keep trees off roads/pads/closures, farm fences and fields.
+- [ ] **Mood** per ring (fog colour and distance, sun tint, exposure blended by `rings(x, z)` each frame, cheap uniforms only).
+- [ ] Minimap: roads by class, exits, POIs. Lore/people/quest text for the new geography (`lore.js`, `people.js`).
+- [ ] `tests/playtest/world.py` (first line `# ci paths=src/world/,src/content/,src/game/,public/assets/world,tests/playtest/world`):
+      reachability from the spawn to every gate, the bridge, closures, mine mouth, dungeon entrance, camps, dock and POI pads;
+      nothing reachable within 60 m of the clamp; river wet from source to lake; nothing inside roads/pads/bridge; a sign at every
+      junction; `locked` flags. Then the full regression (every `# ci` scenario, quest_*, bank_fish_cook, mage_shop, chat,
+      dungeon, ranged, magic, bow_pose, packed_page, `npm run build`, `npm run artifact`).
+- [ ] Street-level and ridge-level screenshots of each exit, landmark and the fort into `docs/world/`.
+
+Known problems to fix on the way: the south end of the lake can be walked to about 5 m past the 326 m line (the lake carve
+softens the cliff there), the east and south passes are perfectly smooth V-notches, the mountain faces show vertical
+"pleats" (add craggy noise and lean the cliff texture), meadow and dry scrub tints are too bleached in bright light.

@@ -21,6 +21,7 @@ export class Water {
     });
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uHeight = { value: terrain.heightTex };
+      sh.uniforms.uFlow = { value: terrain.flowTex };
       sh.uniforms.uHalf = { value: WORLD.half };
       sh.uniforms.uN = { value: WORLD.size + 1 };
       sh.uniforms.uTime = this.time;
@@ -29,9 +30,11 @@ export class Water {
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
-          uniform sampler2D uHeight;
+          uniform sampler2D uHeight, uFlow;
           uniform float uHalf, uN, uTime;
           varying vec3 vWPos;
+          vec3 wFlow;
+          float wWhite;
           float wHash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5); }
           float wNoise(vec2 p) {
             vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -45,11 +48,33 @@ export class Water {
           float foamLine = smoothstep(0.28, 0.0, abs(wDepth - 0.1 - 0.06 * sin(uTime * 1.3 + vWPos.x * 0.7 + vWPos.z * 0.5)));
           float foam = foamLine * smoothstep(0.35, 0.75, wNoise(vWPos.xz * 1.7 + uTime * 0.35));
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.95, 0.96), foam * 0.8);
-          diffuseColor.a = clamp(0.25 + wShore * 0.7 + foam * 0.5, 0.0, 0.95) * smoothstep(-0.25, 0.08, wDepth);`)
+          diffuseColor.a = clamp(0.25 + wShore * 0.7 + foam * 0.5, 0.0, 0.95) * smoothstep(-0.25, 0.08, wDepth);
+          // The current (flow.png): which way and how fast, and how broken the surface is. White water
+          // churns under the falls, over the riffles and the ford, in streaks carried downstream.
+          vec3 wF = texture2D(uFlow, vWPos.xz / (uHalf * 2.0) + 0.5).rgb;
+          wFlow = vec3((wF.rg - 0.5) * 2.0, wF.b);
+          float wSp = length(wFlow.xy);
+          vec2 wAl = wSp > 0.01 ? wFlow.xy / wSp : vec2(1.0, 0.0);
+          vec2 wq = vec2(dot(vWPos.xz, wAl), dot(vWPos.xz, vec2(-wAl.y, wAl.x)));
+          float churn = wNoise(vec2(wq.x * 0.8 - uTime * (0.5 + wSp * 2.6), wq.y * 2.6)) * 0.6 + wNoise(vWPos.xz * 2.1 + vec2(uTime * 0.9, -uTime * 0.7)) * 0.4;
+          wWhite = smoothstep(0.5, 0.8, churn + wFlow.z * 0.5) * wFlow.z * smoothstep(-0.05, 0.25, wDepth);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.88, 0.92, 0.93), wWhite * 0.85);
+          diffuseColor.a = max(diffuseColor.a, wWhite * 0.92);`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+          roughnessFactor = mix(roughnessFactor, 0.55, wWhite);`)
         .replace('#include <normal_fragment_maps>', `
           vec2 wuv1 = vWPos.xz * 0.11 + vec2(uTime * 0.021, uTime * 0.013);
           vec2 wuv2 = vWPos.xz * 0.043 - vec2(uTime * 0.012, -uTime * 0.017);
           vec3 wn = texture2D(normalMap, wuv1).xyz * 2.0 - 1.0 + texture2D(normalMap, wuv2).xyz * 2.0 - 1.0;
+          // On the river the ripples ride the current: two copies of the ripple map, each carried
+          // downstream and faded in turn so neither stretches too far.
+          vec2 wFl = wFlow.xy * 1.5;
+          float ph0 = fract(uTime * 0.3), ph1 = fract(uTime * 0.3 + 0.5);
+          vec2 wb = vWPos.xz * 0.14;
+          vec3 fA = texture2D(normalMap, wb - wFl * ph0 * 0.46).xyz * 2.0 - 1.0;
+          vec3 fB = texture2D(normalMap, wb - wFl * ph1 * 0.46 + 0.37).xyz * 2.0 - 1.0;
+          vec3 fN = mix(fA, fB, abs(ph0 - 0.5) * 2.0) * (1.6 + wFlow.z * 1.6);
+          wn = mix(wn, fN, smoothstep(0.03, 0.18, length(wFlow.xy)));
           wn.xy *= normalScale;
           vec3 wWorldN = normalize(vec3(wn.x, 2.0, wn.y));
           normal = normalize((viewMatrix * vec4(wWorldN, 0.0)).xyz);`);

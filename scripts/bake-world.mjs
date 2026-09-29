@@ -1,11 +1,16 @@
 // Bakes the designed map (src/world/map.js) into data the game loads instantly:
 //   public/assets/world/height.bin  Int16 heights in centimetres, 801 x 801 samples (1 m apart)
 //   public/assets/world/ground.png  RGB ground-cover weights: path, forest floor, cobble (sand comes from height)
-// Run after editing map.js:  node scripts/bake-world.mjs
+//   public/assets/world/biome_a.png RGB biome weights: meadow, rocky heath, marsh   (512 x 512, 1.56 m a pixel)
+//   public/assets/world/biome_b.png RGB biome weights: dry scrub, woodland moss, mine dust and scree
+//   public/assets/world/shore.png   RGB: sand and gravel bars, reeds, the flax field       (512 x 512)
+//   public/assets/world/fields.png  RGB: wheat, green crops, ploughed soil                  (512 x 512)
+//   public/assets/world/flow.png    RGB: the water's current (x, z as 0.5 +- 0.5) and how rough it is
+// Run after editing map.js (or ashford.js):  node scripts/bake-world.mjs
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
-import { WORLD, heightAt, groundAt } from '../src/world/map.js';
+import { WORLD, heightAt, groundAt, biomeAt, shoreAt, fieldsAt, flowAt } from '../src/world/map.js';
 
 const OUT = path.resolve('public/assets/world');
 await mkdir(OUT, { recursive: true });
@@ -18,13 +23,6 @@ for (let j = 0; j < N; j++)
 await writeFile(path.join(OUT, 'height.bin'), Buffer.from(heights.buffer));
 console.log(`height.bin ${N}x${N} in ${Date.now() - t0} ms`);
 
-const hAt = (x, z) => {
-  const fx = Math.min(N - 1.001, Math.max(0, x + WORLD.half)), fz = Math.min(N - 1.001, Math.max(0, z + WORLD.half));
-  const i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j;
-  const a = heights[j * N + i], b = heights[j * N + i + 1], c = heights[(j + 1) * N + i], d = heights[(j + 1) * N + i + 1];
-  return (a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz) / 100;
-};
-
 const S = 1024;
 const px = Buffer.alloc(S * S * 3);
 const t1 = Date.now();
@@ -36,3 +34,33 @@ for (let j = 0; j < S; j++)
   }
 await sharp(px, { raw: { width: S, height: S, channels: 3 } }).png({ compressionLevel: 9 }).toFile(path.join(OUT, 'ground.png'));
 console.log(`ground.png ${S}x${S} in ${Date.now() - t1} ms`);
+
+const B = 512;
+const a = Buffer.alloc(B * B * 3), b = Buffer.alloc(B * B * 3);
+const t2 = Date.now();
+for (let j = 0; j < B; j++)
+  for (let i = 0; i < B; i++) {
+    const x = ((i + 0.5) / B) * WORLD.size - WORLD.half, z = ((j + 0.5) / B) * WORLD.size - WORLD.half;
+    const w = biomeAt(x, z).map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255));
+    for (let k = 0; k < 3; k++) {
+      a[(j * B + i) * 3 + k] = w[k];
+      b[(j * B + i) * 3 + k] = w[3 + k];
+    }
+  }
+await sharp(a, { raw: { width: B, height: B, channels: 3 } }).png({ compressionLevel: 9 }).toFile(path.join(OUT, 'biome_a.png'));
+await sharp(b, { raw: { width: B, height: B, channels: 3 } }).png({ compressionLevel: 9 }).toFile(path.join(OUT, 'biome_b.png'));
+console.log(`biome_a.png / biome_b.png ${B}x${B} in ${Date.now() - t2} ms`);
+
+const t3 = Date.now();
+const maps = { shore: [shoreAt, (v) => v], fields: [fieldsAt, (v) => v], flow: [flowAt, (v, k) => (k < 2 ? 0.5 + v * 0.5 : v)] };
+for (const [name, [fn, enc]] of Object.entries(maps)) {
+  const buf = Buffer.alloc(B * B * 3);
+  for (let j = 0; j < B; j++)
+    for (let i = 0; i < B; i++) {
+      const x = ((i + 0.5) / B) * WORLD.size - WORLD.half, z = ((j + 0.5) / B) * WORLD.size - WORLD.half;
+      const w = fn(x, z);
+      for (let k = 0; k < 3; k++) buf[(j * B + i) * 3 + k] = Math.round(Math.min(1, Math.max(0, enc(w[k], k))) * 255);
+    }
+  await sharp(buf, { raw: { width: B, height: B, channels: 3 } }).png({ compressionLevel: 9 }).toFile(path.join(OUT, `${name}.png`));
+}
+console.log(`shore.png / fields.png / flow.png ${B}x${B} in ${Date.now() - t3} ms`);
