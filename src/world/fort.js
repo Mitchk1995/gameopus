@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BANDIT_CAMP, GOBLIN_CAMP, roadById, roadDistance } from './map.js';
-import { beam, log, clearTrees, extraMaterials } from './landmarks.js';
+import { beam, log, clearTrees, extraMaterials, timberBox } from './landmarks.js';
 import { Smoke } from './smoke.js';
 import { rng } from './buildings.js';
 
@@ -229,12 +229,12 @@ function walkway(sk, xm, C, R, a0, a1, rnd, stairEnd) {
     // Bearers across at each end, joists along, then the planks.
     for (const b of [b0, b1]) {
       const p = polar(C, b, r0), q = polar(C, b, r1);
-      beam(sk, [p[0], y - 0.19, p[1]], [q[0], y - 0.19, q[1]], 0.16, 0.18, m.wood);
+      beam(sk, [p[0], y - 0.19, p[1]], [q[0], y - 0.19, q[1]], 0.16, 0.18, xm.timber);
     }
     const len = (b1 - b0) * ((r0 + r1) / 2);
     const [px, pz] = polar(C, bm, (r0 + r1) / 2);
     const yaw = -bm + Math.PI / 2;
-    sk.put(sk.box(+(len + 0.06).toFixed(2), 0.09, +(r1 - r0).toFixed(2)), m.wood, px, y - 0.1, pz, yaw);
+    sk.put(timberBox(sk, len + 0.06, 0.09, r1 - r0, 'x'), xm.timber, px, y - 0.1, pz, yaw);
     const sh = sk.colliders.addBox(px, pz, len / 2 + 0.04, (r1 - r0) / 2, yaw, y - 0.14, y - 0.01);
     sh.floor = true;
   }
@@ -247,7 +247,7 @@ function walkway(sk, xm, C, R, a0, a1, rnd, stairEnd) {
   for (let i = 0; i < steps - 1; i++) {
     const [x, z] = polar(C, b, r0 - run * (steps - 1 - i) + run / 2 - 0.02);
     const g = sk.ground(x, z), top = g + rise * (i + 1);
-    sk.put(sk.box(1.05, +(top - g + 0.3).toFixed(2), +(run + 0.02).toFixed(2)), m.wood, x, g - 0.3, z, yaw);
+    sk.put(timberBox(sk, 1.05, top - g + 0.3, run + 0.02, 'x'), xm.timber, x, g - 0.3, z, yaw);
     const st = sk.colliders.addBox(x, z, 0.66, run / 2 + 0.01, yaw, g - 0.3, top);
     st.floor = true;
   }
@@ -255,7 +255,7 @@ function walkway(sk, xm, C, R, a0, a1, rnd, stairEnd) {
   for (const s of [-1, 1]) {
     const off = s * 0.58;
     const pTop = polar(C, b + off / r0, r0 - 0.05), pBot = polar(C, b + off / (r0 - steps * run), r0 - steps * run - 0.1);
-    beam(sk, [pBot[0], sk.ground(pBot[0], pBot[1]) + 0.1, pBot[1]], [pTop[0], deckY(pTop[0], pTop[1]) - 0.05, pTop[1]], 0.08, 0.24, m.wood);
+    beam(sk, [pBot[0], sk.ground(pBot[0], pBot[1]) + 0.1, pBot[1]], [pTop[0], deckY(pTop[0], pTop[1]) - 0.05, pTop[1]], 0.08, 0.24, xm.timber);
   }
 }
 
@@ -283,7 +283,7 @@ function watchTower(sk, xm, x, z, face, rnd) {
   }
   // The platform: planks on bearers, a rail of poles, a board roof on the legs.
   const k = B + ((T - B) * PL) / PL;
-  sk.put(sk.box(+(2 * k + 0.7).toFixed(2), 0.12, +(2 * k + 0.7).toFixed(2)), m.wood, x, g + PL - 0.06, z, face);
+  sk.put(timberBox(sk, 2 * k + 0.7, 0.12, 2 * k + 0.7, 'x'), xm.timber, x, g + PL - 0.06, z, face);
   for (const h of [0.55, 1.05]) for (let f = 0; f < 4; f++) {
     const i = order[f], j = order[(f + 1) % 4];
     const [ax, az] = corner(i, PL + h), [bx, bz] = corner(j, PL + h);
@@ -292,7 +292,7 @@ function watchTower(sk, xm, x, z, face, rnd) {
   const rk = B + ((T - B) * (PL + ROOF)) / PL;
   for (const sgn of [-1, 1]) {
     const [rx, rz] = at(0, sgn * rk * 0.5);
-    sk.put(sk.box(+(2 * rk + 0.9).toFixed(2), 0.1, +(rk * 1.25).toFixed(2)), m.wood, rx, g + PL + ROOF + 0.12, rz, face, 1, 1, 1, sgn * 0.42, 0);
+    sk.put(timberBox(sk, 2 * rk + 0.9, 0.1, rk * 1.25, 'z'), xm.timber, rx, g + PL + ROOF + 0.12, rz, face, 1, 1, 1, sgn * 0.42, 0);
   }
   // The ladder up the front face, leaning out at its foot.
   const [fx, fz] = at(0, -B - 1.2), [tx, tz] = at(0, -T - 0.42);
@@ -303,7 +303,7 @@ function watchTower(sk, xm, x, z, face, rnd) {
   for (let h = 0.35; h < PL + 0.6; h += 0.36) {
     const t = (h + 0.1) / (PL + 1.0);
     const px = fx + (tx - fx) * t, pz = fz + (tz - fz) * t;
-    log(sk, [px - c * 0.3, g + h, pz + s * 0.3], [px + c * 0.3, g + h, pz - s * 0.3], 0.025, 0.025, m.wood, 5);
+    log(sk, [px - c * 0.3, g + h, pz + s * 0.3], [px + c * 0.3, g + h, pz - s * 0.3], 0.025, 0.025, xm.barkDark, 5);
   }
   // Solid under the platform (legs and braces), and the ladder's foot.
   sk.colliders.addBox(x, z, B + 0.2, B + 0.2, face, g - 0.5, g + PL - 0.1);

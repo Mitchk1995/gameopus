@@ -21,13 +21,77 @@ import { findMaterial } from './townkit.js';
 // ------------------------------------------------------------------ shared pieces (fort.js uses them too)
 const TAU = Math.PI * 2;
 
-// A box beam between two points (centre line), w wide and h deep.
+// A box beam between two points (centre line), w wide and h deep. Timber gets its grain along the beam.
 export function beam(sk, a, b, w, h, mat) {
   const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
   const L = Math.hypot(dx, dy, dz), hor = Math.hypot(dx, dz);
-  const key = `beam${w}|${h}|${L.toFixed(3)}`;
-  const g = (sk.geo[key] ??= new THREE.BoxGeometry(w, h, L));
+  const grain = !!mat.userData.grain;
+  const key = `beam${w}|${h}|${L.toFixed(3)}${grain ? 'g' : ''}`;
+  const g = (sk.geo[key] ??= grain ? grainUV(new THREE.BoxGeometry(w, h, L), 'z', mat.userData.grain) : new THREE.BoxGeometry(w, h, L));
   sk.put(g, mat, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2, Math.atan2(dx, dz), 1, 1, 1, -Math.atan2(dy, hor), 0);
+}
+
+// Sawn timber: the kit's wood is a trim sheet (planks at the top, end grain, then a grey stone strip),
+// so world-projected UVs on a beam land on the stone strip. The timber material is the sheet's plank
+// band on its own, and its geometry gets UVs with the grain (u) along the piece:
+//   along = 'x' | 'y' | 'z'  grain along that local axis on every face that contains it;
+//   along = 'h'              horizontal boards on the walls (cladding), grain along x on top.
+// `tile` = [metres per repeat along the grain, metres per repeat across the boards].
+export function grainUV(g, along, tile) {
+  const [tu, tv] = tile;
+  const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
+  const A = { x: 0, y: 1, z: 2 }[along];
+  const c = [0, 0, 0], nn = [0, 0, 0];
+  for (let i = 0; i < p.count; i++) {
+    c[0] = p.getX(i); c[1] = p.getY(i); c[2] = p.getZ(i);
+    nn[0] = Math.abs(n.getX(i)); nn[1] = Math.abs(n.getY(i)); nn[2] = Math.abs(n.getZ(i));
+    const ax = nn[0] >= nn[1] && nn[0] >= nn[2] ? 0 : nn[1] >= nn[2] ? 1 : 2;
+    const inFace = [0, 1, 2].filter((k) => k !== ax);
+    let ua, va;
+    if (along === 'h') { ua = ax === 1 ? 0 : ax === 0 ? 2 : 0; va = ax === 1 ? 2 : 1; }
+    else { ua = inFace.includes(A) ? A : inFace[0]; va = inFace.find((k) => k !== ua); }
+    uv.setXY(i, c[ua] / tu, c[va] / tv);
+  }
+  g.userData.wuv = true;
+  return g;
+}
+// A timber box (bottom at y = 0, like TownKit.box).
+export function timberBox(sk, w, h, d, along = 'x') {
+  const key = `tb${w.toFixed(3)}|${h.toFixed(3)}|${d.toFixed(3)}|${along}`;
+  return (sk.geo[key] ??= grainUV(new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0), along, sk.xm.timber.userData.grain));
+}
+// SiteKit.block in timber: an oriented box from `bottom` (or the lowest ground less a hand) up to `top`.
+export function timberBlock(sk, f, lx, lz, w, d, top, along, { bottom = null, turn = 0, solid = true } = {}) {
+  const [x, z] = f.at(lx, lz);
+  const y0 = bottom ?? sk.lowest(f, lx, lz, w, d) - 0.35;
+  sk.put(timberBox(sk, w, top - y0, d, along), sk.xm.timber, x, y0, z, f.yaw + turn);
+  if (!solid) return null;
+  const sh = sk.colliders.addBox(x, z, w / 2, d / 2, f.yaw + turn, y0, top);
+  if (top - y0 <= 1.02 && bottom !== null) sh.floor = true;
+  return sh;
+}
+// SiteKit.profile in timber (an extruded outline in the frame's (lx, y) plane, d thick).
+export function timberProfile(sk, f, lx, lz, y0, pts, d, along = 'x', { turn = 0 } = {}) {
+  const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+  const geo = grainUV(new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false }).translate(0, 0, -d / 2), along, sk.xm.timber.userData.grain);
+  const [x, z] = f.at(lx, lz);
+  sk.put(geo, sk.xm.timber, x, y0, z, f.yaw + turn);
+}
+
+// A band of rows v0..v1 of a trim-sheet texture (v = 0 at the top, as glTF stores them) as a texture
+// of its own that tiles both ways.
+function bandTexture(tex, v0, v1) {
+  const img = tex.image, W = img.width, H = img.height;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = Math.round((v1 - v0) * H);
+  c.getContext('2d').drawImage(img, 0, Math.round(v0 * H), W, c.height, 0, 0, W, c.height);
+  const t = new THREE.CanvasTexture(c);
+  t.flipY = false;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = tex.colorSpace;
+  t.anisotropy = Math.max(8, tex.anisotropy || 1);
+  return t;
 }
 
 // A round log between two points: r0 at a, r1 at b. Bark runs along it (u round, v along, `tile` m a repeat).
@@ -92,7 +156,18 @@ export async function extraMaterials(sk, assets) {
   enhance(whitewash);
   const ironDouble = sk.m.iron.clone();
   ironDouble.side = THREE.DoubleSide;
+  // The kit wood's dark plank band (rows 0.312..0.605 of the sheet), with its own normal and ORM maps.
+  const wood = sk.m.wood, crops = new Map();
+  const crop = (t) => t && (crops.get(t) ?? crops.set(t, bandTexture(t, 0.312, 0.605)).get(t));
+  const timber = wood.clone();
+  for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) if (wood[k]) timber[k] = crop(wood[k]);
+  // Named for the detail layer (wood grain); not an MI_ name, so the kit's UV density rules do not apply.
+  timber.name = 'Wood_Timber';
+  // At the kit's density the sheet repeats every 2.2 m, so the band (0.293 of it) every 0.645 m.
+  timber.userData = { grain: [2.2, 0.645] };
+  enhance(timber);
   sk.xm = {
+    timber,
     redBrick: findMaterial(sk.kit, 'MI_RedBrick') || sk.m.stone,
     bark: bark(pine, 0xa89c8e, 'Bark'),
     barkDark: bark(oak, 0x8a7a6a, 'BarkDark'),
@@ -510,9 +585,9 @@ function beacon(sk, xm, sites, smoke, keep) {
   const leaf = new THREE.Shape([[-0.62, 0], [0.62, 0], [0.62, 1.95]].map(([x, y]) => new THREE.Vector2(x, y)));
   leaf.absarc(0, 1.95, 0.62, 0, Math.PI, false);
   leaf.lineTo(-0.62, 0);
-  const lg = new THREE.ExtrudeGeometry(leaf, { depth: 0.1, bevelEnabled: false, curveSegments: 10 });
+  const lg = grainUV(new THREE.ExtrudeGeometry(leaf, { depth: 0.1, bevelEnabled: false, curveSegments: 10 }), 'y', xm.timber.userData.grain);
   const [lx, lz] = f.at(0, R0 - 0.02);
-  sk.put(lg, m.wood, lx, base - 0.02, lz, yaw);
+  sk.put(lg, xm.timber, lx, base - 0.02, lz, yaw);
   for (const h of [0.5, 1.6]) { const [sx, sz] = f.at(0, R0 + 0.1); sk.put(sk.box(1.1, 0.07, 0.04), m.iron, sx, base + h, sz, yaw); }
   // Two arrow slits facing the town.
   for (const [a, h] of [[yaw + Math.PI + 0.5, 5.2], [yaw + Math.PI - 0.4, 8.4]]) {
@@ -569,20 +644,20 @@ function headframe(sk, xm, smoke, keep) {
   // --- the shaft collar and its railing
   sk.begin('headframe shaft', ...f.at(SX, 0));
   for (const s of [-1, 1]) {
-    sk.block(f, SX, s * 1.55, 3.6, 0.5, base + 0.45, m.wood, { bottom: base - 0.5 });
-    sk.block(f, SX + s * 1.55, 0, 0.5, 2.6, base + 0.45, m.wood, { bottom: base - 0.5 });
+    timberBlock(sk, f, SX, s * 1.55, 3.6, 0.5, base + 0.45, 'x', { bottom: base - 0.5 });
+    timberBlock(sk, f, SX + s * 1.55, 0, 0.5, 2.6, base + 0.45, 'z', { bottom: base - 0.5 });
   }
   const [shx, shz] = f.at(SX, 0);
   sk.put(sk.box(2.62, 0.04, 2.62), xm.dark, shx, base + 0.2, shz, f.yaw);
   // A plank apron round the collar that the railing stands on.
   for (const s of [-1, 1]) {
-    sk.block(f, SX, s * 2.05, 4.7, 0.5, base + 0.08, m.wood, { bottom: base - 0.3, solid: false });
-    sk.block(f, SX + s * 2.05, 0, 0.5, 3.6, base + 0.08, m.wood, { bottom: base - 0.3, solid: false });
+    timberBlock(sk, f, SX, s * 2.05, 4.7, 0.5, base + 0.08, 'x', { bottom: base - 0.3, solid: false });
+    timberBlock(sk, f, SX + s * 2.05, 0, 0.5, 3.6, base + 0.08, 'z', { bottom: base - 0.3, solid: false });
   }
   // Railing round the collar (posts and two rails), with a gap on the shed side for the rope.
   for (const [a, b] of [[[-2.1, -2.1], [2.1, -2.1]], [[2.1, -2.1], [2.1, 2.1]], [[2.1, 2.1], [-2.1, 2.1]], [[-2.1, 2.1], [-2.1, -2.1]]]) {
-    for (const h of [0.62, 1.08]) beam(sk, P(SX + a[0], h, a[1]), P(SX + b[0], h, b[1]), 0.1, 0.1, m.wood);
-    beam(sk, P(SX + a[0], -0.2, a[1]), P(SX + a[0], 1.16, a[1]), 0.14, 0.14, m.wood);
+    for (const h of [0.62, 1.08]) beam(sk, P(SX + a[0], h, a[1]), P(SX + b[0], h, b[1]), 0.1, 0.1, xm.timber);
+    beam(sk, P(SX + a[0], -0.2, a[1]), P(SX + a[0], 1.16, a[1]), 0.14, 0.14, xm.timber);
   }
   sk.colliders.addBox(shx, shz, 2.25, 2.25, f.yaw, base - 0.5, base + 1.85);
   // --- the frame: four posts over the shaft (leaning in), girts, cross braces, the head, two back legs.
@@ -590,34 +665,34 @@ function headframe(sk, xm, smoke, keep) {
   const B = [0.72, 1.0], Tt = [0.45, 0.8]; // post positions (x S) at the foot and at the top
   const post = (px, pz, h) => { const t = (h + 0.3) / (H + 0.6); return [SX + px * (B[0] + (Tt[0] - B[0]) * t), pz * (B[1] + (Tt[1] - B[1]) * t)]; };
   const posts = [[-S, -S], [S, -S], [S, S], [-S, S]];
-  for (const [px, pz] of posts) { const a = post(px, pz, -0.3), b = post(px, pz, H + 0.3); beam(sk, P(a[0], -0.3, a[1]), P(b[0], H + 0.3, b[1]), 0.34, 0.34, m.wood); }
+  for (const [px, pz] of posts) { const a = post(px, pz, -0.3), b = post(px, pz, H + 0.3); beam(sk, P(a[0], -0.3, a[1]), P(b[0], H + 0.3, b[1]), 0.34, 0.34, xm.timber); }
   for (const h of [3.6, 7.2, H]) {
     for (let i = 0; i < 4; i++) {
       const a = post(...posts[i], h), b = post(...posts[(i + 1) % 4], h);
-      beam(sk, P(a[0], h, a[1]), P(b[0], h, b[1]), 0.24, 0.26, m.wood);
+      beam(sk, P(a[0], h, a[1]), P(b[0], h, b[1]), 0.24, 0.26, xm.timber);
     }
   }
   // Cross braces on the two faces the town sees (the lowest start above head height).
   for (const s of [-1, 1]) for (const [h0, h1] of [[1.9, 3.6], [3.6, 7.2], [7.2, H]]) {
     const a = post(-S, s * S, h0), b = post(S, s * S, h1);
-    beam(sk, P(a[0], h0, a[1]), P(b[0], h1, b[1]), 0.16, 0.2, m.wood);
+    beam(sk, P(a[0], h0, a[1]), P(b[0], h1, b[1]), 0.16, 0.2, xm.timber);
     const c = post(S, s * S, h0), d = post(-S, s * S, h1);
-    beam(sk, P(c[0], h0, c[1]), P(d[0], h1, d[1]), 0.16, 0.2, m.wood);
+    beam(sk, P(c[0], h0, c[1]), P(d[0], h1, d[1]), 0.16, 0.2, xm.timber);
   }
   // The head: two headers across the post tops, and on them the pair of bearers carrying the sheave.
   const topY = H + 0.3;
-  for (const px of [-S, S]) { const a = post(px, -S, topY), b = post(px, S, topY); beam(sk, P(a[0], topY + 0.13, a[1] - 0.2), P(b[0], topY + 0.13, b[1] + 0.2), 0.3, 0.26, m.wood); }
+  for (const px of [-S, S]) { const a = post(px, -S, topY), b = post(px, S, topY); beam(sk, P(a[0], topY + 0.13, a[1] - 0.2), P(b[0], topY + 0.13, b[1] + 0.2), 0.3, 0.26, xm.timber); }
   const hy = topY + 0.26 + 0.17, hl = post(-S, 0, topY)[0] - 0.35, hr = post(S, 0, topY)[0] + 0.35;
-  for (const s of [-1, 1]) beam(sk, P(hl, hy, s * 0.55), P(hr, hy, s * 0.55), 0.3, 0.34, m.wood);
+  for (const s of [-1, 1]) beam(sk, P(hl, hy, s * 0.55), P(hr, hy, s * 0.55), 0.3, 0.34, xm.timber);
   // Back legs from the rear posts' tops, raking down towards the shed.
   const foot = 3.2;
   for (const s of [-1, 1]) {
     const top = post(S, s * S, H - 0.2);
-    beam(sk, P(top[0] + 0.1, H - 0.2, top[1]), P(foot, -0.35, s * 1.9), 0.36, 0.36, m.wood);
+    beam(sk, P(top[0] + 0.1, H - 0.2, top[1]), P(foot, -0.35, s * 1.9), 0.36, 0.36, xm.timber);
     for (const t of [0.35, 0.68]) {
       const bx = top[0] + 0.1 + (foot - top[0] - 0.1) * t, by = H - 0.2 + (-0.35 - H + 0.2) * t;
       const pa = post(S, s * S, by);
-      beam(sk, P(pa[0], by, pa[1]), P(bx, by, s * (Math.abs(top[1]) + (1.9 - Math.abs(top[1])) * t)), 0.2, 0.22, m.wood);
+      beam(sk, P(pa[0], by, pa[1]), P(bx, by, s * (Math.abs(top[1]) + (1.9 - Math.abs(top[1])) * t)), 0.2, 0.22, xm.timber);
     }
   }
   // The sheave wheel turning between the bearers: rim, spokes, hub on an axle. (Heights above the yard.)
@@ -632,7 +707,7 @@ function headframe(sk, xm, smoke, keep) {
     beam(sk, P(SX, wy, 0), P(SX + Math.sin(a) * WR, wy + Math.cos(a) * WR, 0), 0.07, 0.07, m.iron);
   }
   // Bearing blocks carrying the axle ends, on the bearers.
-  for (const s of [-1, 1]) { const [bx, bz] = f.at(SX, s * 0.55); sk.put(sk.box(0.5, 1.2, 0.34), m.wood, bx, base + hy + 0.15, bz, f.yaw); }
+  for (const s of [-1, 1]) { const [bx, bz] = f.at(SX, s * 0.55); sk.put(timberBox(sk, 0.5, 1.2, 0.34, 'y'), xm.timber, bx, base + hy + 0.15, bz, f.yaw); }
   // The winding rope: off the back of the wheel down into the shed, and off the front down the shaft.
   beam(sk, P(SX + WR * 0.62, wy + WR * 0.78, 0), P(3.95, 3.0, 0), 0.05, 0.05, xm.rope);
   beam(sk, P(SX - WR, wy, 0), P(SX - WR, 0.15, 0), 0.05, 0.05, xm.rope);
@@ -664,24 +739,24 @@ function shed(sk, f, base, lx, lz, w, d, xm) {
   const [x, z] = f.at(lx, lz);
   sk.begin('winding shed', x, z);
   sk.block(f, lx, lz, w + 0.2, d + 0.2, base + 0.55, m.stone, { solid: false });
-  sk.block(f, lx, lz, w, d, base + 3.1, m.wood, { bottom: base + 0.5, solid: false });
+  timberBlock(sk, f, lx, lz, w, d, base + 3.1, 'h', { bottom: base + 0.5, solid: false });
   // Corner posts and a wall plate.
-  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) sk.block(f, lx + sx * (w / 2 - 0.06), lz + sz * (d / 2 - 0.06), 0.24, 0.24, base + 3.2, m.wood, { bottom: base + 0.5, solid: false });
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) timberBlock(sk, f, lx + sx * (w / 2 - 0.06), lz + sz * (d / 2 - 0.06), 0.24, 0.24, base + 3.2, 'y', { bottom: base + 0.5, solid: false });
   // Doors on the yard side, and a boarded window.
   const [dx, dz] = f.at(lx - 0.6, lz + d / 2 + 0.04);
-  sk.put(sk.box(1.5, 2.2, 0.1), m.wood, dx, base + 0.55, dz, f.yaw);
-  sk.put(sk.box(1.7, 0.16, 0.14), m.wood, dx, base + 2.75, dz, f.yaw);
+  sk.put(timberBox(sk, 1.5, 2.2, 0.1, 'y'), xm.timber, dx, base + 0.55, dz, f.yaw);
+  sk.put(timberBox(sk, 1.7, 0.16, 0.14, 'x'), xm.timber, dx, base + 2.75, dz, f.yaw);
   const [wx, wz] = f.at(lx + 1.4, lz + d / 2 + 0.04);
   sk.put(sk.box(0.9, 0.7, 0.08), xm.dark, wx, base + 1.7, wz, f.yaw);
-  sk.put(sk.box(1.05, 0.1, 0.12), m.wood, wx, base + 1.62, wz, f.yaw);
+  sk.put(timberBox(sk, 1.05, 0.1, 0.12, 'x'), xm.timber, wx, base + 1.62, wz, f.yaw);
   // Pitched board roof, ridge along lx.
   const pitch = 0.5, half = d / 2 + 0.45, run = half / Math.cos(pitch);
   for (const s of [-1, 1]) {
     const [rx, rz] = f.at(lx, lz + s * half * 0.5);
-    sk.put(sk.box(w + 0.8, 0.12, +run.toFixed(2)), m.wood, rx, base + 3.1 + Math.tan(pitch) * half * 0.5 - 0.3, rz, f.yaw, 1, 1, 1, s * pitch, 0);
+    sk.put(timberBox(sk, w + 0.8, 0.12, run, 'z'), xm.timber, rx, base + 3.1 + Math.tan(pitch) * half * 0.5 - 0.3, rz, f.yaw, 1, 1, 1, s * pitch, 0);
   }
   // Gable ends.
-  for (const s of [-1, 1]) sk.profile(f, lx + s * (w / 2 - 0.06), lz, base + 3.1, [[-d / 2, 0], [d / 2, 0], [0, Math.tan(pitch) * d / 2]], 0.12, m.wood, { turn: -Math.PI / 2 });
+  for (const s of [-1, 1]) timberProfile(sk, f, lx + s * (w / 2 - 0.06), lz, base + 3.1, [[-d / 2, 0], [d / 2, 0], [0, Math.tan(pitch) * d / 2]], 0.12, 'x', { turn: -Math.PI / 2 });
   sk.colliders.addBox(x, z, w / 2 + 0.1, d / 2 + 0.1, f.yaw, base - 0.5, base + 3.4);
 }
 
@@ -696,7 +771,7 @@ function timberStack(sk, f, base, lx, lz, xm) {
     for (let i = 0; i < 4; i++) {
       const o = (i - 1.5) * 0.46;
       const [bx, bz] = along ? f.at(lx, lz + o) : f.at(lx + o, lz);
-      sk.put(sk.box(along ? 2.2 : 0.3, 0.3, along ? 0.3 : 2.2), m.wood, bx, y - 0.05 + row * 0.3, bz, f.yaw);
+      sk.put(timberBox(sk, along ? 2.2 : 0.3, 0.3, along ? 0.3 : 2.2, along ? 'x' : 'z'), xm.timber, bx, y - 0.05 + row * 0.3, bz, f.yaw);
     }
   }
   const sh = sk.colliders.addBox(x, z, 1.15, 1.15, f.yaw, y - 0.3, y + 1.15);
@@ -761,7 +836,7 @@ function lighthouse(sk, xm, keep) {
   surround.holes.push(hole);
   sk.put(new THREE.ExtrudeGeometry(surround, { depth: 0.4, bevelEnabled: false }).translate(0, 0, -0.2), m.rock, dx, floor, dz, doorYaw);
   const [lx, lz] = f.at(0, R0 - 0.12);
-  sk.put(sk.box(1.1, 2.2, 0.1), m.wood, lx, floor, lz, doorYaw);
+  sk.put(timberBox(sk, 1.1, 2.2, 0.1, 'y'), xm.timber, lx, floor, lz, doorYaw);
   // Two windows up the tower, facing the lake and the town.
   for (const [a, h] of [[doorYaw + Math.PI, 5.5], [doorYaw + 2.3, 9.2]]) {
     const r = R0 - ((R0 - R1) * (h + 0.5)) / TOWER;
@@ -788,7 +863,7 @@ function keeperHut(sk, tf, tx, tz, yaw, R0, xm) {
   sk.block(f, 0, 0, W + 0.3, D + 0.3, floor, m.rock, { bottom: low - 0.4, solid: false });
   sk.block(f, 0, 0, W, D, floor + 2.6, xm.whitewash, { bottom: floor - 0.02, solid: false });
   const [dx, dz] = f.at(0.6, D / 2 + 0.03);
-  sk.put(sk.box(0.95, 1.95, 0.08), m.wood, dx, floor, dz, yaw);
+  sk.put(timberBox(sk, 0.95, 1.95, 0.08, 'y'), xm.timber, dx, floor, dz, yaw);
   sk.put(sk.box(1.15, 0.14, 0.14), m.rock, dx, floor + 1.95, dz, yaw);
   const [wx, wz] = f.at(-1.2, D / 2 + 0.03);
   sk.put(sk.box(0.7, 0.7, 0.06), xm.lantern, wx, floor + 1.0, wz, yaw);
@@ -833,7 +908,7 @@ function pileLamp(sk, x, z, deck) {
   const bed = sk.ground(x, z) - 0.3;
   const top = deck + 0.2;
   sk.begin('jetty lamp', x, z);
-  sk.put(sk.cyl(0.13, 0.15, top - bed, 8), m.wood, x, bed, z);
+  log(sk, [x, bed, z], [x, top, z], 0.15, 0.13, sk.xm.barkDark, 8);
   const y = top;
   sk.put(sk.cyl(0.11, 0.14, 0.3, 8), m.iron, x, y, z);
   sk.put(sk.cyl(0.055, 0.075, 2.5, 8), m.iron, x, y + 0.28, z);
