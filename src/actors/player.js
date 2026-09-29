@@ -22,8 +22,9 @@ const SWING_BLEND = 0.03;     // seconds for the layered swing to fade in over t
 // The dodge roll. The clip glides at an even speed, which reads as floaty, so the body instead
 // bursts off the mark and eases to a stop: `dist` metres over the clip's first `travel` seconds
 // (clip time), half of it an even glide and half an ease-out. Control returns at `control`, and
-// `iframes` is the untouchable stretch (both in clip time; the clip plays at `rate`).
-const ROLL = { clip: 'Roll', rate: 1.5, dist: 3.6, travel: 0.87, control: 0.9, iframes: [0.03, 0.6] };
+// `iframes` is the untouchable stretch (both in clip time; the clip plays at `rate`). Roll_Tuck is
+// the library's roll with its long flat dive swept through in 0.07 s (scripts/compose-clips.mjs).
+const ROLL = { clip: 'Roll_Tuck', rate: 1.5, dist: 3.6, travel: 0.87, control: 0.9, iframes: [0.03, 0.6] };
 
 export class Player {
   constructor({ world, character, input }) {

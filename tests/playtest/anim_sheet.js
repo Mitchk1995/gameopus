@@ -114,6 +114,68 @@
     return `${name} ${view}: ${times.length} frames`;
   }
 
+  // The game itself, stepped `dt` at a time with scripted input, drawn from a view that follows
+  // the hero: what a move looks like with its blends and aim lean. actions: [[frame, what], ...]
+  // where what is 'click', 'heavy', 'guard', 'release', 'jolt' or 'dodge'.
+  function live({ view = 'side', frames = 18, from = 0, dt = 0.05, actions = [], title = 'live', warm = 0.4 }) {
+    const P = g.player, I = g.input, F = g.fight;
+    I.keys.clear(); I.buttons.clear();
+    P.spawn(0, 0, 0); g.rig.yaw = Math.PI; F.lock = null; F.combo = 0; F.queued = null;
+    g.sim(warm); F.stamina = 100;
+    const cols = 6, rows = 3, cw = Math.floor(W / cols), chh = Math.floor((H - 22) / rows);
+    const v = VIEWS[view];
+    renderer.setScissorTest(false);
+    renderer.clear();
+    renderer.setScissorTest(true);
+    labels.innerHTML = `<div style="position:absolute;left:6px;top:3px;font-weight:bold;font-size:14px">${title} (${view}, in game, every ${dt} s)</div>`;
+    const log = [];
+    let home0 = null;
+    for (let i = 0; i < from + frames; i++) {
+      for (const [f, what] of actions) {
+        if (f !== i) continue;
+        if (what === 'click') I.clicked.add(0);
+        if (what === 'heavy') I.pressed.add('KeyF');
+        if (what === 'guard') I.buttons.add(2);
+        if (what === 'release') I.buttons.delete(2);
+        if (what === 'jolt') P.blockHit();
+        if (what === 'dodge') I.tapped.add('ShiftLeft');
+      }
+      if (i > 0) g.sim(dt);
+      F.stamina = 100;
+      if (i < from) continue;
+      const cell = i - from;
+      // Lab view relative to the hero's feet and facing.
+      scene.add(ch.root);
+      const s = Math.sin(P.yaw), c = Math.cos(P.yaw);
+      const at = new T.Vector3(...v.at), pos = new T.Vector3(...v.pos);
+      const place = (p) => new T.Vector3(P.pos.x + p.x * c + p.z * s, P.pos.y + p.y, P.pos.z - p.x * s + p.z * c);
+      // The grid and the post stay where the hero started, so travel shows.
+      if (!home0) home0 = { x: P.pos.x, y: P.pos.y, z: P.pos.z, mark: place(new T.Vector3(0, 0.9, 1.0)) };
+      grid.position.set(home0.x, home0.y, home0.z);
+      mark.position.copy(home0.mark);
+      cam.aspect = cw / chh;
+      cam.position.copy(place(pos));
+      const atW = place(at);
+      cam.lookAt(atW);
+      const dist = cam.position.distanceTo(atW), span = Math.max(2.3, 2.4 / cam.aspect);
+      cam.fov = (2 * Math.atan(span / 2 / dist) * 180) / Math.PI;
+      cam.updateProjectionMatrix();
+      const x = (cell % cols) * cw, y = 22 + Math.floor(cell / cols) * chh;
+      renderer.setViewport(x, H - y - chh, cw, chh);
+      renderer.setScissor(x, H - y - chh, cw, chh);
+      renderer.render(scene, cam);
+      const clip = ch.current?.getClip().name || '';
+      labels.insertAdjacentHTML('beforeend', `<div style="position:absolute;left:${x + 4}px;top:${y + 2}px">${(i * dt).toFixed(2)} ${P.state} ${clip}</div>`);
+      log.push(`${(i * dt).toFixed(2)} ${P.state} ${clip}`);
+      home?.add(ch.root);
+    }
+    renderer.setScissorTest(false);
+    grid.position.set(0, 0, 0);
+    mark.position.set(0, 0.9, 1.0);
+    I.buttons.clear();
+    return log.join(', ');
+  }
+
   // Where the right hand and the sword tip go through a clip (for measuring hit times).
   function trace(name, dt = 1 / 60) {
     const clip = ch.clips.get(name);
@@ -129,6 +191,6 @@
     return out;
   }
 
-  window.__lab = { load, sheet, trace, pose, clips: () => [...ch.clips.keys()], extra };
+  window.__lab = { load, sheet, live, trace, pose, clips: () => [...ch.clips.keys()], extra };
   return 'lab ready ' + W + 'x' + H;
 })()

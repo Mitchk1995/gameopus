@@ -79,9 +79,10 @@ the quest data).
 - **Quaternius (CC0):** Universal Base Characters, Modular Character Outfits (Fantasy),
   Universal Animation Library 1 and 2 (the free Standard sets: 86 clips on one rig, 56 shipped),
   Medieval Village MegaKit, Fantasy Props MegaKit, Bestiary Dungeon Monsters.
-- **Composed clips (CC0, built here):** the sword guard (`Sword_Guard_Loop`) and a blow landing on
-  it (`Sword_Guard_Hit`) are assembled from pieces of Quaternius clips by `scripts/compose-clips.mjs`
-  into `anims/combat.glb` (the library has no holdable sword guard).
+- **Composed clips (CC0, built here):** the sword guard (`Sword_Guard_Loop`), a blow landing on it
+  (`Sword_Guard_Hit`) and a tighter dodge roll (`Roll_Tuck`, the library roll without its long flat
+  dive) are assembled from pieces of Quaternius clips by `scripts/compose-clips.mjs` into
+  `anims/combat.glb` (the library has no holdable sword guard).
 - **Poly Haven (CC0):** terrain and building textures, HDRI skies, rocks.
 - **ez-tree (MIT):** procedural trees with real bark and leaf textures.
 

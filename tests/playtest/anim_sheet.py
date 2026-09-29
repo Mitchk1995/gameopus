@@ -23,6 +23,20 @@ for p in loads:   # paths are relative to the repository root, where this is run
     shutil.copy(src, os.path.join('dist', 'assets', p))
 for p in loads:
   STEPS.append({'eval': f"__lab.load({json.dumps(p)}).then((n) => n.join(' | '))"})
+# LAB_LIVE="chain,guard,heavy,dodge" draws the game itself (blends, aim lean) with scripted input instead.
+LIVE = {
+  'chain': (36, [[k, 'click'] for k in range(0, 27, 2)]),
+  'guard': (18, [[0, 'guard'], [7, 'jolt'], [15, 'release']]),
+  'heavy': (18, [[0, 'heavy']]),
+  'dodge': (18, [[0, 'dodge']]),
+}
+for preset in [p for p in os.environ.get('LAB_LIVE', '').split(',') if p]:
+  frames, actions = LIVE[preset]
+  for v in views:
+    for k in range((frames + PER - 1) // PER):
+      opts = {'view': v, 'frames': min(PER, frames - k * PER), 'from': k * PER, 'dt': dt, 'actions': actions, 'title': preset}
+      STEPS.append({'eval': f"__lab.live({json.dumps(opts)})", 'shot': f'live_{tag}_{preset}_{v}_{k}'})
+if os.environ.get('LAB_LIVE'): clips = [c for c in clips if os.environ.get('LAB_CLIPS')]
 for c in clips:
   name, t0, t1 = c, 0.0, 0.85
   if '@' in c:

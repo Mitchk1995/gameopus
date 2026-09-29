@@ -1,6 +1,6 @@
 // Builds new combat clips out of pieces of the Universal Animation Library's own clips
-// (CC0), where the library has no clip that does the job: a sword guard you can hold,
-// and the jolt of a blow landing on it.
+// (CC0), where the library has no clip that does the job: a sword guard you can hold, the
+// jolt of a blow landing on it, and a dodge roll without the long flat dive.
 //   node scripts/compose-clips.mjs   (reads public/assets/anims/ual1.glb and ual2.glb,
 //                                     writes public/assets/anims/combat.glb)
 // Each clip is sampled at 30 Hz from its sources: body parts can come from different clips
@@ -118,6 +118,25 @@ export async function composeCombat(dir = 'public/assets/anims') {
     return g;
   };
   addClip(out, skel, 'Sword_Guard_Hit', bake(skel, bones, HIT, guardHit), { only });
+
+  // Roll: the library's roll launches into a long, flat dive (the body hangs level in the air
+  // for about 0.3 s of clip) before it tucks. Roll_Tuck plays the launch, then sweeps through
+  // the dive in 0.07 s to the hands-down moment, then the tumble and get-up as they are.
+  const roll = source(ual1, 'Roll');
+  const legs = [[0, 0.12, 0.12], [0.12, 0.37, 0.07], [0.37, roll.duration, roll.duration - 0.37]];
+  const warp = (t) => {
+    for (const [a, b, d] of legs) {
+      if (t <= d + 1e-9) return a + (b - a) * (t / d);
+      t -= d;
+    }
+    return roll.duration;
+  };
+  const tuckLength = legs.reduce((s, l) => s + l[2], 0);
+  addClip(out, skel, 'Roll_Tuck', bake(skel, bones, tuckLength, (t) => {
+    const s = warp(t), q = new Map();
+    for (const b of bones) q.set(b, roll.q(b, s));
+    return { q, p: roll.p(s) };
+  }), { only });
 
   await optimizeDoc(out, { dropMeshes: true });
   await io.write(`${dir}/combat.glb`, out);

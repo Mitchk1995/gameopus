@@ -7,7 +7,7 @@ nothing in this folder needs an account or a purchase to re-create.
 |---|---|---|---|
 | `anims/ual1.glb` | 29 clips from the Universal Animation Library (Standard, free) | Quaternius, https://quaternius.itch.io/universal-animation-library | CC0 |
 | `anims/ual2.glb` | 27 clips from the Universal Animation Library 2 (Standard, free) | Quaternius, https://quaternius.itch.io/universal-animation-library-2 | CC0 |
-| `anims/combat.glb` | `Sword_Guard_Loop` and `Sword_Guard_Hit`, built by `scripts/compose-clips.mjs` from Quaternius clips (`Idle_Shield_Loop`, `Sword_Block`, `Idle_Shield_Break`) | derived from the two above | CC0 |
+| `anims/combat.glb` | `Sword_Guard_Loop`, `Sword_Guard_Hit` and `Roll_Tuck`, built by `scripts/compose-clips.mjs` from Quaternius clips (`Idle_Shield_Loop`, `Sword_Block`, `Idle_Shield_Break`, `Roll`) | derived from the two above | CC0 |
 | `chars/` | Universal Base Characters, Modular Character Outfits (Fantasy), hair | Quaternius, https://quaternius.itch.io | CC0 |
 | `kits/` | Medieval Village MegaKit, Fantasy Props MegaKit | Quaternius, https://quaternius.itch.io | CC0 |
 | `monsters/` | Bestiary Dungeon Monsters (Imp, Puglin) | Quaternius, https://quaternius.itch.io | CC0 |
