@@ -163,6 +163,6 @@ STEPS = [
     const T = __cam.T;
     __cam.hold();
     const lines = T.fails.slice();
-    return { frames: T.frames, skippedInWall: T.skipped, skipBy: T.skipBy, flutters: T.jitter, biggestStep: +T.maxStep.toFixed(2), fails: lines.length, failLines: lines.join(' || ') || 'none' };
+    return { frames: T.frames, skippedInWall: T.skipped, skipBy: T.skipBy, flutters: T.jitter, flutterAt: (T.flutterAt || []).slice(0, 12).join(' | '), biggestStep: +T.maxStep.toFixed(2), fails: lines.length, failLines: lines.join(' || ') || 'none' };
   })()"""},
 ]

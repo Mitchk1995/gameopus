@@ -5,6 +5,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // templates, and a batcher that bakes every placed static piece into one mesh per
 // material, so a whole village is a few dozen draw calls.
 
+// Kit parts smaller than this in every direction (metres) don't count as solid for the camera.
+const TINY = 0.5;
+const PASSABLE = /^Door_\d/;
+
 export class Kit {
   constructor(assets) {
     this.assets = assets;
@@ -71,6 +75,10 @@ export class Batcher {
   // dequantisation from meshopt, so they're kept as part of the piece.
   addObject(root, matrix) {
     root.updateMatrixWorld(true);
+    // Decorative bits (mugs, bottles, lanterns, candles) are drawn but never hold the camera
+    // off, and neither do door leaves: you walk through them, so the camera does too.
+    const box = (root.userData.box ??= new THREE.Box3().setFromObject(root));
+    this.tiny = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z) < TINY || PASSABLE.test(root.name);
     root.traverse((o) => {
       if (!o.isMesh) return;
       const m = new THREE.Matrix4().multiplyMatrices(matrix, o.matrixWorld);
@@ -85,7 +93,7 @@ export class Batcher {
   #push(material, geometry, matrix) {
     const key = material.uuid;
     if (!this.groups.has(key)) this.groups.set(key, { material, items: [] });
-    this.groups.get(key).items.push({ geometry, matrix });
+    this.groups.get(key).items.push({ geometry, matrix, tiny: this.tiny });
   }
 
   // Bakes everything added so far into merged meshes under a group.
@@ -115,6 +123,17 @@ export class Batcher {
       if (!merged) continue;
       merged.computeBoundingSphere();
       const mesh = new THREE.Mesh(merged, material);
+      // Marks the mesh as solid for the camera (see world/solids.js), triangle by triangle:
+      // 1 = holds the camera off, 0 = a decorative bit it may pass through.
+      const mask = new Uint8Array(merged.index.count / 3);
+      let at = 0;
+      geos.forEach((g, k) => {
+        const tris = g.index.count / 3;
+        if (!items[k].tiny) mask.fill(1, at, at + tris);
+        at += tris;
+      });
+      mesh.userData.camSolid = true;
+      mesh.userData.camMask = mask;
       mesh.castShadow = castShadow;
       mesh.receiveShadow = true;
       mesh.matrixAutoUpdate = false;

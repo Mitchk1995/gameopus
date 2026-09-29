@@ -77,6 +77,7 @@ export class Village {
     const well = wellMesh(this.kit);
     well.position.set(C.x, y, C.z);
     this.scene.add(well);
+    this.world.solids.addObject(well);
     this.world.colliders.addCircle(C.x, C.z, 1.25, y - 0.5, y + 1.0);
     this.places.well = { x: C.x, z: C.z };
 

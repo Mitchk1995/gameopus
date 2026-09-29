@@ -57,12 +57,30 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   jogging; standing swings stay full-body). A dodge or jump cuts a swing off at any time.
   `tests/playtest/combat_flow.py` checks all of it. Known gap: no strafe clips, so side-steps
   during a swing play the forward jog.
-- Camera clipping (done): the rig sweeps a camera-sized ball (`Colliders.sweep`, fully 3D, 0.2 m
-  pad, may squeeze to 0.14 m) instead of a thin ray, so ceilings, roofs and door lintels
-  (`cameraOnly` shapes, added in `buildings.js` and `village.js`) hold it in; the shoulder
-  offset backs off to centre when it would shorten the view (door jambs, corners); pull-in is
-  instant, ease-out is smooth. `tests/playtest/camera.py` checks it numerically. Known gap: with a
-  wall right behind the player the camera comes all the way in to the head and the hero hides.
+- Camera collision (done, v2): the camera collides with the REAL rendered geometry, not hand-placed
+  boxes. `src/world/solids.js` indexes the triangles of every static solid mesh (the kit `Batcher`
+  flags all its output `camSolid`, dropping decorative parts under 0.5 m and door leaves via a
+  per-triangle `camMask`; other meshes join with `world.solids.addObject(obj)`, as the well and cave
+  mouth do) and sweeps a lens-sized ball through them (exact sphere-vs-triangle, gathered into a
+  small local list once per few frames). `World.lineOfSight(camera=true)` uses it, plus the old
+  colliders that have no mesh behind them (trees, villagers via `keepCamera`, mine rocks); colliders
+  that sit under solid meshes (walls, roofs, lintels, props) are ignored by the camera
+  automatically (`World.cameraIgnores`). So any building or prop added through the batcher works
+  with no camera colliders. `World.enclosure()` (rays up and around) gives an "indoors" amount that
+  shortens the follow distance to 3 m in closed rooms.
+  `camera-rig.js`: hard limit (never inside anything) is instant; the boom looks 0.14 and 0.28 s
+  ahead along the player's motion and turn and starts coming in early, waits 0.22 s of clear view
+  before easing out (critically damped spring, so no hunting at a threshold); the shoulder slides to
+  centre fast and back slowly and follows the boom smoothly; the hero hides with hysteresis
+  (`main.js`); shake never carries the lens into a wall.
+  Tests: `camera_buildings.py` (every building + cave mouth, camera vs the rendered triangles via
+  independent ray tests in `camera_mesh.js`), `camera_doors.py` (scripted doorway walk-throughs and
+  door spins scored for flutter, snap, easing and shoulder-slide smoothness), `camera.py` (older
+  collider-based checks, dungeon included). Known gaps: forced pulls (walking through a door at
+  more than about 20 degrees off its axis, or steering with the mouse while running) can still snap
+  the boom in by a couple of metres in one frame, and the shoulder can jump about 0.25 m when a jamb
+  edge passes; the camera can hug the head (hero hidden) for about a second after such a pull; thin
+  scenery between the head and the camera (a post beside the boom) can still hide the hero a little.
 
 ## Open feedback from the player (do these next)
 
