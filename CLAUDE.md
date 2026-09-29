@@ -37,7 +37,7 @@ is in flight, and the next steps in order. Read it first, and rewrite it at the 
 
 ## Sync, CI and merging
 
-- The repo is https://github.com/Mitchk1995/gameopus (private) and `D:\diablolike` is a clone;
+- The repo is https://github.com/Mitchk1995/gameopus (public) and `D:\diablolike` is a clone;
   GitHub `main` is the source of truth. `npm run sync` pulls and rebases; `npm run sync -- "what
   changed"` commits everything, pulls and pushes. It never force-pushes; a conflict stops it.
 - Work on a branch and open a PR for anything bigger than a tweak. Keep PRs based on `main`.
@@ -46,8 +46,9 @@ is in flight, and the next steps in order. Read it first, and rewrite it at the 
   sums them up. `look` renders at 640x360 there because software GL is slow. A slow scenario opts out
   of unrelated PRs with `# ci paths=src/world/,src/dungeon/` (it then runs only when a PR touches one
   of those prefixes; everything runs on pushes to `main`). Add a `# ci` scenario for every new mechanic.
-- The repo is private, so Actions minutes are limited: batch fixes into one push rather than many,
-  and keep big sweeps behind `paths=`.
+- The repo is public (Actions minutes are free), so anyone can read it: never commit keys, tokens
+  or anything personal. Still batch fixes into one push, and keep big sweeps behind `paths=` so a
+  run stays short.
 - `.github/workflows/automerge.yml` merges any of the owner's PRs into `main` once `build` and
   `playtest` are green and there are no conflicts. Label a PR `hold` to stop it (for work that needs
   a look first). `gh api -X PUT repos/Mitchk1995/gameopus/pulls/N/update-branch` re-runs a PR on the
