@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Tree } from '../vendor/ez-tree/tree.js';
 import { loadPreset } from '../vendor/ez-tree/presets/index.js';
-import { WORLD, VILLAGE, FARMS, BANDIT_CAMP, LAKE, forestDensity, roadDistance, noise } from './map.js';
+import { WORLD, VILLAGE, BANDIT_CAMP, LAKE, RIVER, forestDensity, roadDistance, noise, siteClearance, groveAt, rings, biomeAt, riverAt, shoreAt, lakeShoreAt } from './map.js';
 import { polyDistance } from './ashford.js';
 
 // Forests. Each species variant is generated once with ez-tree in two levels of
@@ -9,12 +9,45 @@ import { polyDistance } from './ashford.js';
 // is an instance, so a whole forest is a handful of draw calls; which level each tree
 // uses is re-sorted a few times a second as you move.
 
+// `tweak` adjusts a preset into a kind the presets lack: weeping willows by the water, pines killed
+// standing in bandit country and the broken snags among them, and gorse on the heath.
 const SPECIES = {
   oak: { presets: ['Oak Medium', 'Oak Large'], scale: [0.16, 0.2], trunk: 0.5 },
   ash: { presets: ['Ash Medium', 'Ash Large'], scale: [0.14, 0.17], trunk: 0.45 },
   aspen: { presets: ['Aspen Medium', 'Aspen Large'], scale: [0.15, 0.18], trunk: 0.35 },
   pine: { presets: ['Pine Medium', 'Pine Large'], scale: [0.2, 0.25], trunk: 0.45 },
   bush: { presets: ['Bush 1', 'Bush 2'], scale: [0.06, 0.08], trunk: 0 },
+  willow: { presets: ['Ash Medium'], scale: [0.15, 0.18], trunk: 0.5, tweak: (o) => {
+    o.bark.type = 'willow';
+    o.bark.tint = 0xb8ada0;
+    o.branch.force = { direction: { x: 0, y: -1, z: 0 }, strength: 0.03 };
+    o.branch.angle[1] = 58;
+    o.branch.angle[2] = 70;
+    o.branch.gnarliness[1] = 0.2;
+    o.branch.length[2] = (o.branch.length[2] || 10) * 1.35;
+    o.leaves.type = 'ash';
+    o.leaves.count = Math.round(o.leaves.count * 1.5);
+    o.leaves.size *= 0.8;
+    o.leaves.tint = 0xa9c28c;
+  } },
+  deadpine: { presets: ['Pine Medium'], scale: [0.19, 0.23], trunk: 0.42, tweak: (o) => {
+    o.leaves.count = 0;
+    o.bark.tint = 0x9a948e;
+    o.branch.children[1] = Math.max(3, Math.round((o.branch.children[1] || 6) * 0.55));
+  } },
+  snag: { presets: ['Pine Small'], scale: [0.2, 0.26], trunk: 0.4, tweak: (o) => {
+    o.leaves.count = 0;
+    o.bark.tint = 0x8d8781;
+    o.branch.levels = 1;
+    o.branch.children[0] = 5;
+    o.branch.length[0] *= 0.62;
+    o.branch.length[1] = (o.branch.length[1] || 10) * 0.35;
+  } },
+  gorse: { presets: ['Bush 2'], scale: [0.045, 0.06], trunk: 0, tweak: (o) => {
+    o.leaves.tint = 0xc8b54a;
+    o.leaves.size *= 0.75;
+    o.leaves.count = Math.round(o.leaves.count * 1.3);
+  } },
 };
 let NEAR = 40;
 const MID = 150;
@@ -57,10 +90,12 @@ export class Forest {
   #variant(species, preset, seed) {
     const opts = loadPreset(preset);
     opts.seed = seed * 7919;
+    SPECIES[species].tweak?.(opts);
+    const bare = opts.leaves.count === 0;
     // Near detail: the preset, a little lighter.
     for (const k of Object.keys(opts.branch.sections)) opts.branch.sections[k] = Math.max(1, Math.round(opts.branch.sections[k] * 0.65));
     for (const k of Object.keys(opts.branch.segments)) opts.branch.segments[k] = Math.min(opts.branch.segments[k], k === '0' ? 7 : 5);
-    opts.leaves.count = Math.max(1, Math.round(opts.leaves.count * 0.75));
+    opts.leaves.count = bare ? 0 : Math.max(1, Math.round(opts.leaves.count * 0.75));
     opts.leaves.size *= 1.12;
     const near = new Tree();
     near.loadFromJson(opts);
@@ -68,7 +103,7 @@ export class Forest {
     const lite = structuredClone(opts);
     for (const k of Object.keys(lite.branch.sections)) lite.branch.sections[k] = Math.max(1, Math.round(lite.branch.sections[k] * 0.5));
     for (const k of Object.keys(lite.branch.segments)) lite.branch.segments[k] = Math.max(3, Math.round(lite.branch.segments[k] * 0.6));
-    lite.leaves.count = Math.max(1, Math.round(lite.leaves.count * 0.45));
+    lite.leaves.count = bare ? 0 : Math.max(1, Math.round(lite.leaves.count * 0.45));
     lite.leaves.size *= 1.45;
     const mid = new Tree();
     mid.loadFromJson(lite);
@@ -156,6 +191,11 @@ export class Forest {
     return { texture: rt.texture, target: rt, width: half * 2, bottom: box.min.y, top: box.max.y };
   }
 
+  // Where the trees stand. Woods and the foothill forests come from forestDensity; out in the open
+  // each kind grows where it would: birch groves, great lone oaks in the pasture, willows along the
+  // river and the lake shore, dead pines and snags in the dry scrub of bandit country, gorse on the
+  // heath. Nothing grows on a road, a pad, a field, a way out, the bridge, the ford, a signpost or
+  // the town (siteClearance), in the water or on a slope too steep to root.
   #place() {
     const rnd = mulberry(4242);
     const T = this.terrain;
@@ -168,9 +208,22 @@ export class Forest {
       if (Math.hypot(x - BANDIT_CAMP.x, z - BANDIT_CAMP.z) < BANDIT_CAMP.r) return false;
       const [rd, rw] = roadDistance(x, z);
       if (rd < rw + clearance) return false;
-      for (const f of FARMS) if (Math.abs(x - f.x) < f.w / 2 + 6 && Math.abs(z - f.z) < f.d / 2 + 6) return false;
+      if (siteClearance(x, z) < clearance + 1) return false;
       return true;
     };
+    const plant = (species, px, pz, scale = null) => {
+      const options = this.variants.filter((v) => v.species === species);
+      const v = species === 'oak' && scale ? options[options.length - 1] : options[Math.floor(rnd() * options.length)];
+      const [s0, s1] = SPECIES[species].scale;
+      const s = scale ?? s0 + (s1 - s0) * rnd();
+      const tree = { x: px, z: pz, y: T.heightAt(px, pz) - 0.2, rot: rnd() * Math.PI * 2, scale: s, variant: v, radius: SPECIES[species].trunk * s * 5, id: this.trees.length };
+      v.trees.push(tree);
+      this.trees.push(tree);
+      const key = `${Math.floor(px / 16)},${Math.floor(pz / 16)}`;
+      if (!this.cells.has(key)) this.cells.set(key, []);
+      this.cells.get(key).push(tree);
+    };
+    const spaced = (x, z, r) => this.near(x, z, r).length === 0;
     for (let z = -WORLD.half + 20; z < WORLD.half - 20; z += step)
       for (let x = -WORLD.half + 20; x < WORLD.half - 20; x += step) {
         const px = x + (rnd() - 0.5) * step * 0.9, pz = z + (rnd() - 0.5) * step * 0.9;
@@ -178,20 +231,53 @@ export class Forest {
         const clump = noise(px * 0.05, pz * 0.05);
         let species = null;
         if (d > 0 && rnd() < d * (0.45 + clump * 0.7)) species = kinds[Math.floor(rnd() * kinds.length)];
-        else if (rnd() < 0.006 + (Math.hypot(px - LAKE.x, pz - LAKE.z) < LAKE.r + 40 ? 0.01 : 0)) species = rnd() < 0.5 ? 'oak' : 'aspen';
-        else if (d > 0.2 && rnd() < 0.12) species = 'bush';
-        if (!species || !ok(px, pz, species === 'bush' ? 1.5 : 3)) continue;
-        const options = this.variants.filter((v) => v.species === species);
-        const v = options[Math.floor(rnd() * options.length)];
-        const [s0, s1] = SPECIES[species].scale;
-        const s = s0 + (s1 - s0) * rnd();
-        const tree = { x: px, z: pz, y: T.heightAt(px, pz) - 0.2, rot: rnd() * Math.PI * 2, scale: s, variant: v, radius: SPECIES[species].trunk * s * 5, id: this.trees.length };
-        v.trees.push(tree);
-        this.trees.push(tree);
-        const key = `${Math.floor(px / 16)},${Math.floor(pz / 16)}`;
-        if (!this.cells.has(key)) this.cells.set(key, []);
-        this.cells.get(key).push(tree);
+        else {
+          const grove = groveAt(px, pz), R = rings(px, pz), b = biomeAt(px, pz);
+          const r = rnd();
+          if (grove > 0.3 && r < grove * 0.3 * (0.4 + clump)) species = 'aspen';
+          else if (R.bandit > 0.45 && R.wall < 0.5 && r < 0.03 * R.bandit) species = rnd() < 0.55 ? 'deadpine' : 'snag';
+          else if (b[1] > 0.35 && r < 0.045 * b[1] * (0.4 + clump)) species = 'gorse';
+          else if (b[3] > 0.45 && r < 0.012) species = 'gorse';
+          else if (rnd() < 0.004 + (Math.hypot(px - LAKE.x, pz - LAKE.z) < LAKE.r + 40 ? 0.008 : 0)) species = rnd() < 0.5 ? 'oak' : 'aspen';
+          else if (d > 0.2 && rnd() < 0.12) species = 'bush';
+        }
+        const small = species === 'bush' || species === 'gorse';
+        if (!species || !ok(px, pz, small ? 1.5 : 3)) continue;
+        plant(species, px, pz);
       }
+    // Great lone oaks standing out in the pasture and the meadows, well apart.
+    const OAK = 30;
+    for (let z = -WORLD.half + 40; z < WORLD.half - 40; z += OAK)
+      for (let x = -WORLD.half + 40; x < WORLD.half - 40; x += OAK) {
+        const px = x + (rnd() - 0.5) * OAK * 0.8, pz = z + (rnd() - 0.5) * OAK * 0.8;
+        const R = rings(px, pz), b = biomeAt(px, pz);
+        const open = Math.max(R.farm, b[0]) * (1 - R.woods) * (1 - R.bandit) * (1 - b[2]);
+        if (rnd() > open * 0.55 || forestDensity(px, pz)[0] > 0.1) continue;
+        if (!ok(px, pz, 6) || !spaced(px, pz, 12)) continue;
+        plant('oak', px, pz, 0.2 + rnd() * 0.05);
+      }
+    // Willows along the river's banks (not on the bars or the cut banks) and round the lake's shore.
+    for (let i = 0; i < RIVER.length - 1; i++) {
+      const [ax, az] = RIVER[i], [bx, bz] = RIVER[i + 1];
+      const l = Math.hypot(bx - ax, bz - az);
+      for (let s = 0; s < l; s += 7) {
+        if (rnd() > 0.34) continue;
+        const t = s / l, cx = ax + (bx - ax) * t, cz = az + (bz - az) * t;
+        const q = riverAt(cx, cz);
+        if (!q || q.t < 0.25 || q.t > 0.96) continue;
+        const side = rnd() < 0.5 ? -1 : 1, off = q.hw + 3 + rnd() * 4;
+        const px = cx - q.tz * side * off, pz = cz + q.tx * side * off;
+        if (shoreAt(px, pz)[0] > 0.25 || !ok(px, pz, 3) || !spaced(px, pz, 6)) continue;
+        plant('willow', px, pz);
+      }
+    }
+    for (let a = 0; a < Math.PI * 2; a += 0.09) {
+      if (rnd() > 0.4) continue;
+      const lr = lakeShoreAt(Math.cos(a), Math.sin(a));
+      const off = lr + 4 + rnd() * 6, px = LAKE.x + Math.cos(a) * off, pz = LAKE.z + Math.sin(a) * off;
+      if (rings(px, pz).wall > 0.2 || !ok(px, pz, 3) || !spaced(px, pz, 6)) continue;
+      plant('willow', px, pz);
+    }
   }
 
   #instances(v) {
@@ -260,6 +346,8 @@ export class Forest {
     this.pv ??= new THREE.Matrix4();
     this.frustum.setFromProjectionMatrix(this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const sphere = this.sphere ??= new THREE.Sphere();
+    // Overview renders (tests and plans) can ask for the mid-detail crowns everywhere.
+    const nearD = this.forceLod === 'mid' ? -1 : NEAR, midD = this.forceLod === 'mid' ? 1e9 : MID;
     for (const v of this.variants) {
       const M = v.meshes;
       M.nearB.count = M.nearL.count = M.midB.count = M.midL.count = M.far.count = M.shadowB.count = M.shadowL.count = 0;
@@ -277,10 +365,10 @@ export class Forest {
           sphere.radius = v.height * t.scale * 0.62;
           if (!this.frustum.intersectsSphere(sphere)) continue;
         }
-        if (d < NEAR) {
+        if (d < nearD) {
           M.nearB.setMatrixAt(M.nearB.count++, t.matrix);
           M.nearL.setMatrixAt(M.nearL.count++, t.matrix);
-        } else if (d < MID) {
+        } else if (d < midD) {
           M.midB.setMatrixAt(M.midB.count++, t.matrix);
           M.midL.setMatrixAt(M.midL.count++, t.matrix);
         } else {

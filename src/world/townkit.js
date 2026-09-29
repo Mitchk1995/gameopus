@@ -508,7 +508,7 @@ function strawTexture() {
 let flat = null;
 // A painted texture as a material that takes the same surface-detail layer as the kit's (a flat
 // normal map for it to bend), so signs and straw are sharpened and lit like everything else.
-function texturedMaterial(map, roughness, base = null) {
+export function texturedMaterial(map, roughness, base = null) {
   flat ??= new THREE.DataTexture(new Uint8Array([128, 128, 255, 255]), 1, 1, THREE.RGBAFormat);
   flat.anisotropy = 16;
   flat.needsUpdate = true;

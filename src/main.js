@@ -26,7 +26,7 @@ async function start() {
   hud.progress(0.9, 'Waking the villagers');
   const factory = new CharacterFactory(assets);
   await factory.loadAnimations();
-  const hero = await factory.create({ outfit: 'male_ranger', body: 'male', hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular' });
+  const hero = await factory.create({ outfit: 'male_ranger', body: 'male', hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular', hairColor: 'darkbrown' });
   scene.add(hero.root);
 
   const input = new Input(renderer.domElement);
