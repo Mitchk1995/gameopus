@@ -348,11 +348,19 @@ export class Terrain {
               float drift = smoothstep(0.45, 0.72, tNoise(tp.xz * 0.05 + 3.0) * 0.7 + tNoise(tp.xz * 0.21 + 1.0) * 0.3);
               float present = step(1.0 - (0.14 * drift * drift + 0.004), tHash(fc));
               vec2 off = vec2(tHash(fc + 1.7), tHash(fc + 5.3)) - 0.5;
-              float r = 0.08 + 0.08 * tHash(fc + 9.1);
+              vec2 fd = ff - off * 0.55;
+              float fa = atan(fd.y, fd.x) + tHash(fc + 2.2) * 6.28;
+              float r = 0.07 + 0.07 * tHash(fc + 9.1);
+              float petals = r * (0.72 + 0.28 * cos(fa * 5.0));
               float aa = tPx * 3.0 + 0.02;
-              float disc = 1.0 - smoothstep(r - aa, r + aa, length(ff - off * 0.55));
+              float fl = length(fd);
+              float disc = 1.0 - smoothstep(petals - aa, petals + aa, fl);
+              float eye = 1.0 - smoothstep(r * 0.28 - aa, r * 0.28 + aa, fl);
               float kind = tHash(fc + 3.3);
-              vec3 fcol = kind < 0.4 ? vec3(0.42, 0.33, 0.035) : kind < 0.66 ? vec3(0.48, 0.48, 0.45) : kind < 0.85 ? vec3(0.2, 0.075, 0.18) : vec3(0.09, 0.13, 0.32);
+              // Buttercups, daisies (a yellow eye), clover, speedwell and cranesbill; petals darker at the base.
+              vec3 fcol = kind < 0.32 ? vec3(0.4, 0.3, 0.03) : kind < 0.55 ? vec3(0.4, 0.4, 0.37) : kind < 0.75 ? vec3(0.19, 0.07, 0.15) : kind < 0.88 ? vec3(0.08, 0.12, 0.3) : vec3(0.27, 0.1, 0.2);
+              fcol *= 0.75 + 0.25 * smoothstep(0.0, petals, fl);
+              fcol = mix(fcol, kind < 0.55 && kind >= 0.32 ? vec3(0.38, 0.28, 0.02) : fcol * 0.55, eye);
               float near = smoothstep(0.08, 0.03, tPx);
               tAlb = mix(tAlb, fcol, present * disc * near * fk);
               flowers = present * disc * near * fk;

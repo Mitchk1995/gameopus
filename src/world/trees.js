@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Tree } from '../vendor/ez-tree/tree.js';
 import { loadPreset } from '../vendor/ez-tree/presets/index.js';
-import { WORLD, VILLAGE, FARMS, BANDIT_CAMP, LAKE, forestDensity, roadDistance, noise, fieldDistance } from './map.js';
+import { WORLD, VILLAGE, BANDIT_CAMP, LAKE, RIVER, forestDensity, roadDistance, noise, siteClearance, groveAt, rings, biomeAt, riverAt, shoreAt, lakeShoreAt } from './map.js';
 import { polyDistance } from './ashford.js';
 
 // Forests. Each species variant is generated once with ez-tree in two levels of
@@ -191,6 +191,11 @@ export class Forest {
     return { texture: rt.texture, target: rt, width: half * 2, bottom: box.min.y, top: box.max.y };
   }
 
+  // Where the trees stand. Woods and the foothill forests come from forestDensity; out in the open
+  // each kind grows where it would: birch groves, great lone oaks in the pasture, willows along the
+  // river and the lake shore, dead pines and snags in the dry scrub of bandit country, gorse on the
+  // heath. Nothing grows on a road, a pad, a field, a way out, the bridge, the ford, a signpost or
+  // the town (siteClearance), in the water or on a slope too steep to root.
   #place() {
     const rnd = mulberry(4242);
     const T = this.terrain;
@@ -203,9 +208,22 @@ export class Forest {
       if (Math.hypot(x - BANDIT_CAMP.x, z - BANDIT_CAMP.z) < BANDIT_CAMP.r) return false;
       const [rd, rw] = roadDistance(x, z);
       if (rd < rw + clearance) return false;
-      for (const f of FARMS) if (fieldDistance(f, x, z) < 6) return false;
+      if (siteClearance(x, z) < clearance + 1) return false;
       return true;
     };
+    const plant = (species, px, pz, scale = null) => {
+      const options = this.variants.filter((v) => v.species === species);
+      const v = species === 'oak' && scale ? options[options.length - 1] : options[Math.floor(rnd() * options.length)];
+      const [s0, s1] = SPECIES[species].scale;
+      const s = scale ?? s0 + (s1 - s0) * rnd();
+      const tree = { x: px, z: pz, y: T.heightAt(px, pz) - 0.2, rot: rnd() * Math.PI * 2, scale: s, variant: v, radius: SPECIES[species].trunk * s * 5, id: this.trees.length };
+      v.trees.push(tree);
+      this.trees.push(tree);
+      const key = `${Math.floor(px / 16)},${Math.floor(pz / 16)}`;
+      if (!this.cells.has(key)) this.cells.set(key, []);
+      this.cells.get(key).push(tree);
+    };
+    const spaced = (x, z, r) => this.near(x, z, r).length === 0;
     for (let z = -WORLD.half + 20; z < WORLD.half - 20; z += step)
       for (let x = -WORLD.half + 20; x < WORLD.half - 20; x += step) {
         const px = x + (rnd() - 0.5) * step * 0.9, pz = z + (rnd() - 0.5) * step * 0.9;
@@ -213,20 +231,53 @@ export class Forest {
         const clump = noise(px * 0.05, pz * 0.05);
         let species = null;
         if (d > 0 && rnd() < d * (0.45 + clump * 0.7)) species = kinds[Math.floor(rnd() * kinds.length)];
-        else if (rnd() < 0.006 + (Math.hypot(px - LAKE.x, pz - LAKE.z) < LAKE.r + 40 ? 0.01 : 0)) species = rnd() < 0.5 ? 'oak' : 'aspen';
-        else if (d > 0.2 && rnd() < 0.12) species = 'bush';
-        if (!species || !ok(px, pz, species === 'bush' ? 1.5 : 3)) continue;
-        const options = this.variants.filter((v) => v.species === species);
-        const v = options[Math.floor(rnd() * options.length)];
-        const [s0, s1] = SPECIES[species].scale;
-        const s = s0 + (s1 - s0) * rnd();
-        const tree = { x: px, z: pz, y: T.heightAt(px, pz) - 0.2, rot: rnd() * Math.PI * 2, scale: s, variant: v, radius: SPECIES[species].trunk * s * 5, id: this.trees.length };
-        v.trees.push(tree);
-        this.trees.push(tree);
-        const key = `${Math.floor(px / 16)},${Math.floor(pz / 16)}`;
-        if (!this.cells.has(key)) this.cells.set(key, []);
-        this.cells.get(key).push(tree);
+        else {
+          const grove = groveAt(px, pz), R = rings(px, pz), b = biomeAt(px, pz);
+          const r = rnd();
+          if (grove > 0.3 && r < grove * 0.3 * (0.4 + clump)) species = 'aspen';
+          else if (R.bandit > 0.45 && R.wall < 0.5 && r < 0.03 * R.bandit) species = rnd() < 0.55 ? 'deadpine' : 'snag';
+          else if (b[1] > 0.35 && r < 0.045 * b[1] * (0.4 + clump)) species = 'gorse';
+          else if (b[3] > 0.45 && r < 0.012) species = 'gorse';
+          else if (rnd() < 0.004 + (Math.hypot(px - LAKE.x, pz - LAKE.z) < LAKE.r + 40 ? 0.008 : 0)) species = rnd() < 0.5 ? 'oak' : 'aspen';
+          else if (d > 0.2 && rnd() < 0.12) species = 'bush';
+        }
+        const small = species === 'bush' || species === 'gorse';
+        if (!species || !ok(px, pz, small ? 1.5 : 3)) continue;
+        plant(species, px, pz);
       }
+    // Great lone oaks standing out in the pasture and the meadows, well apart.
+    const OAK = 30;
+    for (let z = -WORLD.half + 40; z < WORLD.half - 40; z += OAK)
+      for (let x = -WORLD.half + 40; x < WORLD.half - 40; x += OAK) {
+        const px = x + (rnd() - 0.5) * OAK * 0.8, pz = z + (rnd() - 0.5) * OAK * 0.8;
+        const R = rings(px, pz), b = biomeAt(px, pz);
+        const open = Math.max(R.farm, b[0]) * (1 - R.woods) * (1 - R.bandit) * (1 - b[2]);
+        if (rnd() > open * 0.55 || forestDensity(px, pz)[0] > 0.1) continue;
+        if (!ok(px, pz, 6) || !spaced(px, pz, 12)) continue;
+        plant('oak', px, pz, 0.2 + rnd() * 0.05);
+      }
+    // Willows along the river's banks (not on the bars or the cut banks) and round the lake's shore.
+    for (let i = 0; i < RIVER.length - 1; i++) {
+      const [ax, az] = RIVER[i], [bx, bz] = RIVER[i + 1];
+      const l = Math.hypot(bx - ax, bz - az);
+      for (let s = 0; s < l; s += 7) {
+        if (rnd() > 0.34) continue;
+        const t = s / l, cx = ax + (bx - ax) * t, cz = az + (bz - az) * t;
+        const q = riverAt(cx, cz);
+        if (!q || q.t < 0.25 || q.t > 0.96) continue;
+        const side = rnd() < 0.5 ? -1 : 1, off = q.hw + 3 + rnd() * 4;
+        const px = cx - q.tz * side * off, pz = cz + q.tx * side * off;
+        if (shoreAt(px, pz)[0] > 0.25 || !ok(px, pz, 3) || !spaced(px, pz, 6)) continue;
+        plant('willow', px, pz);
+      }
+    }
+    for (let a = 0; a < Math.PI * 2; a += 0.09) {
+      if (rnd() > 0.4) continue;
+      const lr = lakeShoreAt(Math.cos(a), Math.sin(a));
+      const off = lr + 4 + rnd() * 6, px = LAKE.x + Math.cos(a) * off, pz = LAKE.z + Math.sin(a) * off;
+      if (rings(px, pz).wall > 0.2 || !ok(px, pz, 3) || !spaced(px, pz, 6)) continue;
+      plant('willow', px, pz);
+    }
   }
 
   #instances(v) {

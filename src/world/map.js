@@ -475,7 +475,7 @@ export const FORESTS = [
   { x: -230, z: 20, r: 140, density: 0.9, kinds: ['oak', 'ash', 'pine'] },
   { x: -120, z: 110, r: 70, density: 0.55, kinds: ['oak', 'aspen'] },
   { x: 250, z: -120, r: 120, density: 0.8, kinds: ['pine', 'ash'] },
-  { x: 285, z: 90, r: 75, density: 0.6, kinds: ['oak', 'ash'] },
+  { x: 285, z: 90, r: 75, density: 0.6, kinds: ['pine', 'pine', 'deadpine', 'ash'] },
   { x: 40, z: -190, r: 90, density: 0.45, kinds: ['aspen', 'oak'] },
   { x: -300, z: -290, r: 90, density: 0.7, kinds: ['pine'] },
 ];
@@ -705,6 +705,8 @@ const BANDIT_ZONES = [[292, 0, 124, 214, 0]];
 const MINE_ZONES = [[MINE_HILL.x, MINE_HILL.z, 118, 112]];
 
 const max = (a, f) => a.reduce((m, z) => Math.max(m, f(z)), 0);
+// Birch groves (0..1).
+export const groveAt = (x, z) => max(BIRCH_ZONES, ([cx, cz, rx, rz]) => blob(x, z, cx, cz, rx, rz));
 // How much of each ring a point belongs to (0..1 each, not normalised).
 export function rings(x, z) {
   const dv = polyDistance(x, z, OUTLINE);
@@ -738,8 +740,10 @@ export function biomeAt(x, z) {
 // The lake's shore radius toward a point (the same wobble heightAt uses).
 function lakeShore(x, z) {
   const ang = Math.atan2(z - LAKE.z, x - LAKE.x);
-  return LAKE.r * (0.86 + 0.28 * fbm(Math.cos(ang) * 2 + 9, Math.sin(ang) * 2));
+  return lakeShoreAt(Math.cos(ang), Math.sin(ang));
 }
+// The shore's radius in a direction (cos, sin) from the lake's centre.
+export const lakeShoreAt = (c, s) => LAKE.r * (0.86 + 0.28 * fbm(c * 2 + 9, s * 2));
 
 // How the water moves: [x, z] of the current (unit direction times speed 0..1) and how broken the
 // surface is (0 glassy .. 1 white water). The river runs quick in its narrows and slow in its pools,
@@ -1039,8 +1043,10 @@ export function groundAt(x, z) {
 export function forestDensity(x, z) {
   // Woods climb the foothills and thin out where the slopes turn to rock.
   const e = rimDistance(x, z);
-  const band = smooth(-100, -50, e) * smooth(12, -8, e) * smooth(0.35, 0.6, fbm(x * 0.02 + 2, z * 0.02 + 8));
+  const band = smooth(-100, -50, e) * smooth(24, 2, e) * smooth(0.35, 0.6, fbm(x * 0.02 + 2, z * 0.02 + 8));
   let d = band * 0.75, kinds = band > 0 ? (fbm(x * 0.004, z * 0.004) > 0.5 ? ['pine', 'pine', 'ash'] : ['pine', 'oak', 'ash']) : null;
+  // Under the wall in bandit country the pines stand among dead ones.
+  if (band > 0 && x > 150 && rings(x, z).bandit > 0.5) kinds = ['pine', 'deadpine', 'pine', 'snag'];
   for (const f of FORESTS) {
     const k = smooth(1.0, 0.55, Math.hypot(x - f.x, z - f.z) / f.r) * f.density;
     if (k > d) {
@@ -1225,3 +1231,21 @@ export function siteClearance(x, z) {
   d = Math.min(d, polyDistance(x, z, OUTLINE) - 8);
   return d;
 }
+
+// Fly-fishing swims: the river's pools, on the bends, spaced out along it (not by the bridge or the
+// ford), each marked a couple of metres out from the gravel bar on the bend's inside, where an
+// angler can stand. resources.js puts the fishing spots here.
+export const SWIMS = (() => {
+  const R = RIV, out = [];
+  const idx = [...Array(R.n).keys()].filter((i) => {
+    const t = R.s[i] / R.L;
+    return t > 0.3 && t < 0.9 && Math.abs(R.s[i] - R.s[R.iB]) > 45 && (R.iF < 0 || Math.abs(R.s[i] - R.s[R.iF]) > 45);
+  }).sort((a, b) => Math.abs(R.k[b]) - Math.abs(R.k[a]));
+  for (const i of idx) {
+    if (out.length >= 5) break;
+    if (out.some((o) => Math.abs(o.s - R.s[i]) < 55)) continue;
+    const side = R.k[i] > 0 ? 1 : -1, off = side * (R.hw[i] - 2.4);
+    out.push({ s: R.s[i], x: R.xs[i] - R.tz[i] * off, z: R.zs[i] + R.tx[i] * off });
+  }
+  return out.sort((a, b) => a.s - b.s).map(({ x, z }) => [x, z]);
+})();

@@ -200,14 +200,16 @@ function tuftGeometry() {
     const tip = pos.length / 3 - 1;
     if (!top || pos[tip * 3 + 1] > top[1]) top = [pos[tip * 3], pos[tip * 3 + 1], pos[tip * 3 + 2]];
   }
-  // A flower head on the tallest blade: two crossed little cards (hidden unless the tuft blooms).
+  // A flower head on the tallest blade: a little round face turned up to the sky, tipped a touch
+  // (hidden unless the tuft blooms).
   const blades = pos.length / 3;
-  const s = 0.035;
-  for (const [cx, cz] of [[1, 0], [0, 1]]) {
-    const b = pos.length / 3;
-    pos.push(top[0] - cx * s, top[1] - s * 0.6, top[2] - cz * s, top[0] + cx * s, top[1] - s * 0.6, top[2] + cz * s, top[0] + cx * s, top[1] + s * 1.2, top[2] + cz * s, top[0] - cx * s, top[1] + s * 1.2, top[2] - cz * s);
-    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  const s = 0.03, b0 = pos.length / 3;
+  pos.push(top[0], top[1] + 0.012, top[2]);
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2;
+    pos.push(top[0] + Math.cos(a) * s, top[1] + Math.cos(a) * s * 0.35, top[2] + Math.sin(a) * s);
   }
+  for (let k = 0; k < 7; k++) idx.push(b0, b0 + 1 + ((k + 1) % 7), b0 + 1 + k);
   const head = new Float32Array(pos.length / 3);
   head.fill(1, blades);
   const g = new THREE.BufferGeometry();

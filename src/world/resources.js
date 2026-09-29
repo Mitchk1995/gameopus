@@ -6,7 +6,7 @@ import { FIRE, KILN } from './ashford.js';
 import { placeProp, tag, fitUV, courseGeometry } from './props.js';
 import { Fire, fishingRings } from './effects.js';
 import { ROCKS, FISHING } from '../game/content.js';
-import { VILLAGE, LAKE, RIVER, FARMS, MINE_ENTRANCE, polylineDistance } from './map.js';
+import { VILLAGE, LAKE, FARMS, SWIMS, MINE_ENTRANCE } from './map.js';
 
 // The things you work with: ore rocks at the mine, fishing spots on the lake and
 // river, flax in the field, and the village's workstations (furnace and anvil in
@@ -200,21 +200,8 @@ export class Resources {
         }
       }
     }
-    // Fly fishing on the river: find stretches with a bank to stand on.
-    for (const t of [0.34, 0.42, 0.5, 0.6, 0.76]) {
-      const i = Math.floor(t * (RIVER.length - 1));
-      const [ax, az] = RIVER[i], [bx, bz] = RIVER[i + 1];
-      const dx = bx - ax, dz = bz - az, l = Math.hypot(dx, dz);
-      const nx = -dz / l, nz = dx / l;
-      // Walk from mid-channel toward the west bank until the water is shallow.
-      for (let d = 0; d < 12; d += 0.4) {
-        const x = ax + nx * -d, z = az + nz * -d;
-        if (T.heightAt(x, z) > -0.7) {
-          spots.push(['fly', ax + nx * -(d - 1.8), az + nz * -(d - 1.8)]);
-          break;
-        }
-      }
-    }
+    // Fly fishing on the river: its pools, off the gravel bars you can stand on (map.js SWIMS).
+    for (const [x, z] of SWIMS) spots.push(['fly', x, z]);
     for (const [method, x, z] of spots) {
       const def = FISHING[method];
       const rings = fishingRings(this.scene, x, z);
