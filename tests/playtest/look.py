@@ -1,4 +1,4 @@
-# ci
+# ci paths=src/engine/,src/actors/character.js,src/world/,src/main.js,tests/playtest/look
 # Look check: how textured do the people and the village read? Takes the same viewpoints
 # every time (a building close up, a house, a villager, the hero, the square from a
 # distance) and prints numbers about the textures behind them.

@@ -48,6 +48,11 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
 - Work on a branch and open a PR for anything bigger than a tweak; CI (`.github/workflows/ci.yml`)
   builds, checks `scripts/balance.mjs`, and plays every headless scenario whose first line is the comment `# ci`
   (add that line to a new scenario; no need to edit the workflow).
+  They run in four parallel groups (`scenarios` job), and a final `playtest` job goes green only if all
+  groups pass; `look` renders at 640x360 there because software GL is slow.
+  A scenario can opt out of unrelated PRs with `# ci paths=src/world/,src/dungeon/` on its first line
+  (it then runs only when a PR touches one of those prefixes; everything runs on main). Do this for
+  slow scenarios (camera, look, and any large audit sweep).
   Merges are automatic: `.github/workflows/automerge.yml` merges any of the owner's PRs into
   `main` once `build` and `playtest` pass (label a PR `hold` to stop it). Keep PRs based on `main`.
 - After opening any PR, turn on Auto-fix for it (the CI monitor switch) so red CI wakes the session;
