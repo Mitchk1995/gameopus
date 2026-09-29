@@ -82,12 +82,14 @@ STEPS = [
     const W = __world, g = W.g(), M = W.map(), br = W.parts().bridge, inp = g.input;
     g.player.spawn(br.x - br.length / 2 - 6, br.z, Math.PI / 2); g.rig.yaw = Math.PI / 2 + Math.PI;
     inp.keys.clear(); inp.keys.add('KeyW');
-    // (Wading slows the player over the river even on the deck, so the crossing takes a while.)
-    g.sim(18);
+    // At a jog (5 m/s) the crossing takes about (length + 8) / 5 s. The deck is dry: nothing may slow
+    // the player there as if wading, so allow only a third more than a jog needs.
+    const secs = ((br.length + 8) / 5) * 1.35 + 1;
+    g.sim(secs);
     inp.keys.clear();
     const x = g.player.pos.x, want = br.x + br.length / 2 + 2;
-    if (x < want) W.fail('walking east along Bridge Street stopped at x=' + x.toFixed(1) + ' before the far end of the bridge (' + want.toFixed(1) + ')');
-    return x >= want ? 'PASS the bridge can be walked across (reached x=' + x.toFixed(1) + ')' : 'bridge blocked';
+    if (x < want) W.fail('jogging east along Bridge Street for ' + secs.toFixed(1) + ' s stopped at x=' + x.toFixed(1) + ', short of the far end of the bridge (' + want.toFixed(1) + '): blocked, or slowed on the deck');
+    return x >= want ? 'PASS the bridge can be jogged across at full speed (reached x=' + x.toFixed(1) + ' in ' + secs.toFixed(1) + ' s)' : 'bridge blocked or slow';
   })()"""},
   # --- each closure stops walking, running, jumping and rolling, across the whole gorge
   {'eval': """(() => {
