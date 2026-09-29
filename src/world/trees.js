@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Tree } from '../vendor/ez-tree/tree.js';
 import { loadPreset } from '../vendor/ez-tree/presets/index.js';
-import { WORLD, VILLAGE, FARMS, BANDIT_CAMP, LAKE, forestDensity, roadDistance, noise } from './map.js';
+import { WORLD, VILLAGE, FARMS, BANDIT_CAMP, LAKE, forestDensity, roadDistance, noise, fieldDistance } from './map.js';
 import { polyDistance } from './ashford.js';
 
 // Forests. Each species variant is generated once with ez-tree in two levels of
@@ -9,12 +9,45 @@ import { polyDistance } from './ashford.js';
 // is an instance, so a whole forest is a handful of draw calls; which level each tree
 // uses is re-sorted a few times a second as you move.
 
+// `tweak` adjusts a preset into a kind the presets lack: weeping willows by the water, pines killed
+// standing in bandit country and the broken snags among them, and gorse on the heath.
 const SPECIES = {
   oak: { presets: ['Oak Medium', 'Oak Large'], scale: [0.16, 0.2], trunk: 0.5 },
   ash: { presets: ['Ash Medium', 'Ash Large'], scale: [0.14, 0.17], trunk: 0.45 },
   aspen: { presets: ['Aspen Medium', 'Aspen Large'], scale: [0.15, 0.18], trunk: 0.35 },
   pine: { presets: ['Pine Medium', 'Pine Large'], scale: [0.2, 0.25], trunk: 0.45 },
   bush: { presets: ['Bush 1', 'Bush 2'], scale: [0.06, 0.08], trunk: 0 },
+  willow: { presets: ['Ash Medium'], scale: [0.15, 0.18], trunk: 0.5, tweak: (o) => {
+    o.bark.type = 'willow';
+    o.bark.tint = 0xb8ada0;
+    o.branch.force = { direction: { x: 0, y: -1, z: 0 }, strength: 0.03 };
+    o.branch.angle[1] = 58;
+    o.branch.angle[2] = 70;
+    o.branch.gnarliness[1] = 0.2;
+    o.branch.length[2] = (o.branch.length[2] || 10) * 1.35;
+    o.leaves.type = 'ash';
+    o.leaves.count = Math.round(o.leaves.count * 1.5);
+    o.leaves.size *= 0.8;
+    o.leaves.tint = 0xa9c28c;
+  } },
+  deadpine: { presets: ['Pine Medium'], scale: [0.19, 0.23], trunk: 0.42, tweak: (o) => {
+    o.leaves.count = 0;
+    o.bark.tint = 0x9a948e;
+    o.branch.children[1] = Math.max(3, Math.round((o.branch.children[1] || 6) * 0.55));
+  } },
+  snag: { presets: ['Pine Small'], scale: [0.2, 0.26], trunk: 0.4, tweak: (o) => {
+    o.leaves.count = 0;
+    o.bark.tint = 0x8d8781;
+    o.branch.levels = 1;
+    o.branch.children[0] = 5;
+    o.branch.length[0] *= 0.62;
+    o.branch.length[1] = (o.branch.length[1] || 10) * 0.35;
+  } },
+  gorse: { presets: ['Bush 2'], scale: [0.045, 0.06], trunk: 0, tweak: (o) => {
+    o.leaves.tint = 0xc8b54a;
+    o.leaves.size *= 0.75;
+    o.leaves.count = Math.round(o.leaves.count * 1.3);
+  } },
 };
 let NEAR = 40;
 const MID = 150;
@@ -57,10 +90,12 @@ export class Forest {
   #variant(species, preset, seed) {
     const opts = loadPreset(preset);
     opts.seed = seed * 7919;
+    SPECIES[species].tweak?.(opts);
+    const bare = opts.leaves.count === 0;
     // Near detail: the preset, a little lighter.
     for (const k of Object.keys(opts.branch.sections)) opts.branch.sections[k] = Math.max(1, Math.round(opts.branch.sections[k] * 0.65));
     for (const k of Object.keys(opts.branch.segments)) opts.branch.segments[k] = Math.min(opts.branch.segments[k], k === '0' ? 7 : 5);
-    opts.leaves.count = Math.max(1, Math.round(opts.leaves.count * 0.75));
+    opts.leaves.count = bare ? 0 : Math.max(1, Math.round(opts.leaves.count * 0.75));
     opts.leaves.size *= 1.12;
     const near = new Tree();
     near.loadFromJson(opts);
@@ -68,7 +103,7 @@ export class Forest {
     const lite = structuredClone(opts);
     for (const k of Object.keys(lite.branch.sections)) lite.branch.sections[k] = Math.max(1, Math.round(lite.branch.sections[k] * 0.5));
     for (const k of Object.keys(lite.branch.segments)) lite.branch.segments[k] = Math.max(3, Math.round(lite.branch.segments[k] * 0.6));
-    lite.leaves.count = Math.max(1, Math.round(lite.leaves.count * 0.45));
+    lite.leaves.count = bare ? 0 : Math.max(1, Math.round(lite.leaves.count * 0.45));
     lite.leaves.size *= 1.45;
     const mid = new Tree();
     mid.loadFromJson(lite);
@@ -168,7 +203,7 @@ export class Forest {
       if (Math.hypot(x - BANDIT_CAMP.x, z - BANDIT_CAMP.z) < BANDIT_CAMP.r) return false;
       const [rd, rw] = roadDistance(x, z);
       if (rd < rw + clearance) return false;
-      for (const f of FARMS) if (Math.abs(x - f.x) < f.w / 2 + 6 && Math.abs(z - f.z) < f.d / 2 + 6) return false;
+      for (const f of FARMS) if (fieldDistance(f, x, z) < 6) return false;
       return true;
     };
     for (let z = -WORLD.half + 20; z < WORLD.half - 20; z += step)

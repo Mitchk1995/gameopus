@@ -2,12 +2,15 @@
 //   public/assets/world/height.bin  Int16 heights in centimetres, 801 x 801 samples (1 m apart)
 //   public/assets/world/ground.png  RGB ground-cover weights: path, forest floor, cobble (sand comes from height)
 //   public/assets/world/biome_a.png RGB biome weights: meadow, rocky heath, marsh   (512 x 512, 1.56 m a pixel)
-//   public/assets/world/biome_b.png RGB biome weights: dry scrub, woodland moss, mine dust
+//   public/assets/world/biome_b.png RGB biome weights: dry scrub, woodland moss, mine dust and scree
+//   public/assets/world/shore.png   RGB: sand and gravel bars, reeds, the flax field       (512 x 512)
+//   public/assets/world/fields.png  RGB: wheat, green crops, ploughed soil                  (512 x 512)
+//   public/assets/world/flow.png    RGB: the water's current (x, z as 0.5 +- 0.5) and how rough it is
 // Run after editing map.js (or ashford.js):  node scripts/bake-world.mjs
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
-import { WORLD, heightAt, groundAt, biomeAt } from '../src/world/map.js';
+import { WORLD, heightAt, groundAt, biomeAt, shoreAt, fieldsAt, flowAt } from '../src/world/map.js';
 
 const OUT = path.resolve('public/assets/world');
 await mkdir(OUT, { recursive: true });
@@ -47,3 +50,17 @@ for (let j = 0; j < B; j++)
 await sharp(a, { raw: { width: B, height: B, channels: 3 } }).png({ compressionLevel: 9 }).toFile(path.join(OUT, 'biome_a.png'));
 await sharp(b, { raw: { width: B, height: B, channels: 3 } }).png({ compressionLevel: 9 }).toFile(path.join(OUT, 'biome_b.png'));
 console.log(`biome_a.png / biome_b.png ${B}x${B} in ${Date.now() - t2} ms`);
+
+const t3 = Date.now();
+const maps = { shore: [shoreAt, (v) => v], fields: [fieldsAt, (v) => v], flow: [flowAt, (v, k) => (k < 2 ? 0.5 + v * 0.5 : v)] };
+for (const [name, [fn, enc]] of Object.entries(maps)) {
+  const buf = Buffer.alloc(B * B * 3);
+  for (let j = 0; j < B; j++)
+    for (let i = 0; i < B; i++) {
+      const x = ((i + 0.5) / B) * WORLD.size - WORLD.half, z = ((j + 0.5) / B) * WORLD.size - WORLD.half;
+      const w = fn(x, z);
+      for (let k = 0; k < 3; k++) buf[(j * B + i) * 3 + k] = Math.round(Math.min(1, Math.max(0, enc(w[k], k))) * 255);
+    }
+  await sharp(buf, { raw: { width: B, height: B, channels: 3 } }).png({ compressionLevel: 9 }).toFile(path.join(OUT, `${name}.png`));
+}
+console.log(`shore.png / fields.png / flow.png ${B}x${B} in ${Date.now() - t3} ms`);
