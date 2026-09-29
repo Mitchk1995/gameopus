@@ -103,12 +103,15 @@ circular". Ashford is now a small walled market town, laid out like one. The pla
 the NPCs and `tests/playtest/town.py`); `node scripts/town-plan.mjs` draws it top-down
 (`docs/town/plan.jpg`). Coordinates: +x east, +z south; the terrace is level at y 3.2.
 
-**Shape.** A squarish town, about 92 m each way with cut corners, inside a wall: low stone wall on
-the north and east (towards the mine road and the river), clipped hedge on the south and west
-(towards the farms and the woods). Three gates, one per road, each with stone piers, lanterns and an
-"ASHFORD" board: north (Quarry Road, to the mine), east (Bridge Street), south (Lake Street). Two small
-gaps: a farm gate (south-east, trodden track to the flax field) and a garden gate (west end of Wren
-Lane, woodcutters' track to the forest). The ground is graded to the wall line, not a circle.
+**Shape.** A squarish town, about 92 m each way with cut corners, inside a boundary that reads as a
+town's, not a garden's: on the north and east (towards the mine road and the river) a mortared rubble
+wall a head and a half high with a saddleback coping, round towers where it turns or ends; on the south
+and west (towards the farms and the woods) a thick hawthorn hedge. Each road enters under a stone
+gatehouse (a round arch, battlements, the gate leaves folded back inside, lanterns on brackets and the
+"ASHFORD" board over the arch): north (Quarry Road, to the mine), east (Bridge Street), south (Lake
+Street, through the hedge). Two small gaps, each a five-bar field gate standing open between rounded
+hedge ends: a farm gate (south-east, trodden track to the flax field) and a garden gate (west end of
+Wren Lane, woodcutters' track to the forest). The ground is graded to the wall line, not a circle.
 
 **Streets.** The spine is Lake Street, running north from the south gate to the market square and
 ending on the bank, so the spawn (just inside the gate) looks up a cobbled street between tight rows of
@@ -121,24 +124,34 @@ signposted crossroads: Wren Lane (west, houses and gardens) and Stable Lane (eas
 - *Market row* (the civic heart): the square is a paved rectangle, 32 x 24 m. Bank on the north side
   on the axis of Lake Street; general store on the west; the Crooked Pike inn on the north-east
   corner. Six stalls stand in two facing rows either side of a wide aisle, with the well between
-  them (Mirelle's rune cart is the first stall in the west row). Bank, store and inn are a few steps
-  apart, so the trading loop is short.
+  them (Mirelle's rune cart is the first stall in the west row). The square has a centre: the market
+  cross on the Lake Street axis in front of the bank, on its round steps, and in the north-west corner
+  the great old ash the town is named for, with a bench round it and the notice board beside it.
+  Flagstones ring the cross and the well. Bank, store and inn are a few steps apart, so the trading
+  loop is short.
 - *Craft quarter* on the square's south corners, open-fronted so the work is on show: the smithy
   (furnace and anvil) on the south-east corner; the potter's workshop (spinning wheel, potter's wheel,
   workbench) on the west side with the kiln in the alcove between it and the store.
 - *Cooking range* is the communal hearth in front of the inn, ringed with benches, where Bess's cooking
   would be done.
 - *Residential lanes*: cottages of varied width, depth, height and stone or plaster along Lake
-  Street, Quarry Road and Wren Lane, each with a wall lantern at the door, gardens behind with fences,
-  washing lines and woodpiles; allotments (beans, cabbages, herbs) west of Quarry Road.
+  Street, Quarry Road and Wren Lane, each with a wall lantern at the door. Back gardens have the house's
+  back wall as their fourth side (a back door into them) and a wicket onto the alleys between the
+  cottages, with washing lines and woodpiles; allotments (beans up hazel wigwams, cabbages, herbs in
+  raised beds, a tool shed and compost bays) west of Quarry Road.
 - *Chapel on the rise*: a stone chapel with a bell tower on a gentle 1.4 m rise at the end of Church
   Lane, in a walled churchyard with a lych-gate and graves. It shows above the roofs from the spawn.
 - *Working edge*: stable and watch house by the east gate (Garrow's post), toll house by the north
-  gate, barn, stable, farmyard, hay cart, haystacks and pump by the farm gate, a hay paddock. The dock is
-  outside the wall at the end of the lake road, with its crates and barrels by Old Tam.
+  gate, barn, stable, farmyard, the hay wagon (loaded), haystacks and pump by the farm gate; the old
+  paddock is an orchard with bee skeps; the lot north of the inn is the town's drying green; the inn yard
+  behind the inn (casks, a dray, the pump); the cooper's yard behind his workshop. The dock is outside
+  the wall at the end of the lake road, with its crates and barrels by Old Tam, his hut, an upturned
+  boat and nets drying.
 
-**Props with a reason.** Lamp posts every ~12 m per side down Lake Street, Bridge Street, Quarry
-Road and at the square's corners; wall lanterns at every door; barrels and cask racks only at the inn,
+**Props with a reason.** No street lamps (a medieval town had none): lanterns on oak posts where people
+gather after dark (the inn's corner, the foot of the square, the Lake Street crossroads, Bridge Street),
+braziers by the gates, lanterns on brackets at the gatehouses; wall lanterns at every door, hung over a
+head; barrels and cask racks only at the inn,
 the cooper's, the smithy and the store; crates and apples at the store; pots at the potter; benches at the
 inn, the hearth, the well, the bank, the churchyard; troughs at the smithy, the stables and the farm;
 signposts at the square, the crossroads and each gate. Nothing is scattered: `town.py` fails any prop

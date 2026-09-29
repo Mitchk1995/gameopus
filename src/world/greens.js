@@ -487,7 +487,7 @@ export function cabbageGeometry(seed) {
         const px = ca * out - sa * w, pz = sa * out + ca * w;
         // The stalk is at the bottom of the painted leaf (v = 0), the broad top at v = 1.
         const u = (old ? 0.5 : 0) + (0.5 + s) * 0.5 * 0.92 + 0.02, v = 0.02 + t * 0.94;
-        B.vert([px, y + cup, pz], [0, 1, 0], [u, v], old ? [1, 1, 1] : [0.92 + r() * 0.1, 1, 0.95]);
+        B.vert([px, y + cup, pz], [0, 1, 0], [u, v], old ? [0.95, 0.95, 0.9] : [0.72 + r() * 0.08, 0.86, 0.78]);
       }
     }
     for (let j = 0; j < rows; j++) for (let k = 0; k < cols; k++) {
@@ -503,6 +503,10 @@ export function cabbageGeometry(seed) {
   head.translate(0, R * 0.78, 0);
   const uv = head.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.12 + uv.getX(i) * 0.26, 1 - (0.25 + uv.getY(i) * 0.5));
+  // A touch darker and bluer than the painted middle, so the head reads as part of the plant.
+  const tint = new Float32Array(head.attributes.position.count * 3);
+  for (let i = 0; i < tint.length; i += 3) tint.set([0.84, 0.94, 0.88], i);
+  head.setAttribute('color', new THREE.BufferAttribute(tint, 3));
   head.userData.wuv = true;
   return { leaves, head };
 }
