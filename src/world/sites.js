@@ -3,6 +3,9 @@ import { Batcher } from './kit.js';
 import { SiteKit } from './sitekit.js';
 import { buildBridge } from './bridge.js';
 import { buildExits } from './exits.js';
+import { buildWaymarks } from './waymarks.js';
+import { siteMaterials } from './siteparts.js';
+import * as MAP from './map.js';
 
 // Everything built out in the vale that is not the town: the bridge, the ways out and their notices,
 // the landmarks, the fort, the signposts and the sites' markers. Read from the data in map.js.
@@ -15,6 +18,8 @@ export class Sites {
     this.interactables = [];
     this.updaters = [];
     this.parts = {};
+    // The region's data (roads, exits, sites, landmarks...), for whatever needs to read it at run time (the world test).
+    this.map = MAP;
   }
 
   async load() {
@@ -23,8 +28,10 @@ export class Sites {
     this.batch = new Batcher(kit);
     this.sk = new SiteKit(kit, this.batch, w.colliders, w);
     const cliff = { map: await this.assets.texture('ground/cliff_a.webp'), normal: await this.assets.texture('ground/cliff_nr.webp', { srgb: false }) };
+    this.mat = siteMaterials(this.sk, cliff);
     this.parts.bridge = buildBridge(this.sk);
-    this.parts.exits = buildExits(this, cliff);
+    this.parts.exits = buildExits(this);
+    this.parts.waymarks = buildWaymarks(this);
     this.mesh = this.batch.build();
     this.scene.add(this.mesh);
     return this;

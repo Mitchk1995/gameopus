@@ -1,4 +1,5 @@
-import { WORLD } from '../world/map.js';
+import { WORLD, ROADS, EXITS, POIS, LANDMARKS } from '../world/map.js';
+import { OUTLINE, polyDistance } from '../world/ashford.js';
 
 // The minimap: a painted map of the valley (hill-shaded ground, water, paths, woods
 // and buildings), turned so the view direction is up, with markers for places
@@ -19,7 +20,62 @@ const ICONS = {
   inn: { color: '#e9a0a0', glyph: '♥' },
   quest: { color: '#6fb8ff', glyph: '★' },
   goal: { color: '#8ec5ff', glyph: '✦' },
+  // Marks the map itself carries (from the region data in map.js): the ways out, sites and landmarks.
+  exit: { color: '#ff8a5c', small: 8, draw: drawGate },
+  site: { color: '#f4d35e', small: 5.5, draw: drawSite },
+  landmark: { color: '#8ec5ff', small: 6, draw: drawLandmark },
 };
+
+// A barred gate: an arch with three bars, in the warm red of a closed way.
+function drawGate(g, u, color) {
+  g.strokeStyle = color;
+  g.fillStyle = color;
+  g.lineWidth = 1.7 * u;
+  g.beginPath();
+  g.moveTo(-4.6 * u, 4.6 * u);
+  g.lineTo(-4.6 * u, -0.6 * u);
+  g.arc(0, -0.6 * u, 4.6 * u, Math.PI, 0);
+  g.lineTo(4.6 * u, 4.6 * u);
+  g.stroke();
+  g.lineWidth = 1.1 * u;
+  for (const x of [-2.2, 0, 2.2]) {
+    g.beginPath();
+    g.moveTo(x * u, -4.4 * u);
+    g.lineTo(x * u, 4.6 * u);
+    g.stroke();
+  }
+  g.beginPath();
+  g.moveTo(-4.6 * u, 1.4 * u);
+  g.lineTo(4.6 * u, 1.4 * u);
+  g.stroke();
+}
+// A place to see: a small diamond.
+function drawSite(g, u, color) {
+  g.fillStyle = color;
+  g.strokeStyle = 'rgba(30,22,10,0.9)';
+  g.lineWidth = 1 * u;
+  g.beginPath();
+  g.moveTo(0, -4 * u);
+  g.lineTo(3.4 * u, 0);
+  g.lineTo(0, 4 * u);
+  g.lineTo(-3.4 * u, 0);
+  g.closePath();
+  g.fill();
+  g.stroke();
+}
+// A landmark you can see from afar: a small pointed peak.
+function drawLandmark(g, u, color) {
+  g.fillStyle = color;
+  g.strokeStyle = 'rgba(15,25,45,0.95)';
+  g.lineWidth = 1 * u;
+  g.beginPath();
+  g.moveTo(0, -4.6 * u);
+  g.lineTo(4.4 * u, 3.4 * u);
+  g.lineTo(-4.4 * u, 3.4 * u);
+  g.closePath();
+  g.fill();
+  g.stroke();
+}
 
 export class Minimap {
   constructor({ world, markers }) {
@@ -38,6 +94,12 @@ export class Minimap {
     document.body.append(this.root);
     this.ctx = this.canvas.getContext('2d');
     this.map = this.#paint();
+    // What the region data marks on the map: the ways out, the sites and the landmarks.
+    this.marks = [
+      ...EXITS.map((e) => ({ x: e.x, z: e.z, icon: 'exit' })),
+      ...POIS.map((p) => ({ x: p.x, z: p.z, icon: 'site' })),
+      ...Object.values(LANDMARKS).filter((l) => l.facing !== undefined).map((l) => ({ x: l.x, z: l.z, icon: 'landmark' })),
+    ];
   }
 
   // Paints the valley once from the heightmap, ground cover and buildings.
@@ -81,8 +143,9 @@ export class Minimap {
         img.data[o + 3] = 255;
       }
     g.putImageData(img, 0, 0);
-    // Trees as dark dots, buildings as roofs.
     const px = (x) => ((x + WORLD.half) / WORLD.size) * MAP;
+    this.#roads(g, px);
+    // Trees as dark dots, buildings as roofs.
     g.fillStyle = 'rgba(28, 52, 22, 0.55)';
     for (const t of this.world.forest.trees) {
       g.beginPath();
@@ -104,6 +167,74 @@ export class Minimap {
       g.restore();
     }
     return c;
+  }
+
+  // The roads by class, in three widths and tones, over the ground: paths thin and dashed, tracks narrower than
+  // roads, roads cased darker. (Inside the town the cobbles are already painted.)
+  #roads(g, px) {
+    const CLS = {
+      path: { w: 1.9, tone: '#c9b07c', edge: null, dash: [4, 3] },
+      track: { w: 3.2, tone: '#d3ba86', edge: 'rgba(78,56,30,0.75)' },
+      road: { w: 5.2, tone: '#e3cb94', edge: 'rgba(70,50,26,0.9)' },
+    };
+    const k = MAP / WORLD.size;
+    g.save();
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    for (const cls of ['path', 'track', 'road']) {
+      const c = CLS[cls];
+      for (const pass of c.edge ? [0, 1] : [1]) {
+        g.strokeStyle = pass ? c.tone : c.edge;
+        g.lineWidth = c.w * k + (pass ? 0 : 1.7);
+        g.setLineDash(pass && c.dash ? c.dash : []);
+        for (const r of ROADS) {
+          if (r.cls !== cls) continue;
+          g.beginPath();
+          let pen = false;
+          for (let i = 0; i < r.pts.length; i++) {
+            const [x, z] = r.pts[i], inside = polyDistance(x, z, OUTLINE) < 0.5;
+            if (inside) { pen = false; continue; }
+            if (pen) g.lineTo(px(x), px(z));
+            else g.moveTo(px(x), px(z));
+            pen = true;
+          }
+          g.stroke();
+        }
+      }
+    }
+    g.restore();
+  }
+
+  // One mark on the moving map: dots are drawn plain, icons upright on a dark disc (small marks on a smaller one).
+  #mark(g, m, player, ppm, S, yaw) {
+    let dx = (m.x - player.pos.x) * ppm, dz = (m.z - player.pos.z) * ppm;
+    const far = Math.hypot(dx, dz), rim = S * 0.43;
+    if (m.edge && far > rim) {
+      // Pinned to the rim, pointing the way.
+      dx *= rim / far;
+      dz *= rim / far;
+    } else if (far > S * 0.75) return;
+    if (m.dot) {
+      g.fillStyle = m.dot;
+      g.beginPath();
+      g.arc(dx, dz, 2.6 * this.dpr, 0, Math.PI * 2);
+      g.fill();
+      return;
+    }
+    const ic = ICONS[m.icon];
+    g.save();
+    g.translate(dx, dz);
+    g.rotate(-yaw);
+    g.fillStyle = 'rgba(15, 12, 8, 0.8)';
+    g.beginPath();
+    g.arc(0, 0, (ic.small ? ic.small + 1.5 : 8) * this.dpr, 0, Math.PI * 2);
+    g.fill();
+    if (ic.draw) ic.draw(g, this.dpr * (ic.small ? ic.small / 8 : 1), ic.color);
+    else {
+      g.fillStyle = ic.color;
+      g.fillText(ic.glyph, 0, 0.5 * this.dpr);
+    }
+    g.restore();
   }
 
   #updateDungeon(player, yaw) {
@@ -198,33 +329,8 @@ export class Minimap {
     g.font = `${12 * this.dpr}px sans-serif`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    for (const m of this.markers()) {
-      let dx = (m.x - player.pos.x) * ppm, dz = (m.z - player.pos.z) * ppm;
-      const far = Math.hypot(dx, dz), rim = S * 0.43;
-      if (m.edge && far > rim) {
-        // Pinned to the rim, pointing the way.
-        dx *= rim / far;
-        dz *= rim / far;
-      } else if (far > S * 0.75) continue;
-      if (m.dot) {
-        g.fillStyle = m.dot;
-        g.beginPath();
-        g.arc(dx, dz, 2.6 * this.dpr, 0, Math.PI * 2);
-        g.fill();
-        continue;
-      }
-      const ic = ICONS[m.icon];
-      g.save();
-      g.translate(dx, dz);
-      g.rotate(-yaw);
-      g.fillStyle = 'rgba(15, 12, 8, 0.8)';
-      g.beginPath();
-      g.arc(0, 0, 8 * this.dpr, 0, Math.PI * 2);
-      g.fill();
-      g.fillStyle = ic.color;
-      g.fillText(ic.glyph, 0, 0.5 * this.dpr);
-      g.restore();
-    }
+    for (const m of this.marks) this.#mark(g, m, player, ppm, S, yaw);
+    for (const m of this.markers()) this.#mark(g, m, player, ppm, S, yaw);
     g.restore();
     // The player: an arrow pointing where they face, relative to the view.
     g.save();

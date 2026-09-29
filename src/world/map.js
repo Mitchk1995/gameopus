@@ -869,8 +869,20 @@ export const JUNCTIONS = buildJunctions().map((spot, i) => {
   const ml = Math.hypot(mx, mz);
   // Stand the post in the crook: away from the mean direction of the roads (or beside the first road).
   const ox = ml > 0.25 ? -mx / ml : -dirs[0][1], oz = ml > 0.25 ? -mz / ml : dirs[0][0];
-  return { id: `junction${i}`, x: spot[0] + ox * 4.6, z: spot[1] + oz * 4.6, at: spot, boards, roads: [...new Set(boards.map((b) => b.road))] };
+  const [px, pz] = postSpot(spot, ox, oz);
+  return { id: `junction${i}`, x: px, z: pz, at: spot, boards, roads: [...new Set(boards.map((b) => b.road))] };
 });
+// A spot near a junction for its post: in the crook if it can be, and always a road's painted width plus a metre and
+// a bit off every road, so the post stands beside the roads and never on one.
+function postSpot(spot, ox, oz) {
+  const clear = (x, z) => ROADS.every((r) => roadAt(r.id, x, z).d > r.width + 1.2) && polyDistance(x, z, OUTLINE) > 3;
+  for (const d of [4.6, 5.8, 7.0, 8.4])
+    for (const a of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.7, -1.7, 2.3, -2.3, Math.PI]) {
+      const c = Math.cos(a), s = Math.sin(a), x = spot[0] + (ox * c - oz * s) * d, z = spot[1] + (ox * s + oz * c) * d;
+      if (clear(x, z)) return [x, z];
+    }
+  return [spot[0] + ox * 4.6, spot[1] + oz * 4.6];
+}
 function pointAt(r, s) {
   let acc = 0;
   for (let i = 0; i < r.pts.length - 1; i++) {
@@ -883,7 +895,7 @@ function pointAt(r, s) {
   }
   return r.pts[r.pts.length - 1];
 }
-export { roadLength };
+export { roadLength, pointAt as pointAtRoad };
 
 // Warning posts where one ring of danger begins: [x, z, board text, what the traveller reads, facing (yaw the board faces)].
 export const WARNINGS = [
