@@ -88,7 +88,7 @@ Cheerful, chatty and practical, the first person newcomers ask for advice. Knows
       outfit: 'male_peasant', body: 'male', parts: { torso: 'male_ranger', feet: 'male_ranger' }, addons: ['bracers', 'belt'],
       hair: 'hair_buzzed', beard: 'hair_beard', eyebrows: 'eyebrows_regular', hairColor: 'black', skin: 'weathered',
       dye: { torso: 0x26262a, arms: 0x2c2620, legs: 0x26221e }, leather: 0x24160e,
-      gear: [{ kind: 'apron', color: 0x4a3120, trim: 0x2a1a10, length: 0.5 }], scale: 1.03, build: 1.12,
+      gear: [{ kind: 'apron', color: 0x4a3120, trim: 0x2a1a10, length: 0.5 }], scale: 1.04, build: 1.09,
     },
     idle: 'Idle_FoldArms_Loop', at: { place: 'smithy', x: -2.0, z: -0.2 },
     persona: `Brom is Ashford's smith: huge, soot-stained, blunt, and proud of his craft. His smithy is on the south-east corner of the market square, open to the street so passers-by can watch the forge, with a furnace and an anvil.
@@ -167,11 +167,11 @@ Few words, gruff humour, soft spot for Old Tam, low opinion of Garrow's guarding
 
   {
     id: 'tam', name: 'Old Tam', role: 'fisher',
-    // An old fisherman in oilskin browns, long white hair and beard, a knitted cap; small and a little bent.
+    // An old fisherman in oilskin browns, long white hair and beard, a knitted cap; a head shorter than most.
     look: {
       outfit: 'male_ranger', body: 'male', addons: ['belt'], hair: 'hair_long', beard: 'hair_beard', eyebrows: 'eyebrows_regular',
       hairColor: 'white', skin: 'ruddy', dye: { cloth: 0x7a5a2a }, leather: 0x3a2818,
-      gear: [{ kind: 'hat', style: 'knit', color: 0x2a3a52 }], scale: 0.96, build: 0.98,
+      gear: [{ kind: 'hat', style: 'knit', color: 0x2a3a52, size: 1.06, lift: 0.012, forward: 0.006 }], scale: 0.96, build: 0.98,
     },
     at: { x: -50.5, z: 171.5, facing: 2.6 },
     persona: `Old Tam has fished the lake south of the village for sixty years and sells nets, fly rods and feathers from the end of the lake road, by the jetty.
@@ -282,10 +282,11 @@ Crafting: dig clay at the quarry, soften it with water from the well, shape pots
 
   {
     id: 'mirelle', name: 'Mirelle', role: 'mage',
-    // A travelling mage: deep violet, long black hair, a pale face.
+    // A travelling mage: deep violet, long black hair, a pale face, a tall pointed hat.
     look: {
       outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female', hairColor: 'black', skin: 'pale',
       dye: { torso: 0x5a3a9a, arms: 0x6a4aa8, legs: 0x2a2038, feet: 0x2a2038 },
+      gear: [{ kind: 'hat', style: 'pointed', color: 0x3a2a6a, band: 0xc9b070 }],
     },
     at: PEOPLE_AT.mirelle,
     persona: `Mirelle is a travelling mage who has set up a rune stall on the west side of the market aisle in Ashford's square, selling runes and staves. Quick-witted, theatrical, delighted by anyone curious about magic, and a little vain about her own spellwork.
@@ -316,7 +317,7 @@ She thinks swords are loud and bows are fiddly. She has heard the goblins under 
     // The town watch: the ranger's harness in blue (no hood, no green), a pauldron and bracers, a crimson tabard.
     look: {
       outfit: 'male_ranger', body: 'male', addons: ['pauldron', 'bracers', 'belt'], hair: 'hair_buzzed', eyebrows: 'eyebrows_regular',
-      hairColor: 'brown', skin: 'weathered', dye: { cloth: 0x1c3466 }, leather: 0x2a1c12,
+      hairColor: 'brown', skin: 'brown', dye: { cloth: 0x1c3466 }, leather: 0x2a1c12,
       gear: [{ kind: 'tabard', color: 0x7a1e26, trim: 0xc9a030 }], scale: 1.03, build: 1.05,
     },
     idle: 'Idle_FoldArms_Loop', at: PEOPLE_AT.garrow,
@@ -373,7 +374,7 @@ Knows the roads: north-west to the quarry and mine, east over the bridge past th
     look: {
       outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female', hairColor: 'ginger', skin: 'ruddy',
       dye: { torso: 0xb03028, arms: 0xf0e8d8, legs: 0x4a3a2c, feet: 0x5a3a24 },
-      gear: [{ kind: 'apron', color: 0xf0ead8, trim: 0xc8b898 }], build: 1.08,
+      gear: [{ kind: 'apron', color: 0xf0ead8, trim: 0xc8b898 }], build: 1.06,
     },
     at: { place: 'inn', x: -0.9, z: -4.7 },
     persona: `Bess keeps the Crooked Pike, the big inn on the north-east corner of the market square, with a communal hearth out front. Warm, loud, quick to laugh, and the valley's best source of gossip.

@@ -6,6 +6,8 @@
 #                 in green (other people may wear ranger pieces re-dyed to a clearly different colour),
 #                 and every villager stays a clear distance from the player's own look
 #   - built       the people in the world really are built from the looks in src/content/people.js
+# It also photographs the lineup (npc_lineup.png): the player and every villager side by side on the road
+# outside the south gate, front view, at eye level (docs/town/after/npc_lineup.jpg is a copy of it).
 # Look distance is a sum over the parts you can see at ten metres: which outfit each garment comes from,
 # the colour of each garment, hair style and colour, beard, skin, gear, height and build. Colours are
 # compared as CIE Lab differences, so a hex that is one digit off does not count as a different colour.
@@ -107,4 +109,42 @@ STEPS = [
     const table = npcs.map((n) => n.id + ': ' + CORE.map((p) => n.look.parts[p].replace(/^(fe)?male_/, '')[0] + (n.look.dye[p] !== undefined ? hexOf(n.look.dye[p]).toString(16).padStart(6, '0') : '-')).join(' ') + ' | ' + (n.look.hair || 'bald').replace('hair_', '') + '/' + (n.look.hairColor === null ? 'silver' : n.look.hairColor.toString(16)) + (n.look.beard ? ' +beard' : '') + (n.look.gear.length ? ' gear:' + n.look.gear.map((x) => x.kind).join(',') : ''));
     return { people: npcs.length, fails: fails.length, info: info.join('; '), verdict: fails.length ? fails.join('\\n') : 'looks ok', table };
   })()"""},
+  # --- the lineup
+  {'eval': """(async () => {
+    const g = __game, T = window.__THREE;
+    const X0 = -8, Z0 = 80, GAP = 0.9;
+    const people = [{ name: 'Player', char: g.hero }];
+    for (const n of g.npcs) {
+      const c = await g.factory.create(n.def.look);
+      g.scene.add(c.root);
+      c.play('Idle_Loop', { fade: 0 });
+      c.mixer.update(0.7);
+      people.push({ name: n.def.name, char: c });
+    }
+    people.forEach((p, i) => {
+      const x = X0 + (i - (people.length - 1) / 2) * GAP;
+      p.char.root.position.set(x, g.world.groundAt(x, Z0, 1e4), Z0);
+      p.char.root.rotation.y = 0;
+      p.char.root.visible = true;
+      p.x = x;
+    });
+    for (const el of document.body.children) if (el.id !== 'app') el.style.display = 'none';
+    const gy = g.world.groundAt(X0, Z0, 1e4);
+    g.camera.fov = 30;
+    g.camera.aspect = innerWidth / innerHeight;
+    g.camera.updateProjectionMatrix();
+    g.camera.position.set(X0, gy + 1.5, Z0 + 11);
+    g.camera.lookAt(X0, gy + 1.2, Z0);
+    g.camera.updateMatrixWorld(true);
+    g.draw(1 / 60);
+    const v = new T.Vector3();
+    for (const p of people) {
+      v.set(p.x, g.world.groundAt(p.x, Z0, 1e4), Z0).project(g.camera);
+      const d = document.createElement('div');
+      d.textContent = p.name;
+      d.style.cssText = `position:fixed;left:${(v.x * 0.5 + 0.5) * innerWidth}px;top:${(-v.y * 0.5 + 0.5) * innerHeight + 6}px;transform:translateX(-50%);z-index:9999;font:600 13px system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.55);padding:1px 6px;border-radius:3px;white-space:nowrap`;
+      document.body.appendChild(d);
+    }
+    return 'lineup of ' + people.length;
+  })()""", 'wait': 300, 'shot': 'npc_lineup'},
 ]

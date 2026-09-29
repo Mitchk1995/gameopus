@@ -27,7 +27,7 @@ import { enhance } from '../engine/detail.js';
 //   scale     height, 1 by default; build: width, 1 by default
 //   gear      things to wear that are built here from a few curves rather than loaded:
 //             { kind: 'apron', color, trim?, length? } { kind: 'tabard', color, trim? }
-//             { kind: 'hat', style: 'straw' | 'knit', color, band? }
+//             { kind: 'hat', style: 'straw' | 'knit' | 'pointed', color, band?, size?, lift?, forward? }
 //   tint, tintMaterial   the old single multiply, kept for the bandits
 
 const HEAD_BONES = new Set(['Head', 'neck_01']);
@@ -313,52 +313,80 @@ const clothMaterial = (color, extra = {}) => new THREE.MeshStandardMaterial({ co
 // 3 thigh_l, 4 thigh_r.
 function panelWeights(y, x) {
   const w = [0, 0, 0, 0, 0];
-  const thigh = x >= 0 ? 3 : 4;
   if (y >= 1.25) w[0] = 1;
   else if (y >= 1.1) { const t = (y - 1.1) / 0.15; w[0] = t; w[1] = 1 - t; }
   else if (y >= 0.95) { const t = (y - 0.95) / 0.15; w[1] = t; w[2] = 1 - t; }
-  else if (y >= 0.7) { const t = (y - 0.7) / 0.25; w[2] = 0.35 + 0.65 * t; w[thigh] = 0.65 * (1 - t); }
-  else { w[2] = 0.35; w[thigh] = 0.65; }
+  else {
+    // Below the hips each side of the cloth follows its own leg (the middle follows both), so a
+    // knee stepping forward carries the cloth with it instead of poking through.
+    const legs = 0.95 * Math.min(1, (0.98 - y) / 0.16);
+    const side = Math.min(1, Math.max(0, (x + 0.07) / 0.14));
+    w[2] = 1 - legs;
+    w[3] = legs * side;
+    w[4] = legs * (1 - side);
+  }
   return w;
 }
 
 // A curved cloth panel hung on the body. `knots` are [y, half width, z] from the top down (z is
 // the distance ahead of the spine, negative for a back panel); the edges curl away from the body.
-function clothPanel(ctx, knots, { color, cols = 8, sub = 3, curve = 1.6, trim = null }) {
-  const rows = [];
-  for (let k = 0; k < knots.length - 1; k++) {
-    for (let s = 0; s < sub; s++) {
-      const t = s / sub, a = knots[k], b = knots[k + 1];
-      rows.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+// With a `trim` colour the bottom `trimHeight` metres are that colour, with a sharp edge (the row
+// where they meet is doubled, so the colours do not blend). Plain vertex colours, so the panel
+// needs no texture.
+function clothPanel(ctx, knots, { color, cols = 8, rowsPerKnot = 3, curve = 1.6, trim = null, trimHeight = 0.08 }) {
+  const at = (y) => {
+    for (let k = 0; k < knots.length - 1; k++) {
+      const a = knots[k], b = knots[k + 1];
+      if (y <= a[0] && y >= b[0]) {
+        const t = (a[0] - y) / (a[0] - b[0] || 1);
+        return [y, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      }
     }
+    return knots[knots.length - 1];
+  };
+  const rows = []; // [y, half width, z, trimmed?]
+  for (let k = 0; k < knots.length - 1; k++) {
+    for (let s = 0; s < rowsPerKnot; s++) rows.push([...at(knots[k][0] + (knots[k + 1][0] - knots[k][0]) * (s / rowsPerKnot)), false]);
   }
-  rows.push(knots[knots.length - 1]);
-  const pos = [], idx = [], skinIndex = [], skinWeight = [], uvs = [];
-  rows.forEach(([y, w, z], j) => {
+  const bottom = knots[knots.length - 1];
+  if (trim !== null) {
+    const yb = bottom[0] + trimHeight;
+    let cut = rows.findIndex((r) => r[0] < yb);
+    if (cut < 0) cut = rows.length;
+    rows.splice(cut, 0, [...at(yb), false], [...at(yb), true]);
+    for (let j = cut + 2; j < rows.length; j++) rows[j][3] = true;
+    rows.push([...bottom, true]);
+  } else rows.push([...bottom, false]);
+  const front = knots[0][2] >= 0;
+  const base = new THREE.Color(color), edge = new THREE.Color(trim ?? color);
+  const pos = [], idx = [], skinIndex = [], skinWeight = [], colors = [];
+  rows.forEach(([y, w, z, trimmed]) => {
     for (let i = 0; i <= cols; i++) {
-      const u = (i / cols) * 2 - 1, x = u * w;
+      const x = ((i / cols) * 2 - 1) * w;
       pos.push(x, y, z - Math.sign(z) * curve * x * x);
-      const wt = panelWeights(y, x).map((v, b) => [v, b]).sort((p, q) => q[0] - p[0]).slice(0, 4);
-      const sum = wt.reduce((a, v) => a + v[0], 0) || 1;
-      for (let k = 0; k < 4; k++) { skinIndex.push(wt[k][1]); skinWeight.push(wt[k][0] / sum); }
-      uvs.push(i / cols, 1 - j / (rows.length - 1));
+      const wt = panelWeights(y, x).map((v, n) => [v, n]).sort((p, q) => q[0] - p[0]).slice(0, 4);
+      const sum = wt.reduce((acc, v) => acc + v[0], 0) || 1;
+      for (let n = 0; n < 4; n++) { skinIndex.push(wt[n][1]); skinWeight.push(wt[n][0] / sum); }
+      const c = trimmed ? edge : base;
+      colors.push(c.r, c.g, c.b);
     }
   });
   for (let j = 0; j < rows.length - 1; j++) {
+    if (rows[j][0] === rows[j + 1][0] && rows[j][3] !== rows[j + 1][3]) continue; // the sharp edge of the trim
     for (let i = 0; i < cols; i++) {
       const a = j * (cols + 1) + i, c = a + cols + 1;
-      if (z0(knots) >= 0) idx.push(a, c, a + 1, a + 1, c, c + 1);
+      if (front) idx.push(a, c, a + 1, a + 1, c, c + 1);
       else idx.push(a, a + 1, c, a + 1, c + 1, c);
     }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
   geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  const mesh = new THREE.SkinnedMesh(geo, clothMaterial(0xffffff, { map: trimTexture(color, trim) }));
+  const mesh = new THREE.SkinnedMesh(geo, clothMaterial(0xffffff, { vertexColors: true }));
   mesh.name = 'gear_panel';
   mesh.frustumCulled = false;
   mesh.castShadow = mesh.receiveShadow = true;
@@ -367,48 +395,25 @@ function clothPanel(ctx, knots, { color, cols = 8, sub = 3, curve = 1.6, trim = 
   mesh.bind(new THREE.Skeleton(list), mesh.matrixWorld);
   return mesh;
 }
-const z0 = (knots) => knots[0][2];
-
-// A tiny texture for a cloth panel: one colour, with a band of another along the hem and edges.
-const trims = new Map();
-function trimTexture(color, trim) {
-  const key = `${color}|${trim}`;
-  if (trims.has(key)) return trims.get(key);
-  const css = (v) => `#${new THREE.Color(v).getHexString(THREE.SRGBColorSpace)}`;
-  const c = document.createElement('canvas');
-  c.width = 16;
-  c.height = 64;
-  const x = c.getContext('2d');
-  x.fillStyle = css(color);
-  x.fillRect(0, 0, 16, 64);
-  if (trim !== null && trim !== undefined) {
-    x.fillStyle = css(trim);
-    x.fillRect(0, 57, 16, 7);
-    x.fillRect(0, 0, 1, 64);
-    x.fillRect(15, 0, 1, 64);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.magFilter = THREE.NearestFilter;
-  trims.set(key, t);
-  return t;
-}
 
 const HATS = {
   // wide brim, low round crown
   straw: { profile: [[0, 0.135], [0.045, 0.133], [0.085, 0.118], [0.099, 0.075], [0.102, 0.03], [0.12, 0.012], [0.19, 0.004], [0.255, -0.012], [0.262, -0.026]], y: 1.715, z: -0.012 },
   // a snug woollen cap with a rolled edge
-  knit: { profile: [[0, 0.125], [0.05, 0.121], [0.088, 0.098], [0.104, 0.05], [0.109, 0.0], [0.114, -0.035], [0.104, -0.04], [0.1, -0.02]], y: 1.735, z: -0.014 },
+  // a tall pointed hat with a broad brim
+  pointed: { profile: [[0, 0.4], [0.008, 0.37], [0.026, 0.29], [0.05, 0.19], [0.073, 0.1], [0.092, 0.035], [0.108, 0.008], [0.16, 0.0], [0.215, -0.012], [0.243, -0.03]], y: 1.728, z: -0.012 },
+  knit: { profile: [[0, 0.104], [0.03, 0.102], [0.06, 0.093], [0.088, 0.073], [0.106, 0.045], [0.116, 0.015], [0.12, -0.012], [0.127, -0.028], [0.124, -0.043], [0.112, -0.038]], y: 1.742, z: -0.012 },
 };
 
 function wear(g, ctx) {
   if (g.kind === 'hat') {
     const h = HATS[g.style || 'straw'];
-    const geo = new THREE.LatheGeometry(h.profile.map(([r, y]) => new THREE.Vector2(r, y)), 24);
+    const k = g.size ?? 1;
+    const geo = new THREE.LatheGeometry(h.profile.map(([r, y]) => new THREE.Vector2(r * k, y * k)), 24);
     const mesh = new THREE.Mesh(geo, clothMaterial(g.color ?? 0xc9a85a, { roughness: 1 }));
     mesh.name = 'gear_hat';
     mesh.castShadow = mesh.receiveShadow = true;
-    mesh.position.set(0, h.y, h.z);
+    mesh.position.set(0, h.y + (g.lift ?? 0), h.z + (g.forward ?? 0));
     if (g.band !== undefined) {
       const band = new THREE.Mesh(new THREE.CylinderGeometry(0.104, 0.107, 0.03, 24, 1, true), clothMaterial(g.band));
       band.position.y = 0.024;
@@ -423,8 +428,8 @@ function wear(g, ctx) {
     // (measured on the bodies: the belly and hips are 0.11-0.12 ahead of the spine, the thighs 0.06,
     // a woman's chest 0.13; the panel stands 1.5 cm off that, and hangs further out below the hips
     // so a bent knee does not push through it)
-    const bust = ctx.female ? 0.022 : 0;
-    clothPanel(ctx, [[1.4, 0.08, 0.118 + bust], [1.3, 0.125, 0.13 + bust], [1.16, 0.16, 0.135], [1.0, 0.175, 0.14], [0.9, 0.18, 0.143], [len, 0.2, 0.135]], { color: g.color ?? 0xe8e0cc, trim: g.trim ?? null, curve: 2.0 });
+    const bust = ctx.female ? 0.04 : 0;
+    clothPanel(ctx, [[1.4, 0.08, 0.125 + bust], [1.3, 0.115, 0.14 + bust], [1.16, 0.135, 0.14], [1.0, 0.14, 0.145], [0.9, 0.145, 0.15], [len, 0.16, 0.14]], { color: g.color ?? 0xe8e0cc, trim: g.trim ?? null, curve: 1.6 });
   } else if (g.kind === 'tabard') {
     const len = g.length ?? 0.66;
     const knots = (s) => [[1.5, 0.11, s * 0.15], [1.4, 0.16, s * 0.155], [1.2, 0.17, s * 0.15], [1.0, 0.18, s * 0.14], [len, 0.19, s * 0.13]];
