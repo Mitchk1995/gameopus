@@ -429,7 +429,7 @@ function abbey(sk, xm, keep) {
   // Points for tests and views: the door, just inside it, outside the next bay, the gable's apex and the tower top.
   return {
     x: f.ox, z: f.oz, base, frame: f, door: f.at(DOOR, HW), inside: f.at(DOOR, 0), outside: f.at(DOOR, HW + 3), bayOutside: f.at(0, HW + 1.2), bayInside: f.at(0, 0),
-    apex: [f.at(X1 + T / 2, 0)[0], base + 21.6, f.at(X1 + T / 2, 0)[1]], towerTop: [f.at(-18.5, 0)[0], base + 18, f.at(-18.5, 0)[1]],
+    apex: [f.at(X1 + T / 2, 0)[0], base + 21.6, f.at(X1 + T / 2, 0)[1]], towerFace: [f.at(-18.5, TH - 0.2)[0], base + 17, f.at(-18.5, TH - 0.2)[1]],
   };
 }
 
@@ -602,36 +602,38 @@ function beacon(sk, xm, sites, smoke, keep) {
   }
   // The iron fire basket on the deck: a stem on splayed feet, a bowl, a cage of bars.
   const dy = base + TOP;
-  sk.put(sk.cyl(0.09, 0.07, 1.25, 8), m.iron, L.x, dy, L.z);
+  const up = 1.8; // the basket stands on a tall post, so its fire burns clear above the merlons
+  sk.put(sk.cyl(0.13, 0.09, 1.25 + up, 8), m.iron, L.x, dy, L.z);
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * TAU + 0.3;
-    beam(sk, [L.x + Math.sin(a) * 0.9, dy + 0.02, L.z + Math.cos(a) * 0.9], [L.x + Math.sin(a) * 0.08, dy + 0.7, L.z + Math.cos(a) * 0.08], 0.07, 0.07, m.iron);
+    beam(sk, [L.x + Math.sin(a) * 1.1, dy + 0.02, L.z + Math.cos(a) * 1.1], [L.x + Math.sin(a) * 0.1, dy + 1.35, L.z + Math.cos(a) * 0.1], 0.08, 0.08, m.iron);
   }
   const bowl = (sk.geo.beaconBowl ??= new THREE.CylinderGeometry(0.85, 0.42, 0.5, 14, 1, true).translate(0, 0.25, 0));
-  sk.put(bowl, xm.ironDouble, L.x, dy + 1.22, L.z);
-  sk.put(sk.cyl(0.44, 0.44, 0.06, 14), m.iron, L.x, dy + 1.2, L.z);
+  sk.put(bowl, xm.ironDouble, L.x, dy + up + 1.22, L.z);
+  sk.put(sk.cyl(0.44, 0.44, 0.06, 14), m.iron, L.x, dy + up + 1.2, L.z);
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * TAU;
-    beam(sk, [L.x + Math.sin(a) * 0.84, dy + 1.7, L.z + Math.cos(a) * 0.84], [L.x + Math.sin(a) * 0.98, dy + 2.45, L.z + Math.cos(a) * 0.98], 0.05, 0.05, m.iron);
+    beam(sk, [L.x + Math.sin(a) * 0.84, dy + up + 1.7, L.z + Math.cos(a) * 0.84], [L.x + Math.sin(a) * 0.98, dy + up + 2.45, L.z + Math.cos(a) * 0.98], 0.05, 0.05, m.iron);
   }
   const hoop = (sk.geo.beaconHoop ??= new THREE.TorusGeometry(0.98, 0.04, 6, 24).rotateX(Math.PI / 2));
-  sk.put(hoop, m.iron, L.x, dy + 2.45, L.z);
+  sk.put(hoop, m.iron, L.x, dy + up + 2.45, L.z);
   // Glowing coals and a few charred logs in the bowl.
-  sk.put(sk.cyl(0.62, 0.66, 0.12, 12), xm.ember, L.x, dy + 1.52, L.z);
-  for (let i = 0; i < 4; i++) beam(sk, [L.x + Math.sin(i * 1.6) * 0.5, dy + 1.62, L.z + Math.cos(i * 1.6) * 0.5], [L.x - Math.sin(i * 1.6) * 0.4, dy + 1.78, L.z - Math.cos(i * 1.6) * 0.4], 0.14, 0.14, xm.coal);
+  sk.put(sk.cyl(0.62, 0.66, 0.12, 12), xm.ember, L.x, dy + up + 1.52, L.z);
+  for (let i = 0; i < 4; i++) beam(sk, [L.x + Math.sin(i * 1.6) * 0.5, dy + up + 1.62, L.z + Math.cos(i * 1.6) * 0.5], [L.x - Math.sin(i * 1.6) * 0.4, dy + up + 1.78, L.z - Math.cos(i * 1.6) * 0.4], 0.14, 0.14, xm.coal);
   // Solid from the ground to the merlons (a closed tower; nobody climbs it).
   sk.colliders.addCircle(L.x, L.z, R0 + 0.35, y0, base + TOP + 1.85);
   // Fuel for the beacon, stacked by the door.
   const [wx, wz] = f.at(-2.7, R0 + 1.4);
   sk.woodpile(wx, wz, yaw + 0.2);
   // The fire itself, its light (small and warm), and the smoke.
-  const fire = new Fire(sites.scene, L.x, dy + 1.6, L.z, { size: 1.15 });
+  const fire = new Fire(sites.scene, L.x, dy + up + 1.55, L.z, { size: 1.35 });
+  smoke.flame(L.x, dy + up + 1.58, L.z, 1.3);
   fire.light.distance = 16;
   fire.light.intensity = 7;
   sites.updaters.push((dt) => fire.update(dt));
-  smoke.add(L.x, dy + 2.6, L.z, { puffs: 48, life: 22, rise: 60, size: [1.0, 14], grey: 0.52, opacity: 0.76, spread: 5, seed: 3 });
+  smoke.add(L.x, dy + up + 2.9, L.z, { puffs: 48, life: 22, rise: 60, size: [1.3, 14], grey: 0.46, opacity: 0.8, spread: 5, seed: 3 });
   keep.push(circleOut(L.x, L.z, 14));
-  return { x: L.x, z: L.z, base, top: base + TOP + 1.85, fire, R: R0 + 0.35, approach: f.at(0, R0 + 3) };
+  return { x: L.x, z: L.z, base, top: dy + up + 2.45, fire, R: R0 + 0.35, approach: f.at(0, R0 + 3) };
 }
 
 // ------------------------------------------------------------------ the mine headframe
@@ -729,7 +731,7 @@ function headframe(sk, xm, smoke, keep) {
   sk.put(sk.box(1.02, 0.28, 1.02), m.rock, cx, base + chH - 0.3, cz, f.yaw);
   sk.put(sk.box(0.6, 0.02, 0.6), xm.dark, cx, base + chH - 0.01, cz, f.yaw);
   sk.colliders.addBox(cx, cz, 0.55, 0.55, f.yaw, base - 0.5, base + chH);
-  smoke.add(cx, base + chH + 0.1, cz, { puffs: 44, life: 22, rise: 56, size: [0.8, 13], grey: 0.58, opacity: 0.76, spread: 4.2, seed: 7 });
+  smoke.add(cx, base + chH + 0.1, cz, { puffs: 44, life: 22, rise: 56, size: [0.8, 13], grey: 0.14, opacity: 0.82, spread: 4.2, seed: 7 });
   // --- a stack of pit props by the path, and spoil tipped over the yard's edge
   timberStack(sk, f, base, 2.0, 4.2, xm);
   for (const [lx, lz, R, Hh] of [[-1.2, 4.3, 1.2, 1.0], [5.8, 4.6, 1.0, 0.8]]) { const [x, z] = f.at(lx, lz); rubble(sk, xm, x, z, R, Hh, rng(lx * 100 + lz), 'spoil heap'); }

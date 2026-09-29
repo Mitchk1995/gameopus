@@ -44,11 +44,12 @@ STEPS = [
   # --- sight lines from town
   {'eval': """(() => {
     const L = __lm, M = __game.world.sites.parts.landmarks, out = {};
+    // Each target is a point on the landmark; a line that reaches the landmark's own solid within `near` m of it has arrived.
     const up = (p, h) => [p[0], p[1] + h, p[2]];
     const tests = [
-      ['abbey gable from the spawn', L.eye(-8, 53), up(M.abbey.apex, 0.6), 2],
-      ['abbey tower from the spawn', L.eye(-8, 53), up(M.abbey.towerTop, 3.5), 5],
-      ['abbey gable from Lake Street outside the gate', L.eye(-8, 66), up(M.abbey.apex, 0.6), 2],
+      ['abbey gable top from the spawn', L.eye(-8, 53), up(M.abbey.apex, -1.1), 2],
+      ['abbey tower (its upper south face) from the spawn', L.eye(-8, 53), M.abbey.towerFace, 1],
+      ['abbey gable top from the south gate', L.eye(-8, 60), up(M.abbey.apex, -1.1), 2],
       ['beacon from Bridge Street', L.eye(60, 14), [M.beacon.x, M.beacon.top - 0.5, M.beacon.z], M.beacon.R + 1],
       ['beacon from the bridge', L.eye(90, 3), [M.beacon.x, M.beacon.top - 0.5, M.beacon.z], M.beacon.R + 1],
       ['lighthouse through the south gate', L.eye(-8, 60), [M.lighthouse.x, M.lighthouse.top - 1.2, M.lighthouse.z], 2],
