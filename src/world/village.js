@@ -137,7 +137,7 @@ export class Village {
     const tk = this.tk;
     const rnd = rng(77);
     const goodsOn = (x, z, rot, kind) => {
-      const list = kind === 'runes' ? ['Potion_1', 'Potion_2', 'Scroll_1', 'Book_Stack_1', 'CandleStick', 'Potion_4'] : ['FarmCrate_Apple', 'FarmCrate_Carrot', 'Barrel_Apples', 'Bag', 'Vase_4'];
+      const list = kind === 'runes' ? ['Potion_1', 'Potion_2', 'Potion_4', 'CandleStick', 'Vase_4', 'Potion_1'] : ['FarmCrate_Apple', 'FarmCrate_Carrot', 'Barrel_Apples', 'Bag', 'Vase_4'];
       for (let k = 0; k < 3; k++) {
         const g = list[Math.floor(rnd() * list.length)];
         const off = (k - 1) * 0.55;

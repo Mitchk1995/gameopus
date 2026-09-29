@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { rng } from './buildings.js';
+import { enhance } from '../engine/detail.js';
 
 // Procedural street furniture for Ashford that the Quaternius kits do not have: lamp posts,
 // low stone walls, hedges, gates, signposts, crops, hay, woodpiles, troughs, graves and the
@@ -47,7 +48,7 @@ export class TownKit {
       tiles: findMaterial(kit, 'MI_RoundTiles') || std(0xa5502f),
       plaster: findMaterial(kit, 'MI_Plaster') || std(0xd8ceb8),
       metal: findMaterial(kit, 'MI_Trim_Metal') || std(0x2a2a2e, { metalness: 0.7, roughness: 0.5 }),
-      vine: findMaterial(kit, 'MI_Vine'),
+      vine: (() => { const v = findMaterial(kit, 'MI_Vine'); if (!v) return null; const c = v.clone(); return texturedMaterial(c.map, c.roughness, c); })(),
       iron: std(0x25262a, { metalness: 0.6, roughness: 0.55 }),
       glass: new THREE.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffa640, emissiveIntensity: 1.6, roughness: 0.3 }),
       hedge: std(0x3f6a2b, { roughness: 1 }),
@@ -56,7 +57,7 @@ export class TownKit {
       cabbage: std(0x76a24a),
       cabbage2: std(0x5f8f3f),
       bean: std(0x5a8a34),
-      hay: new THREE.MeshStandardMaterial({ map: strawTexture(), roughness: 1 }),
+      hay: texturedMaterial(strawTexture(), 1),
       straw: std(0xb98c3a, { roughness: 1 }),
       water: new THREE.MeshStandardMaterial({ color: 0x2a4d5a, roughness: 0.08, metalness: 0 }),
       paper: std(0xe9dfc4),
@@ -211,7 +212,7 @@ export class TownKit {
     this.put(this.box(g.width + 1.6, 0.3, 0.32), m.wood, bx, y + 3.5, bz, rot);
     const face = Math.atan2(g.out[0], g.out[1]);
     if (signTexture) {
-      const mat = new THREE.MeshStandardMaterial({ map: signTexture, roughness: 0.85 });
+      const mat = texturedMaterial(signTexture, 0.85);
       const board = new THREE.PlaneGeometry(2.6, 0.66);
       for (const s of [1, -1]) this.put(board, mat, bx + g.out[0] * 0.05 * s, y + 2.95, bz + g.out[1] * 0.05 * s, face + (s > 0 ? 0 : Math.PI));
       for (const dx of [-1.0, 1.0]) this.put(this.cyl(0.012, 0.012, 0.45, 4), m.iron, bx + ox * dx, y + 3.28, bz + oz * dx);
@@ -226,8 +227,8 @@ export class TownKit {
     this.put(this.cyl(0.005, 0.11, 0.22, 4), m.wood, x, y + 2.9, z, 0.78);
     boards.forEach((b, i) => {
       const tex = textures[i];
-      const front = new THREE.MeshStandardMaterial({ map: tex[0], roughness: 0.85 });
-      const back = new THREE.MeshStandardMaterial({ map: tex[1], roughness: 0.85 });
+      const front = texturedMaterial(tex[0], 0.85);
+      const back = texturedMaterial(tex[1], 0.85);
       const geo = new THREE.BoxGeometry(1.35, 0.3, 0.05);
       geo.translate(0.55, 0, 0);
       // materials: +x, -x, +y, -y, +z, -z; only the two big faces carry the text
@@ -442,5 +443,19 @@ function strawTexture() {
   const t = new THREE.CanvasTexture(cv);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
   return t;
+}
+
+let flat = null;
+// A painted texture as a material that takes the same surface-detail layer as the kit's (a flat
+// normal map for it to bend), so signs and straw are sharpened and lit like everything else.
+function texturedMaterial(map, roughness, base = null) {
+  flat ??= new THREE.DataTexture(new Uint8Array([128, 128, 255, 255]), 1, 1, THREE.RGBAFormat);
+  flat.anisotropy = 16;
+  flat.needsUpdate = true;
+  map.anisotropy = Math.max(map.anisotropy, 8);
+  const m = base || new THREE.MeshStandardMaterial({ map, roughness });
+  m.normalMap = flat;
+  return enhance(m);
 }
