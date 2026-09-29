@@ -10,7 +10,7 @@
     "sync": "node scripts/sync.mjs",
     "playtest": "python tests/playtest/play.py",
     "app": "vite build && electron .",
-    "package": "vite build && electron-builder --win dir"
+    "package": "vite build && electron-builder --win dir && node scripts/place-app.mjs"
   },
   "repository": {
     "type": "git",
@@ -41,7 +41,7 @@
     "appId": "com.mitchk1995.aldermere",
     "productName": "Aldermere",
     "directories": {
-      "output": "release"
+      "output": "release/build"
     },
     "files": [
       "desktop/**",
