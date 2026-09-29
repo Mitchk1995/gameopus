@@ -1,3 +1,4 @@
+# ci
 STEPS = [
   {'eval': """(() => { const g = __game; const r = g.resources.rocks.find(r => r.rock === 'copper');
      const a = 0.8, d = r.r + 1.1; g.player.spawn(r.x + Math.sin(a)*d, r.z + Math.cos(a)*d, a + Math.PI);
