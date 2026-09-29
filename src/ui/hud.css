@@ -22,6 +22,14 @@ html, body {
   color: var(--ink);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
+  /* A game, not a page: clicking and dragging never selects text (typing boxes allow it again). */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+input, textarea, [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 #app, #app canvas {
