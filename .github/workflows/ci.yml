@@ -31,10 +31,15 @@ jobs:
           path: dist
           retention-days: 3
 
-  playtest:
+  # The headless scenarios are slow on software GL, so they run in four groups at once.
+  scenarios:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,24 +52,45 @@ jobs:
           name: dist
           path: dist
       - run: npx playwright install --with-deps chromium
-      - name: Play the scenarios
+      - name: Play this group of scenarios
         env:
           SOFTWARE_GL: '1'
           READY_TIMEOUT: '240000'
+          SHARD: ${{ matrix.shard }}
         run: |
           export CHROME="$(node -e "import('playwright-core').then(m => console.log(m.chromium.executablePath()))")"
           status=0
+          i=0
           for f in $(grep -l '^# ci' tests/playtest/*.py | sort); do
-            scenario=$(basename "$f" .py)
-            echo "::group::$scenario"
-            python3 tests/playtest/play.py "tests/playtest/$scenario.py" || status=1
-            echo "::endgroup::"
+            if [ $((i % 4)) -eq "$SHARD" ]; then
+              scenario=$(basename "$f" .py)
+              echo "::group::$scenario"
+              # The texture comparison renders a lot of frames; a small window keeps it quick.
+              if [ "$scenario" = look ]; then export W=640 H=360; else unset W H; fi
+              python3 tests/playtest/play.py "tests/playtest/$scenario.py" || status=1
+              echo "::endgroup::"
+            fi
+            i=$((i + 1))
           done
           exit $status
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playtest-shots
+          name: playtest-shots-${{ matrix.shard }}
           path: tests/playtest/out
           if-no-files-found: ignore
           retention-days: 3
+
+  # One check named "playtest" that is green only when every group passed; the automerge
+  # workflow and pull request checks look for this name.
+  playtest:
+    needs: scenarios
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          if [ "${{ needs.scenarios.result }}" != "success" ]; then
+            echo "Scenarios: ${{ needs.scenarios.result }}"
+            exit 1
+          fi
