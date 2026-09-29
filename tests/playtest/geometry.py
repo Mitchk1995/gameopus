@@ -8,8 +8,12 @@
 #   collider   solid-looking things with no collider, and colliders with nothing visible in them
 #   window     windows per wall, symmetry, stacking, shutters, roofs, corner posts, chimneys
 #   texture    procedural surfaces whose UV density or stretch strays from the kit's
-# Then plays it: shut doors stop you, the bank door swings on E, a bench can be jumped onto, a
-# lantern is a solid. Prints "FAIL ..." lines (play.py exits non-zero on those).
+#   role       every building has the parts its job needs and none it must not (a barn with no glazed
+#              windows and wide doors, a chapel with lancets, a belfry and a bell and no house lanterns,
+#              a barred stone bank with its name cut over the door, signs on the trades, no shutters)
+#   floor      no grass can grow inside any building, and the ones you walk into stand on real floors
+# Then plays it: shut doors stop you, the bank door swings on E, a bench can be jumped onto, the
+# door lanterns hang overhead and you walk under them. Prints "FAIL ..." lines (play.py exits non-zero on those).
 # A canary block breaks pieces on purpose and requires the audit to notice.
 def check(name, dungeon=False):
     return {'eval': """(() => { const r = __geo.run('%s', { dungeon: %s }); return { check: r.check, fails: r.fails, counts: r.counts, scanned: r.pieces + ' pieces, ' + r.tagged + ' tagged, ' + r.doors + ' doors, ' + r.colliders + ' colliders', failLines: r.lines.slice(0, 14).join(' || ') || 'none' }; })()""" % (name, 'true' if dungeon else 'false')}
@@ -27,6 +31,8 @@ STEPS = [
   check('coverage'),
   check('buildings'),
   check('textures'),
+  check('roles'),
+  check('floors'),
   # --- canary: the audit must catch deliberately broken pieces
   {'eval': "(() => { const c = __geo.canary(); return { failLines: c.lines.join(' || ') || 'none', caught: c.caught }; })()"},
   # --- the dungeon

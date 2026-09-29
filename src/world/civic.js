@@ -376,7 +376,7 @@ export function hangingSign(env, x, y, z, yaw, text, icon, { reach = 1.1, w = 0.
   f.put(face, mat, f.M(0.031, 0.05 - h / 2 - 0.05, cz, Math.PI / 2));
   f.put(face, mat, f.M(-0.031, 0.05 - h / 2 - 0.05, cz, -Math.PI / 2));
   void board;
-  return { bottom: y - h - 0.03, x: f.at(0, cz)[0], z: f.at(0, cz)[1] };
+  return { bottom: y - h - 0.03, x: f.at(0, cz)[0], z: f.at(0, cz)[1], reach, text, w, h };
 }
 
 // A shop window opened for trade: the lower shutter let down as a stall board on iron stays (the

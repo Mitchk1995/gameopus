@@ -7,6 +7,7 @@ import { TownKit, boardTexture, findMaterial } from './townkit.js';
 import { placeProp, tag, fitUV } from './props.js';
 import { Door } from './doors.js';
 import { houseLooks } from './looks.js';
+import { grainUV } from './landmarks.js';
 import { chapel, lychGate, grave, barn, hangingSign, wallBoard, shopWindow, yardArch, wallBell } from './civic.js';
 
 // Ashford: a market town on a level terrace. Streets, the square, the rows of houses, the gates
@@ -143,7 +144,7 @@ export class Village {
     };
     const rnd = rng(4242);
     this.signs = [];
-    if (P.inn) this.signs.push(sign(P.inn, 3.2, 3.95, 'The Crooked Pike', 'pike', { reach: 1.45, w: 1.15, h: 0.86 }));
+    if (P.inn) this.signs.push(sign(P.inn, 3.1, 4.15, 'The Crooked Pike', 'pike', { reach: 1.65, w: 1.5, h: 1.1 }));
     if (P.store) this.signs.push(sign(P.store, 2.3, 3.85, 'General Store', 'sack', { colors: { bg: '#5a2a1c', fg: '#f0dfb0' } }));
     const cooper = H('cooper');
     if (cooper) this.signs.push(sign(cooper, 2.3, 3.85, 'Cooper', 'barrel', { colors: { bg: '#2c3a4a', fg: '#e8d8a8' } }));
@@ -354,7 +355,10 @@ export class Village {
     }
   }
 
-  // Counters, furniture and a ceiling in the buildings you can walk into.
+  // Counters, furniture and a ceiling in the buildings you can walk into, each furnished for what it
+  // is: the bank's panelled counter behind a grille and its strongroom door, the store's counter and
+  // stocked shelves, the inn's bar with its casks and a fire in the hearth. Wall shelves go only
+  // where a wall has no window.
   #interiors(batch, y) {
     const put = (place, name, lx, lz, turn = 0, dy = 0, solid = true) => {
       const p = this.at(place, lx, lz);
@@ -372,42 +376,144 @@ export class Village {
       const slab = this.world.colliders.addBox(place.x, place.z, place.w / 2 + 0.2, place.d / 2 + 0.2, place.rot, y + STOREY - 0.05, y + place.floors * STOREY + 6);
       slab.cameraOnly = true;
     };
+    const tk = this.tk, L = this.looks;
+    const oak = L.timber('oak'), dark = L.timber('black'), grain = oak.userData.grain || [2.2, 0.645];
+    const bx = (sx, sy, sz, along) => grainUV(new THREE.BoxGeometry(sx, sy, sz).translate(0, sy / 2, 0), along, grain);
+    // A point in a building's frame, offset (dx, dz) along a piece turned by `turn` from the building.
+    const P = (place, lx, lz, turn, dx, dz) => this.at(place, lx + dx * Math.cos(turn) + dz * Math.sin(turn), lz - dx * Math.sin(turn) + dz * Math.cos(turn));
+    // A panelled counter `len` long, its customer side facing the building's front (+z), with a brass
+    // grille and a pass-through gap on top if asked.
+    const counter = (place, lx, lz, len, { h = 1.0, grille = false, turn = 0 } = {}) => {
+      const c = this.at(place, lx, lz), rot = place.rot + turn;
+      tk.begin('counter', c.x, c.z);
+      tk.put(bx(len, h - 0.06, 0.55, 'x'), dark, c.x, y, c.z, rot);
+      tk.put(bx(len + 0.1, 0.06, 0.68, 'x'), oak, c.x, y + h - 0.06, c.z, rot);
+      const n = Math.max(2, Math.round(len / 0.7));
+      for (let i = 0; i < n; i++) {
+        const q = P(place, lx, lz, turn, -len / 2 + (i + 0.5) * (len / n), 0.29);
+        tk.put(bx(len / n - 0.14, h - 0.38, 0.03, 'y'), oak, q.x, y + 0.16, q.z, rot);
+      }
+      if (grille) {
+        const brass = (L.brass ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x9a7a3a, metalness: 0.8, roughness: 0.35 }), { name: 'Brass' }));
+        for (let x = -len / 2 + 0.06; x <= len / 2 - 0.05; x += 0.12) {
+          if (Math.abs(x) < 0.34) continue; // the pass-through
+          const q = P(place, lx, lz, turn, x, -0.05);
+          tk.put(tk.cyl(0.012, 0.012, 0.62, 5), brass, q.x, y + h, q.z);
+        }
+        for (const s of [-1, 1]) {
+          const q = P(place, lx, lz, turn, s * (len / 4 + 0.17), -0.05);
+          tk.put(tk.box(len / 2 - 0.34, 0.035, 0.035), brass, q.x, y + h + 0.6, q.z, rot);
+        }
+      }
+      // Its top is a surface things stand on (and a nimble player could).
+      this.world.colliders.addBox(c.x, c.z, len / 2 + 0.05, 0.34, rot, y - 0.5, y + h).floor = true;
+      return y + h;
+    };
+    // A pair of scales on a counter.
+    const scales = (place, lx, lz, top) => {
+      const c = this.at(place, lx, lz), iron = tk.m.iron;
+      tk.begin('scales', c.x, c.z, true, true); // small enough to reach past, like the goods on a counter
+      tk.put(tk.box(0.22, 0.04, 0.12), dark, c.x, top, c.z, place.rot);
+      tk.put(tk.box(0.025, 0.34, 0.025), iron, c.x, top + 0.04, c.z, place.rot);
+      tk.put(tk.box(0.4, 0.02, 0.02), iron, c.x, top + 0.36, c.z, place.rot);
+      for (const s of [-1, 1]) {
+        const q = P(place, lx, lz, 0, s * 0.18, 0);
+        tk.put(tk.box(0.008, 0.2, 0.008), iron, q.x, top + 0.16, q.z, place.rot);
+        tk.put(tk.cyl(0.07, 0.05, 0.02, 12), iron, q.x, top + 0.14, q.z);
+      }
+    };
+
+    // --- the bank
     const bank = this.places.bank;
     ceiling(bank);
-    put(bank, 'Table_Large', 0, -1.4);
-    put(bank, 'Chest_Armature', -2.6, -3.1, Math.PI);
+    const bt = counter(bank, 0, -1.4, 5.4, { grille: true });
+    put(bank, 'Coin_Pile_2', -0.9, -1.45, 0.3, bt - y, false);
+    put(bank, 'Coin_Pile', 0.9, -1.3, -0.5, bt - y, false);
+    scales(bank, 1.7, -1.45, bt);
+    put(bank, 'CandleStick_Triple', -1.8, -1.5, 0, bt - y, false);
     put(bank, 'Cabinet', 2.6, -3.35, 0);
     put(bank, 'Bookcase_2', 3.4, -1.0, -Math.PI / 2);
-    put(bank, 'Coin_Pile_2', -0.6, -1.45, 0.3, 0.81, false);
-    put(bank, 'Coin_Pile', 0.7, -1.3, -0.5, 0.81, false);
-    put(bank, 'CandleStick_Triple', 0.1, -1.6, 0, 0.81, false);
     put(bank, 'CandleStick_Stand', -3.3, 2.9, 0);
+    // The strongroom: an iron-bound door in the back wall, behind the counter.
+    {
+      const lx = -2.9, lz = -bank.d / 2 + 0.31 + 0.05;
+      const q = this.at(bank, lx, lz);
+      batch.add('Door_4_Flat', q.x + Math.cos(bank.rot) * -0.53, y + 0.02, q.z - Math.sin(bank.rot) * -0.53, bank.rot, 1, { role: 'strongroom' });
+      tk.begin('strongroom door', q.x, q.z, false, true);
+      for (const [dx, h, dy] of [[-0.6, 2.25, 0], [0.6, 2.25, 0]]) { const r = P(bank, lx, lz, 0, dx, 0.02); tk.put(tk.box(0.1, h, 0.08), tk.m.iron, r.x, y + dy, r.z, bank.rot); }
+      const r = P(bank, lx, lz, 0, 0, 0.02);
+      tk.put(tk.box(1.3, 0.1, 0.08), tk.m.iron, r.x, y + 2.2, r.z, bank.rot);
+      this.world.colliders.addBox(r.x, r.z, 0.66, 0.08, bank.rot, y - 0.5, y + 2.3);
+    }
+
+    // --- the store
     const store = this.places.store;
     ceiling(store);
-    put(store, 'Table_Large', 0, -1.0);
-    put(store, 'Shelf_Small_Bottles', 1.8, -3.72, 0, 1.2, false);
-    put(store, 'Shelf_Simple', -1.2, -3.72, 0, 1.4, false);
-    put(store, 'Barrel_Apples', -2.3, 2.8, 0);
-    put(store, 'Crate_Wooden', 2.0, 3.0, 0.4);
-    put(store, 'Bag', 2.2, 1.6, 0.8);
-    put(store, 'Pot_1_Lid', -0.5, -1.05, 0.2, 0.81, false);
-    put(store, 'Bottle_1', 0.6, -0.9, 0, 0.81, false);
+    const st = counter(store, 0, -1.0, 3.4);
+    scales(store, -1.1, -1.05, st);
+    put(store, 'Bottle_1', 0.4, -0.9, 0, st - y, false);
+    put(store, 'FarmCrate_Apple', 1.0, -1.05, 0.1, st - y, false);
+    // Stocked shelves on the back and both side walls, in the bays without windows.
+    const shelf = (place, lx, lz, turn, goods) => {
+      put(place, goods ? 'Shelf_Simple' : 'Shelf_Small_Bottles', lx, lz, turn, goods ? 1.45 : 1.25, false);
+      if (!goods) return;
+      let x = -0.42;
+      for (const name of goods) {
+        const b = this.kit.bounds(name), w = b.max.x - b.min.x;
+        if (x + w > 0.5) break;
+        const q = P(place, lx, lz, turn, x + w / 2, 0.19);
+        batch.add(name, q.x, y + 1.45 + 0.11 - b.min.y, q.z, place.rot + turn);
+        x += w + 0.05;
+      }
+    };
+    shelf(store, -2.0, -store.d / 2 + 0.28, 0, ['Pot_1', 'Bottle_1', 'Vase_4', 'Bottle_1']);
+    shelf(store, 2.0, -store.d / 2 + 0.28, 0, ['Bottle_1', 'Pot_1', 'Bottle_1', 'Vase_4']);
+    shelf(store, -store.w / 2 + 0.28, -2.55, Math.PI / 2, null);
+    shelf(store, store.w / 2 - 0.28, -2.55, -Math.PI / 2, null);
+    shelf(store, -store.w / 2 + 0.28, 2.6, Math.PI / 2, ['Vase_4', 'Pot_1', 'Bottle_1']);
+    put(store, 'Barrel_Apples', -2.3, 2.9, 0);
+    put(store, 'Bag', 2.25, 2.9, 0.8);
+    put(store, 'Bag', 2.35, 1.95, -0.4);
+    put(store, 'Crate_Wooden', 2.2, -3.1, 0.2);
+
+    // --- the inn
     const inn = this.places.inn;
     ceiling(inn);
-    put(inn, 'Table_Large', 0.4, -1.0, Math.PI / 2);
-    put(inn, 'Bench', -0.9, -1.0, Math.PI / 2);
-    put(inn, 'Bench', 1.7, -1.0, -Math.PI / 2);
-    put(inn, 'Barrel_Holder', 2.8, -4.9, 0);
-    put(inn, 'Mug', 0.4, -0.6, 0, 0.81, false);
-    put(inn, 'Mug', 0.2, -1.6, 1, 0.81, false);
-    // Bess's bar at the back, with stools in front and bottles behind.
-    put(inn, 'Table_Large', -0.9, -3.7, 0);
-    put(inn, 'Stool', -2.0, -2.8, 0.3);
-    put(inn, 'Stool', -0.2, -2.8, -0.2);
-    put(inn, 'Mug', -1.6, -3.55, 0.4, 0.81, false);
-    put(inn, 'Mug', -1.3, -3.8, 2.1, 0.81, false);
-    put(inn, 'Bottle_1', -0.1, -3.75, 0, 0.81, false);
-    put(inn, 'Shelf_Small_Bottles', -0.9, -5.72, 0, 1.2, false);
+    // Bess's bar across the back, casks racked behind it, bottles on the wall.
+    const it = counter(inn, -0.9, -3.9, 4.0);
+    put(inn, 'Mug', -1.6, -3.85, 0.4, it - y, false);
+    put(inn, 'Mug', -1.2, -3.95, 2.1, it - y, false);
+    put(inn, 'Bottle_1', 0.4, -3.9, 0, it - y, false);
+    put(inn, 'Barrel_Holder', 1.9, -5.25, 0);
+    put(inn, 'Shelf_Small_Bottles', -3.0, -inn.d / 2 + 0.28, 0, 1.3, false);
+    // Tables with chairs and a bench.
+    put(inn, 'Table_Large', 0.4, 1.4, Math.PI / 2);
+    put(inn, 'Bench', -0.9, 1.4, Math.PI / 2);
+    for (const [dz, t] of [[-0.8, -Math.PI / 2], [0.8, -Math.PI / 2]]) put(inn, 'Chair_1', 1.25, 1.4 + dz, t);
+    put(inn, 'Mug', 0.4, 1.8, 0, 0.81, false);
+    put(inn, 'Mug', 0.2, 0.9, 1, 0.81, false);
+    put(inn, 'Stool', -2.2, -2.9, 0.3);
+    put(inn, 'Stool', -0.4, -2.9, -0.2);
+    // The fireplace on the gable wall, under the chimney: a stone breast with a fire in its opening.
+    {
+      const stone = L.stone('grey'), dressed = L.dressed('grey');
+      const lx = inn.w / 2 - 0.31 - 0.3, turn = -Math.PI / 2;
+      const c = this.at(inn, lx, 0);
+      tk.begin('fireplace', c.x, c.z);
+      for (const s of [-1, 1]) { const q = P(inn, lx, 0, turn, s * 0.72, 0); tk.put(tk.box(0.46, 1.0, 0.6), stone, q.x, y, q.z, inn.rot + turn); }
+      tk.put(tk.box(1.9, STOREY - 1.02, 0.6), stone, c.x, y + 1.0, c.z, inn.rot + turn);
+      const m = P(inn, lx, 0, turn, 0, 0.35);
+      tk.put(bx(2.1, 0.08, 0.3, 'x'), oak, m.x, y + 1.3, m.z, inn.rot + turn);
+      const h = P(inn, lx, 0, turn, 0, 0.5);
+      tk.put(tk.box(1.9, 0.05, 0.5), dressed, h.x, y, h.z, inn.rot + turn);
+      L.shade ??= Object.assign(new THREE.MeshStandardMaterial({ color: 0x1c1712, roughness: 1 }), { name: 'Shade' });
+      const back = P(inn, lx, 0, turn, 0, -0.28);
+      tk.put(tk.box(0.98, 1.0, 0.04), L.shade, back.x, y, back.z, inn.rot + turn);
+      for (const s of [-1, 1]) { const q = P(inn, lx, 0, turn, s * 0.72, 0); this.world.colliders.addBox(q.x, q.z, 0.23, 0.3, inn.rot + turn, y - 0.5, y + STOREY); }
+      this.world.colliders.addBox(c.x, c.z, 0.95, 0.3, inn.rot + turn, y + 1.0, y + STOREY).cameraOnly = true;
+      const f = P(inn, lx, 0, turn, 0, 0.05);
+      this.hearthFire = { x: f.x, y: y + 0.05, z: f.z };
+    }
   }
 
   // Debug: a row of parts, for learning which way pieces face.

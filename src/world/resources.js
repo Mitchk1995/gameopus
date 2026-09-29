@@ -38,6 +38,12 @@ export class Resources {
     this.#smithy(batch);
     this.#cookingFire(batch);
     this.#craftCorner(batch);
+    // The fire in the inn's hearth (the village built the fireplace).
+    const hf = this.world.village.hearthFire;
+    if (hf) {
+      const fire = new Fire(this.scene, hf.x, hf.y, hf.z, { size: 0.38, light: false });
+      this.fires.push(fire);
+    }
     this.#jetty(batch);
     this.scene.add(batch.build());
     this.#flax();

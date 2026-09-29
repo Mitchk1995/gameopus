@@ -89,7 +89,7 @@ export const BUILDINGS = [
   ]),
   // East: the inn on the corner, the smithy (open front) facing the square.
   ...row('W', 8, 3, [
-    { id: 'inn', type: 'inn', wash: 'russet', timber: 'black', dormers: 2, w: 8, d: 12, floors: 2, style: 'plaster', doors: door(1, true), chimney: 1, windows: 0.7, gap: 0 },
+    { id: 'inn', type: 'inn', wash: 'russet', timber: 'black', dormers: 2, w: 8, d: 12, floors: 2, style: 'plaster', doors: door(1, true), chimney: 'gable', chimneyAt: 1, windows: 0.7, gap: 0 },
     { id: 'smithy', type: 'workshop', walls: 'stone', stone: 'grey', roof: 'slate', barge: false, w: 6, d: 6, floors: 1, style: 'stone', open: ['s'], chimney: 0, gap: 9 },
   ]),
 

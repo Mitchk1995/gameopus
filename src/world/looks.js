@@ -20,7 +20,7 @@ export const WASH = {
 export const TIMBER = {
   kit: [0.92, 0.86, 0.8],
   oak: [0.6, 0.5, 0.42],
-  black: [0.3, 0.27, 0.25],
+  black: [0.19, 0.17, 0.16],
 };
 export const STONE = {
   grey: [1, 1, 1],
