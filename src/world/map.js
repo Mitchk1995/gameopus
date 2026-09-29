@@ -161,15 +161,104 @@ export function rimDistance(x, z) {
   return d0 + 14 + (1 - spur) * 30 + fbm(x * 0.011 + 7, z * 0.011 - 3) * 18 + (fbm(x * 0.031 + 2, z * 0.031 + 9) - 0.5) * 12;
 }
 
-// Named peaks that break the skyline: [x, z, extra height, radius].
+// Named peaks that break the skyline: [x, z, extra height, radius]. (Heights are also eased under a soft
+// ceiling, see heightAt, so no summit is ever sheared flat.)
 const PEAKS = [
-  [-70, -372, 120, 62], [40, -384, 150, 60], [150, -368, 90, 52], [-190, -352, 84, 56], [-300, -320, 70, 54],
+  [-70, -372, 120, 62], [40, -384, 118, 60], [150, -368, 90, 52], [-190, -352, 84, 56], [-300, -320, 70, 54],
   [262, -346, 100, 58], [372, -250, 80, 54], [384, -90, 60, 52], [384, 120, 60, 50], [350, 300, 60, 54],
   [220, 372, 34, 54], [-40, 384, 34, 54], [-220, 372, 60, 54], [-376, 200, 70, 54], [-386, 20, 90, 54], [-374, -150, 80, 54],
 ];
 
 // The profile of the wall's face by distance into it: a stony slope, a cliff band, an upper slope.
 const faceAt = (d) => 8 * smooth(-4, 12, d) + 40 * smooth(8, 52, d) + 52 * smooth(38, 68, d) + 32 * smooth(60, 110, d);
+
+// The wall's masses. A real mountain wall is a few big masses, not a repeated rib (Glencoe's Three Sisters:
+// a handful of truncated spurs of very different widths with deep gullies between; the talus cones under the
+// cliffs of the Canadian Rockies: a pale cone of broken rock spreading out below every gully). So the face is
+// cut into Voronoi cells along the wall: big ones (about 120 m) that stand out as buttresses or hang back as
+// bays, and small ones (about 50 m) that break each buttress up; along the boundaries between the small ones
+// run the gullies, each dying out at a height of its own, and under each gully lies a talus cone.
+// cells(): the nearest feature of a jittered grid of cell size C (seed k) and its values (a, b, c in 0..1), a
+// smooth blend of the nine features' `a` (so a mass's edges are soft), how far the point is from the boundary
+// with the second nearest (m), and that boundary's own values (g, g2 in 0..1: one per gully).
+const CL = { a: 0, b: 0, c: 0, amp: 0, e: 0, g: 0, g2: 0 };
+function cells(x, z, C, k) {
+  const gx = x / C, gz = z / C, ix = Math.floor(gx), iz = Math.floor(gz);
+  let f1 = Infinity, f2 = Infinity, ax = 0, az = 0, bx = 0, bz = 0, i1 = 0, i2 = 0, wsum = 0, asum = 0, a1 = 0, b1 = 0, c1 = 0;
+  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+    const cx = ix + di, cz = iz + dj;
+    const px = cx + 0.12 + 0.76 * hash(cx * 3 + k * 1013, cz * 5 - k * 71);
+    const pz = cz + 0.12 + 0.76 * hash(cx * 7 - k * 313, cz * 11 + k * 157);
+    const dd = (gx - px) * (gx - px) + (gz - pz) * (gz - pz);
+    const a = hash(cx * 13 + k * 97, cz * 17 - k * 29);
+    const w = Math.exp(-dd * 7);
+    wsum += w;
+    asum += w * a;
+    const id = (cx + 2048) * 4096 + cz + 2048;
+    if (dd < f1) {
+      f2 = f1; bx = ax; bz = az; i2 = i1;
+      f1 = dd; ax = px; az = pz; i1 = id; a1 = a;
+      b1 = hash(cx * 19 - k * 7, cz * 23 + k * 3); c1 = hash(cx * 29 + k * 5, cz * 31 - k * 11);
+    } else if (dd < f2) { f2 = dd; bx = px; bz = pz; i2 = id; }
+  }
+  // The distance from the point to the bisector of the two nearest features, in metres.
+  const L = Math.hypot(bx - ax, bz - az) || 1;
+  CL.e = ((f2 - f1) / (2 * L)) * C;
+  CL.a = a1; CL.b = b1; CL.c = c1;
+  CL.amp = asum / (wsum || 1);
+  const lo = Math.min(i1, i2), hi = Math.max(i1, i2);
+  CL.g = hash(lo % 65536 + k * 17, hi % 65536 - k * 5);
+  CL.g2 = hash(hi % 65536 + k * 41, lo % 65536 + k * 9);
+  return CL;
+}
+
+// How far (in d) the face stands out at a point, the gully cut into it, and where it is (for the cones below).
+// Returns [buttress offset, gully depth 0..1] for the cliff at wall depth d.
+const WALL = [0, 0, 0];
+// The cells are laid out on warped ground, so their edges (the gullies) wander instead of running ruler-straight.
+const warpX = (x, z) => x + (fbm(x * 0.017 + 5.1, z * 0.017 - 2.3, 3) - 0.5) * 38;
+const warpZ = (x, z) => z + (fbm(x * 0.017 - 7.7, z * 0.017 + 4.4, 3) - 0.5) * 38;
+function wallMass(x, z, d) {
+  const wx = warpX(x, z), wz = warpZ(x, z);
+  const big = cells(wx, wz, 118, 1);
+  const bigAmp = big.amp, bigB = big.b;
+  const small = cells(wx, wz, 50, 2);
+  // Buttresses stand out as much as 26 m; bays hang back as much as 9 (in wall depth).
+  const off = (bigAmp * 1.35 - 0.35) * 26 + (small.amp - 0.45) * 12;
+  // Gullies along the small cells' boundaries: 5 to 13 m wide, from the foot up to a depth of their own
+  // (some die out low on the face, a few run to the crest), narrowing as they climb.
+  const top = 38 + 90 * small.g2 * small.g2;
+  const w = (5 + 8 * small.g) * mix(1.15, 0.55, smooth(0, top, d));
+  const gully = smooth(w, 0, small.e) * smooth(top + 6, top - 18, d) * (small.g > 0.18 ? 1 : 0);
+  WALL[0] = off;
+  WALL[1] = gully;
+  WALL[2] = bigB;
+  return WALL;
+}
+
+// Talus: cones of broken rock at the foot of the wall under each gully, steepest at the apex against the cliff
+// and spreading out onto the vale at the angle of repose. talusY is the cone's surface over the wall's base
+// (-Infinity away from any cone); talusAt how far it stands above the face there.
+function talusY(x, z, d) {
+  if (d < -44 || d > 34) return -Infinity;
+  // Into the wall here, from the way the wall's distance grows.
+  let nx = rimDistance(x + 2, z) - rimDistance(x - 2, z), nz = rimDistance(x, z + 2) - rimDistance(x, z - 2);
+  const nl = Math.hypot(nx, nz) || 1;
+  nx /= nl; nz /= nl;
+  // The gully on the cliff above this spot, where the cone's apex rests.
+  const APEX = 30, up = APEX - d, ax = x + nx * up, az = z + nz * up;
+  const small = cells(warpX(ax, az), warpZ(ax, az), 50, 2);
+  if (small.g <= 0.18) return -Infinity;
+  const top = 38 + 90 * small.g2 * small.g2;
+  if (top < APEX + 4) return -Infinity;
+  // A cone about the apex: its surface falls at 0.66 (the angle of repose) every way from the apex.
+  const r = Math.hypot(Math.max(0, up), small.e);
+  return faceAt(APEX) * (0.8 + 0.25 * small.g) - 0.66 * r;
+}
+function talusAt(x, z, d, face) {
+  const y = talusY(x, z, d);
+  return y > face ? (y - face) * smooth(34, 22, d) : 0;
+}
 
 function rimWall(x, z) {
   const d = rimDistance(x, z);
@@ -178,36 +267,39 @@ function rimWall(x, z) {
   const calm = exitCalm(x, z);
   // Forested foothills that roll along the wall.
   let h = smooth(-130, 6, d) * (6 + 8 * ridged(x * 0.011 + 1.1, z * 0.011 + 6.6, 3));
-  // The face is layered rock. Noise that only varies across the map (not up the face) runs down a
-  // steep face unchanged from foot to crest and draws it as rows of even vertical pleats. So above
-  // the foot the face follows a smoother line (broad buttresses and bays, 100 m apart), its crags are
-  // sampled from a noise that shifts with height (each band of rock its own, every twenty metres or
-  // so, wider than tall: ledges and bosses rather than ribs), and soft strata step it into ledges
-  // and short cliffs that dip gently across the range.
+  // The face: a stony apron, then the cliff, made of the masses above (buttresses, bays and gullies), each
+  // mass broken by two or three ledge bands of its own, crags on it that change with height (so no rib runs
+  // unbroken from foot to crest), and talus cones spilling out below the gullies.
   const face0 = faceAt(d);
   let face = face0;
-  if (calm > 0 && d > -8) {
-    const dFace = d - (fbm(x * 0.031 + 2, z * 0.031 + 9) - 0.5) * 12 + (fbm(x * 0.009 + 4.4, z * 0.009 - 7.3) - 0.5) * 34;
-    const d2 = mix(d, dFace, smooth(2, 18, d));
+  if (calm > 0 && d > -44) {
+    const [off, gully, bigB] = wallMass(x, z, d);
+    const u = smooth(12, 30, d) * smooth(185, 125, d);
+    const d2 = d + u * (off - 13 * gully);
     let f = faceAt(d2);
-    const H = 8 + 5 * fbm(x * 0.006 + 5, z * 0.006 - 2);
-    const dip = (x * 0.05 + z * 0.03) + 9 * fbm(x * 0.004 + 1, z * 0.004 + 4);
+    // Ledge bands: 22 to 36 m apart in height (per mass), dipping gently across the range.
+    const H = 22 + 14 * bigB;
+    const dip = (x * 0.035 + z * 0.02) + 9 * fbm(x * 0.004 + 1, z * 0.004 + 4);
     const k = (f + dip) / H, i = Math.floor(k), t = k - i;
     // A soft terrace: steep risers and gentle treads, with no sharp kinks for the 1 m grid to saw.
-    const stepped = (i + t - Math.sin(t * Math.PI * 2) / (Math.PI * 2) * 0.85) * H - dip;
-    f = mix(f, stepped, 0.55 * smooth(6, 24, d2) * smooth(170, 120, d2));
-    const band = face0 * 0.03;
+    const stepped = (i + t - Math.sin(t * Math.PI * 2) / (Math.PI * 2) * 0.8) * H - dip;
+    f = mix(f, stepped, 0.5 * smooth(8, 26, d2) * smooth(170, 120, d2));
+    // Crags: knobs and short steps from a noise that shifts with height, each band of rock its own.
+    const band = f * 0.045;
     const crag = fbm(x * 0.022 + band * 0.9 + 3.3, z * 0.022 - band * 0.7 - 1.2, 3) * 0.65 + fbm(x * 0.06 - band * 1.3 + 8, z * 0.06 + band + 1, 2) * 0.35;
-    f += smooth(6, 26, d2) * smooth(150, 90, d2) * (crag - 0.5) * 18;
+    f += smooth(6, 26, d2) * smooth(150, 90, d2) * (crag - 0.5) * 12;
     face = mix(face0, f, calm);
-    // Scree fans spill out of the gullies at the foot of the cliffs.
-    h += calm * screeAt(x, z, d);
+    // Talus cones under the gullies.
+    h += calm * talusAt(x, z, d, face);
   }
   h += face;
   if (d > 60) {
-    // Ridges behind, jagged against the sky, and the named peaks.
-    const jag = ridged(x * 0.021 + 7.3, z * 0.021 - 2.2, 3);
-    h += smooth(60, 150, d) * (10 + 95 * ridged(x * 0.0075 + 2.7, z * 0.0075 - 8.1) + 26 * jag * smooth(80, 160, d) * calm);
+    // Ridges behind, jagged against the sky, and the named peaks. The ridges are few and broad (three octaves
+    // on warped ground, the finest about 35 m), so the upper faces are big planes and bosses with sharp crests,
+    // not a comb of flutes.
+    const wx = x + (fbm(x * 0.006 + 3.3, z * 0.006 - 1.9, 3) - 0.5) * 70, wz = z + (fbm(x * 0.006 - 4.1, z * 0.006 + 8.8, 3) - 0.5) * 70;
+    const jag = ridged(wx * 0.017 + 7.3, wz * 0.017 - 2.2, 2);
+    h += smooth(60, 150, d) * (10 + 92 * ridged(wx * 0.0068 + 2.7, wz * 0.0068 - 8.1, 3) + 16 * jag * smooth(80, 160, d) * calm);
     for (const [px, pz, ph, pr] of PEAKS) {
       const q = Math.hypot(x - px, z - pz) / pr;
       if (q < 2.4) h += ph * Math.exp(-q * q * 1.15) * smooth(50, 100, d) * (1 + 0.25 * (jag - 0.5) * calm);
@@ -216,16 +308,11 @@ function rimWall(x, z) {
   return h;
 }
 
-// Scree: fans of broken rock at the foot of the wall, where the gullies above shed stone. Each fan
-// is a low cone spreading out into the vale, steepest at its apex against the cliff.
+// How much a point is scree (0..1): on a talus cone, for the ground paint (the cone standing above the bare
+// face's profile).
 function screeAt(x, z, d) {
-  if (d < -34 || d > 14) return 0;
-  // Fans sit under gullies: where a slow noise along the wall peaks.
-  const g = fbm(x * 0.024 + 11.3, z * 0.024 - 6.1);
-  const fan = smooth(0.52, 0.72, g);
-  if (fan <= 0) return 0;
-  const out = Math.max(0, -d + 4);
-  return fan * 7.5 * Math.pow(Math.max(0, 1 - out / 34), 2.2) * smooth(14, 4, d);
+  const y = talusY(x, z, d);
+  return y === -Infinity ? 0 : smooth(0.2, 1.6, y - faceAt(d));
 }
 
 // 1 away from the three ways out, 0 at their closures and along the gorges beyond, so the passes
@@ -815,7 +902,7 @@ export function biomeAt(x, z) {
   const moss = R.woods;
   // Mine spoil, and the scree fans at the foot of the wall.
   const rd = rimDistance(x, z);
-  const dust = Math.max(R.mine, rd > -36 && rd < 16 ? Math.min(1, screeAt(x, z, rd) / 2.2) * exitCalm(x, z) : 0);
+  const dust = Math.max(R.mine, rd > -46 && rd < 36 ? screeAt(x, z, rd) * exitCalm(x, z) : 0);
   return [meadow, heath, marsh, dry, moss, dust];
 }
 
@@ -1123,7 +1210,10 @@ export function heightAt(x, z) {
   h = gorgeFloorSet(h, x, z);
   // The North Pass's porch is set into the rock at the end of the Highroad.
   h = portalFace(h, x, z);
-  return Math.min(h, 320);
+  // A soft ceiling: the tallest summits are eased down rather than sheared flat (the bake stores heights in
+  // centimetres in 16 bits, so nothing may pass 327 m).
+  if (h > 262) h = 262 + 52 * Math.tanh((h - 262) / 52);
+  return h;
 }
 
 // ------------------------------------------------------------------ ground cover
