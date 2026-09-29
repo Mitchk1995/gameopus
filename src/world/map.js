@@ -719,7 +719,8 @@ export function groundAt(x, z) {
   }
   const db = Math.hypot(x - BANDIT_CAMP.x, z - BANDIT_CAMP.z);
   path = Math.max(path, smooth(BANDIT_CAMP.r, BANDIT_CAMP.r - 8, db) * 0.8);
-  return [path, forest * (1 - path), cobble];
+  // (No forest floor under paving: whatever grows on the forest floor keeps off the forecourts.)
+  return [path, forest * (1 - path) * (1 - cobble), cobble];
 }
 
 export function forestDensity(x, z) {
