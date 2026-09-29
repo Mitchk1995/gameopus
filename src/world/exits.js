@@ -648,7 +648,7 @@ function buildGatehouse(ctx, e) {
   }
 
   // --- the fallen rock in the approach, and the Warden's notice
-  boulders(ctx, f, [[-9.1, 11.5, 1.35], [8.9, 8.4, 1.05], [-8.7, 19, 1.7], [9.3, 24, 1.25], [-5.6, 33, 0.95], [7.2, 41, 1.5]], 52);
+  boulders(ctx, f, [[-9.1, 11.5, 1.35], [10.4, 5.2, 1.05], [-8.7, 19, 1.7], [9.3, 24, 1.25], [-5.6, 33, 0.95], [7.2, 41, 1.5]], 52);
   const notice = noticeStand(ctx, f, 6.4, 10.2, 'BY ORDER', e.sign);
 
   return {

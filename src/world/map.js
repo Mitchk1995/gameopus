@@ -360,10 +360,26 @@ function passNotch(h, x, z) {
   for (const n of notches()) {
     if (x < n.box[0] || x > n.box[1] || z < n.box[2] || z > n.box[3]) continue;
     const { best, u, back } = gorgeFrame(n, x, z);
-    const s = Math.max(0, best - gorgeHalfWidth(n, u));
+    const half = gorgeHalfWidth(n, u), s = Math.max(0, best - half);
     const target = n.y + u * n.climb + gorgeWall(s, u, n.seed);
-    if (target < h) h = mix(h, smin(h, target, 2.5), smooth(-16, 6, back) * smooth(90, 60, best));
+    const along = smooth(-16, 6, back) * smooth(90, 60, best);
+    // The floor is exactly level across and exactly on the road's line (nothing to blend); the walls are eased into
+    // the land they meet.
+    if (best <= half) h = mix(h, target, along);
+    else if (target < h) h = mix(h, smin(h, target, 2.5), along);
     else if (s < 30) h = mix(h, smax(h, target, 2), smooth(-8, 26, back) * smooth(30, 16, s));
+  }
+  return h;
+}
+// After the roads have been cut, a gorge's floor is put back exactly level: the road runs on the floor, so the
+// road's cut and bank (which swing either way by a hair) must not leave ridges and grooves along its edges.
+function gorgeFloorSet(h, x, z) {
+  for (const n of notches()) {
+    if (x < n.box[0] || x > n.box[1] || z < n.box[2] || z > n.box[3]) continue;
+    const { best, u, back } = gorgeFrame(n, x, z);
+    const half = gorgeHalfWidth(n, u);
+    if (best > half + 0.4) continue;
+    h = mix(h, n.y + u * n.climb, smooth(-16, 6, back) * smooth(half + 0.4, half - 0.2, best));
   }
   return h;
 }
@@ -678,6 +694,7 @@ export function heightAt(x, z) {
 
   // Roads are cut into the land (and hold themselves above the marsh).
   h = roadStamp(h, x, z);
+  h = gorgeFloorSet(h, x, z);
   // The North Pass's porch is set into the rock at the end of the Highroad.
   h = portalFace(h, x, z);
   return Math.min(h, 320);
