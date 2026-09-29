@@ -150,3 +150,87 @@ of the market stalls and Hob shuttles between the hearth and the well.
 
 **Kept.** Roads keep their far endpoints (mine, bandit woods, jetty), the mine and cave did not move,
 building generation and colliders are untouched.
+
+## Ashford Vale v2 (the region plan)
+
+The owner's note on the first version of the valley: "an area surrounded by trees and mountains in the
+distance is not a game lol. It is kind of ridiculous that this is even an area." It was a scenic bowl:
+an 800 m valley, a ring of mountain wallpaper, an invisible clamp at the edge, a river with no source, a road
+that stopped at the water. Nothing pulled you outward. Vale v2 keeps the town, the mine, the lake, both
+camps and every quest spot where they were, and makes the valley the first region of a real map:
+**it has walls you can see, three named ways out that are clearly meant to lead somewhere (all sealed for
+now), a hierarchy of roads that go places, rings of danger with their own look, and landmarks you
+can see from the square that make you want to walk to them.**
+
+Coordinates: +x east, +z south, y up, water at y = 0. The data lives in `src/world/map.js` (`EXITS`,
+`POIS`, `ROADS`, `NODES`, the rim, the rings); `node scripts/vale-plan.mjs` draws it top-down
+(`docs/world/plan.jpg`), and `node scripts/bake-world.mjs` bakes the height and ground maps from it.
+
+```
+                        NORTH  (dwarf mountains, snow)
+       . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+     . ^^^^^^^^^^^^^^^^^^^^[N PASS]^^^^^^^^^^^^^^^^^Falls^^^^^^^^^ .
+    . ^^^                   ||  Highroad                |  ~ river   ^^^ .
+   . ^^^   MINE HILL        ||                     ABBEY      ~        ^^^ .
+  . ^^  [headframe+smoke]   ||   .-'-.     ruin on   HILL      ~   [quarry]^ .
+  .^^   (Old Warren mouth)--'   /valley\   the crown           ~ BEACON RIDGE ^ .
+  .^   .. quarry road ..       col       .. footpath ..        ~   . [sawmill]  ^ .
+ W.^   GOBLIN WOODS   [goblin camp]      stones o o o          ~      .  ^
+ E.^ dark oak / ash /pine  ..  [Ashford]= = = = = = = = BRIDGE ==~== [beacon tower]
+ S.^   [hermit]  woodcutters   (walled  ) Bridge Street          ~  farms  waystation .
+ T.^^        track ....... . (  town    )                         ~ fields   |   [fort]== E PASS
+  .^^^   birch grove   .   Lake Street                          ~     old      |  BANDIT COUNTRY
+   .^^^^        .  .  .  [fishing hamlet]                     ~   battlefield  |    (gatehouse)
+    .^^^^^ marsh  [dock][lighthouse]                        ~ ~                  |
+     .^^^^^^ (sunken ruin) LAKE ~~~~~ .. Harbour Road ..~ ~                     |
+       .^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[S PASS toll bar]^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        SOUTH  (the sea, Saltmere harbour)
+```
+
+**The rim.** The mountains are a real wall now: a cliff face, then ridges, then snow. The foot of the
+wall is a hand-drawn line (`RIM` in map.js) so the shape is designed, not noise: buttresses and coves, a cove for
+the river's falls in the north, a lake that laps against the south cliffs. The last 60 m before the map
+edge are always sheer rock or deep water, so the map edge is a place you can't reach, not a wall of air.
+Three passes cut through it, each a gorge with cliffs on both sides:
+- **North Pass (the Highroad, to the dwarf mountains).** From the quarry the Highroad climbs the valley between Mine
+  Hill and Abbey Hill and switchbacks up the wall to a stone tunnel portal. The tunnel has collapsed: rubble fills it
+  and the Delvers' notice tells you why. The Old Warren under Mine Hill is the way the goblins got at the props.
+- **East Pass (bandit country, to Redwater Keep).** Bridge Street runs over the bridge, through the farms, past the
+  waystation and the bandit fort, into a gorge that a barred gatehouse closes. The Warden's notice says it stays shut
+  while the bandits hold the road.
+- **South Pass (the Harbour Road, to Saltmere).** Lake Street ends at the dock; the Harbour Road follows the
+  lakeshore round to a toll bar across a rock shelf. The toll keeper's notice says why the road is shut.
+Each exit is a row in `EXITS` (id, position, facing, closure kind, sign text, `locked: true`), so a quest that
+sets `locked: false` opens the way (`world.sites.setLocked(id, false)`).
+
+**Roads (a hierarchy you can read on the ground).** Cobbled main streets inside the town; wide dirt roads
+gate to gate (Quarry Road and the Highroad, Bridge Street and the East Road, Lake Street and the Harbour Road);
+narrower tracks for farm lane, woodcutters' track and the ridge track; footpaths to camps and sites. Roads follow the
+contours and climb in switchbacks, they are cut into slopes, and they ford or bridge the river: **the bridge is real**
+(a stone arch, walkable deck, parapets, colliders). Every junction has a signpost with destinations and distances,
+computed from the road graph, so a sign never lies. Danger boundaries have warning posts.
+
+**Rings of danger.** Each ring has its own ground, plants and light:
+1. *Town* (safe): cobbles, lamps, warm light.
+2. *Farmland and meadow*: bright grass with flowers, golden fields, hedgerows, lone oaks, birch stands. Clear light.
+3. *The woods, goblin country* (west and north-west): dark mossy floor, dense oak, ash and pine, cool green mist.
+4. *Bandit country* (east): scorched dry grass, pines and dead snags, a fort with a palisade and a watch tower on a rise, hazy amber light.
+5. *Mine Hill and the Old Warren* (north-west): bare grey rock, scree and spoil heaps, a smoking headframe, cold grey light.
+Around the edges, *the wall* (cliffs) and *the passes* (bleak, windy, snow on the ridges).
+
+**Landmarks you can see from the square** (each a distinct silhouette, built from kit pieces and procedural geometry):
+the **beacon tower** on the knoll at the far end of Bridge Street, the **mine headframe with its smoke plume** on the
+north-west hill, the **ruined abbey** on Abbey Hill straight up Lake Street over the bank, and the **lighthouse** and
+**lantern-lit dock** on the lake to the south.
+
+**The land tells its story.** The river is born at Whitespring Falls under the north cliffs, runs down the east
+side of the vale past a sawmill site, under the bridge, through the farms, into the lake. The lake has a
+reed marsh on its west and south-west shores. Inside the vale there is meadow, a birch grove, a rocky heath
+with a standing-stone hill, the marsh, farmland, woods and dry scrub, each with its own ground texture and trees.
+
+**Anchors for the points of interest** (`POIS` in map.js: flattened pads with roads or footpaths to them, a cairn or
+post on each, no buildings yet): hermit's hut, standing-stones shrine, sunken ruin in the lake shallows,
+waystation inn, stone quarry, sawmill on the river, fishing hamlet, old battlefield.
+
+**Deliberately not done here.** No new enemies (the two camps are re-dressed, not moved); no other regions
+behind the passes (they are sealed and end in rock); quests only got new geography in their text, no new steps.
