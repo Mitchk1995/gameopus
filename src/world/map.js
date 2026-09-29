@@ -15,6 +15,9 @@ export const MINE_ENTRANCE = { x: -170, z: -142, facing: 0.35 };
 export const BANDIT_CAMP = { x: 262, z: 70, r: 22 };
 // Just inside the south gate, looking up Lake Street to the market square and the bank.
 export const SPAWN = { x: -8, z: 53, facing: Math.PI };
+// Bump this whenever the land or the town is laid out anew: a position saved under another layout
+// could now be inside a house or a hill, so the player starts at SPAWN instead.
+export const LAYOUT = 2;
 
 // Catmull-Rom smoothing so rivers and roads curve instead of kinking.
 function curve(pts, steps = 6) {
