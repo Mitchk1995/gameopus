@@ -623,7 +623,7 @@ window.__geo = (() => {
       }
       // Same bays on every floor, so they stack.
       for (const [k, ws] of Object.entries(byWall)) {
-        if (k[1] === '0') continue;
+        if (k[1] === '0' || sp.groundOpen) continue; // (a hall on posts has no walls below its windows)
         const ground = (byWall[k[0] + '0'] || []).map((w) => w.bay);
         for (const w of ws) if (!ground.includes(w.bay)) R.fail('window', lab, `wall ${k[0]}: upper window in bay ${w.bay} doesn't sit over one below`);
       }
@@ -634,9 +634,19 @@ window.__geo = (() => {
       const bays = 2 * (sp.w / 2 + sp.d / 2);
       if (b.windows.length / sp.floors > 0.5 * bays + 0.001) R.fail('window', lab, `${b.windows.length / sp.floors} windows per storey in ${bays} bays`);
       if (!b.openings.length && !b.windows.length && sp.w >= 6 && sp.d >= 6 && !b.spec.open) R.fail('window', lab, 'a big house with no windows');
-      // Roof seated: its origin on the wall tops, over the footprint, with an overhang.
+      // Roof seated: its origin on the wall tops, over the footprint, with an overhang. Houses built
+      // with their own roofs (buildings.js, roofs.js) report them: seated on the wall tops, overhanging
+      // the walls, and drawn (a 'roof' group over the footprint).
       const roofs = S.pieces.filter((p) => p.cat === 'roof' && Math.abs(p.x - sp.x) < 0.01 && Math.abs(p.z - sp.z) < 0.01);
-      if (!roofs.length) R.fail('roof', lab, 'no roof');
+      const own = b.roof && b.roof.ridge ? b.roof : null;
+      if (own) {
+        const rise = own.y0 - sp.floors * 3; // (heights in the house frame)
+        if (rise < 0.05 || rise > 0.2) R.fail('roof', lab, `roof sits ${f2(rise)} m above the wall tops`);
+        if (own.over < 0.2 || own.over > 1.0) R.fail('roof', lab, `roof overhangs by ${f2(own.over)} m`);
+        if (own.ridge - own.y0 < 1.2) R.fail('roof', lab, `roof ridge only ${f2(own.ridge - own.y0)} m above the eaves (flat)`);
+        const drawn = S.groups.some((gr) => gr.name === 'roof' && Math.hypot(gr.x - sp.x, gr.z - sp.z) < Math.hypot(sp.w, sp.d) / 2 + 1.5);
+        if (!drawn) R.fail('roof', lab, 'no roof');
+      } else if (!roofs.length) R.fail('roof', lab, 'no roof');
       for (const r of roofs) {
         const rise = r.y - (sp.groundY + sp.floors * 3);
         if (rise < 0.05 || rise > 0.2) R.fail('roof', lab, `roof sits ${f2(rise)} m above the wall tops`);
@@ -645,13 +655,14 @@ window.__geo = (() => {
       }
       // Corner posts: one at each of the four corners of the footprint, wrapped round the outside
       // of the corner (none of their mass pokes into the room).
-      const corners = sp.open.length ? [] : S.pieces.filter((p) => p.cat === 'corner' && Math.hypot(p.x - sp.x, p.z - sp.z) < Math.hypot(sp.w, sp.d) / 2 + 0.3 && Math.abs(p.y - sp.groundY) < 0.05);
+      const cornerY = sp.groundY + (sp.groundOpen ? 3 : 0); // a hall's walls start on its first floor
+      const corners = sp.open.length ? [] : S.pieces.filter((p) => p.cat === 'corner' && Math.hypot(p.x - sp.x, p.z - sp.z) < Math.hypot(sp.w, sp.d) / 2 + 0.3 && Math.abs(p.y - cornerY) < 0.05);
       if (!sp.open.length) {
         const c = Math.cos(sp.rot), s = Math.sin(sp.rot);
         for (const [ax, az] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
           const wx = sp.x + (ax * sp.w / 2) * c + (az * sp.d / 2) * s, wz = sp.z - (ax * sp.w / 2) * s + (az * sp.d / 2) * c;
           const p = corners.find((q) => Math.hypot(q.x - wx, q.z - wz) < 0.05);
-          if (!p) { R.fail('corner', lab, `no corner post at ${at(wx, sp.groundY, wz)}`); continue; }
+          if (!p) { R.fail('corner', lab, `no corner post at ${at(wx, cornerY, wz)}`); continue; }
           const pts = worldCloud(S.kit, p);
           let room = 0, n = 0;
           for (let i = 0; i < pts.length; i += 3) {
@@ -1091,6 +1102,13 @@ window.__geo = (() => {
       if (under < 2.1) R.fail('headroom', label(p), `hangs ${f2(under)} m above the ground, reaching ${f2(reach)} m out (want its underside 2.1 m up)`);
     }
     for (const gr of S.groups) {
+      // Door lamps are now authored as procedural ironwork, so inspect their real
+      // underside as well as the legacy kit mounts above.
+      if (gr.name === 'door lantern') {
+        const under = groupBox(gr).min.y - S.ground(gr.x, gr.z);
+        if (under < 2.3) R.fail('headroom', `${gr.name} ${at(gr.x, S.ground(gr.x, gr.z), gr.z)}`, `hangs ${f2(under)} m above the ground (want its underside 2.3 m up)`);
+        continue;
+      }
       if (!/^(signpost|lantern post)$/.test(gr.name)) continue;
       const g0 = S.ground(gr.x, gr.z);
       for (const o of gr.objs) {
@@ -1100,6 +1118,102 @@ window.__geo = (() => {
         if (d < 0.25) continue; // the post itself
         if (b.min.y - g0 < 2.1) { R.fail('headroom', `${gr.name} ${at(gr.x, g0, gr.z)}`, `an arm or board ${f2(d)} m out hangs ${f2(b.min.y - g0)} m above the ground (want 2.1)`); break; }
       }
+    }
+  }
+
+  // 7. Every building looks like what it is: each role has parts it must have and parts it must not.
+  // (The critic's "one building doing another's job": a barn with glazed windows, a chapel that is a
+  // house, a bank with no name on it.) Reads what was built: colliders.buildings (buildHouse), the
+  // village's chapel, barn, signs, lamps and the audit groups.
+  const near = (gr, x, z, r) => Math.hypot(gr.x - x, gr.z - z) < r;
+  function checkRoles(S, R, V = G().world.village) {
+    const B = S.world.colliders.buildings || [];
+    const groups = S.groups;
+    const by = (role) => B.filter((b) => b.spec.role === role || b.spec.type === role);
+    const lab = (b) => `${b.spec.role} ${at(b.spec.x, b.spec.groundY, b.spec.z)}`;
+    const reachOf = (b) => Math.hypot(b.spec.w, b.spec.d) / 2 + 2.5;
+    const signNear = (b) => (V.signs || []).find((s) => Math.hypot(s.x - b.spec.x, s.z - b.spec.z) < reachOf(b));
+    // No house anywhere keeps the old arched windows or their shutters.
+    for (const p of S.pieces) if (p.cat === 'shutters') R.fail('role', `${p.name} ${at(p.x, p.y, p.z)}`, 'shutters on a house (the town has none)');
+    for (const b of B) for (const w of b.windows) if (/Round/.test(w.kind || '')) R.fail('role', lab(b), `an arched ${w.kind} window`);
+    // Public buildings say what they are.
+    for (const role of ['store', 'inn', 'smithy', 'potter', 'cooper']) for (const b of by(role)) if (!signNear(b)) R.fail('role', lab(b), 'no hanging sign');
+    for (const b of by('bank')) {
+      if (b.look.walls !== 'stone') R.fail('role', lab(b), 'the bank is not built in stone');
+      if (!b.windows.length || b.windows.some((w) => w.style !== 'bars')) R.fail('role', lab(b), 'bank windows without iron bars');
+      if (!b.doors.some((d) => d.leaf === 4)) R.fail('role', lab(b), 'the bank door is not the heavy iron-bound one');
+      if (!groups.some((g) => g.name === 'bank name' && near(g, b.spec.x, b.spec.z, reachOf(b)))) R.fail('role', lab(b), 'no name cut over the bank door');
+    }
+    for (const b of by('store')) if (!(b.shopWindows || []).length) R.fail('role', lab(b), 'a shop with no counter or shop window');
+    for (const b of by('inn')) {
+      const s = signNear(b);
+      if (!s || s.reach < 1.4 || s.w < 1.2) R.fail('role', lab(b), 'the inn has no big hanging sign');
+      if (!groups.some((g) => g.name === 'yard arch' && near(g, b.spec.x, b.spec.z, reachOf(b) + 6))) R.fail('role', lab(b), 'no arch into the inn yard');
+    }
+    // Working buildings: no glazed windows, the right doors.
+    for (const b of by('stable')) if (b.windows.length) R.fail('role', lab(b), `a stable with ${b.windows.length} glazed windows`);
+    if (!V.barn) R.fail('role', 'barn', 'no barn was built (a cottage stands in for it)');
+    else {
+      if (V.barn.width < 2.5) R.fail('role', 'barn', `the barn's doorway is only ${f2(V.barn.width)} m wide`);
+      const row = (V.places.houses || []).find((p) => p.role === 'barn');
+      const inBarn = (x, z) => { const dx = x - row.x, dz = z - row.z, c = Math.cos(row.rot), s = Math.sin(row.rot); return Math.abs(dx * c - dz * s) < row.w / 2 + 0.3 && Math.abs(dx * s + dz * c) < row.d / 2 + 0.3; };
+      if (row && groups.some((g) => g.name === 'window' && inBarn(g.x, g.z))) R.fail('role', 'barn', 'glazed windows on the barn');
+    }
+    for (const b of by('toll house')) if (!groups.some((g) => g.name === 'notice' && near(g, b.spec.x, b.spec.z, reachOf(b)))) R.fail('role', lab(b), 'no board of tolls');
+    for (const b of by('watch house')) if (!groups.some((g) => g.name === 'watch bell' && near(g, b.spec.x, b.spec.z, reachOf(b)))) R.fail('role', lab(b), 'no bell at the watch house');
+    // The chapel: a church, not a house.
+    const C = V.chapel;
+    if (!C) R.fail('role', 'chapel', 'no chapel was built (a house stands in for it)');
+    else {
+      if ((C.lancets || 0) < 3) R.fail('role', 'chapel', `only ${C.lancets || 0} lancet lights`);
+      if (!C.belfry || !C.bell) R.fail('role', 'chapel', 'no belfry with a bell');
+      const n = C.nave, tower = V.places.tower;
+      if (n && tower && Math.abs(tower.x + tower.w / 2 - n.x0) > 0.2) R.fail('role', 'chapel', `the tower stands ${f2(n.x0 - tower.x - tower.w / 2)} m from the nave`);
+      if (n) {
+        const inside = (x, z, pad = 0.5) => x > n.x0 - 4.5 - pad && x < n.x1 + 3.1 + pad && z > n.z0 - pad && z < n.z1 + pad;
+        if ((V.lamps || []).some((l) => inside(l.x, l.z))) R.fail('role', 'chapel', 'a house lantern on the chapel');
+        if (groups.some((g) => (g.name === 'window' || g.name === 'chimney') && inside(g.x, g.z, 0))) R.fail('role', 'chapel', 'house windows or a chimney on the chapel');
+      }
+      if ((C.graves || 0) < 12) R.fail('role', 'chapel', `only ${C.graves || 0} graves in the churchyard`);
+    }
+    // The market hall: on posts, with its cupola.
+    for (const b of by('market hall')) {
+      if (!b.spec.groundOpen || (b.roof.posts || []).length < 6) R.fail('role', lab(b), 'the market hall does not stand on posts over an open floor');
+      if (!groups.some((g) => g.name === 'cupola' && near(g, b.spec.x, b.spec.z, 4))) R.fail('role', lab(b), 'no cupola on the market hall');
+    }
+  }
+
+  // 8. Floors, not grass: under every building the ground is painted as a built surface (the grass only
+  // grows on meadow), and the buildings you walk into or see into stand on real floors.
+  const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  function meadowAt(L, x, z) {
+    const [dirt, cobble] = L.townGround(x, z);
+    // The grass shader's test on the painted ground (with the paint's own noise at its weakest).
+    return (1 - smooth(0.15, 0.55, dirt * 0.8)) * (1 - smooth(0.1, 0.4, cobble));
+  }
+  function checkFloors(S, R, V = G().world.village, rows = null) {
+    const L = V.layout;
+    for (const b of rows || L.BUILDINGS) {
+      if (b.groundOpen) continue;
+      let worst = 0, wx = 0, wz = 0;
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
+        const [x, z] = L.toWorld(b, (i / 4 - 0.5) * (b.w - 0.6), (j / 4 - 0.5) * (b.d - 0.6));
+        const m = meadowAt(L, x, z);
+        if (m > worst) { worst = m; wx = x; wz = z; }
+      }
+      if (worst > 0.05) R.fail('floor', `${b.role || b.id} ${at(b.x, 0, b.z)}`, `grass can grow inside it (meadow ${f2(worst)} at ${f2(wx)},${f2(wz)})`);
+    }
+    if (rows) return;
+    for (const id of ['bank', 'store', 'inn', 'smithy', 'potter']) {
+      const p = V.places[id];
+      if (!p) continue;
+      let bare = 0;
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
+        const q = V.at(p, (i / 4 - 0.5) * (p.w - 0.8), (j / 4 - 0.5) * (p.d - 0.8));
+        const floor = S.near({ x0: q.x, x1: q.x, z0: q.z, z1: q.z }, 0.05).some((f) => f.cat === 'floor' && q.x >= f.box.x0 && q.x <= f.box.x1 && q.z >= f.box.z0 && q.z <= f.box.z1 && Math.abs(f.box.y1 - p.y) < 0.12);
+        if (!floor) bare++;
+      }
+      if (bare) R.fail('floor', `${id} ${at(p.x, p.y, p.z)}`, `${bare} of 25 points inside have no floor (bare ground)`);
     }
   }
 
@@ -1125,9 +1239,11 @@ window.__geo = (() => {
       placeholder: () => checkPlaceholders(S, R),
       joins: () => checkJoins(S, R),
       headroom: () => checkHeadroom(S, R),
+      roles: () => checkRoles(S, R),
+      floors: () => checkFloors(S, R),
     };
     const t0 = performance.now();
-    if (dungeon) for (const k of ['doors', 'buildings', 'textures', 'crossing', 'joins', 'headroom']) delete checks[k];
+    if (dungeon) for (const k of ['doors', 'buildings', 'textures', 'crossing', 'joins', 'headroom', 'roles', 'floors']) delete checks[k];
     (name === 'all' ? Object.values(checks) : [checks[name]]).forEach((c) => c());
     return {
       check: name, ms: Math.round(performance.now() - t0), pieces: S.pieces.length, tagged: S.groups.length, doors: S.doors.length, colliders: world.colliders.all.length,
@@ -1161,8 +1277,8 @@ window.__geo = (() => {
     p = put('FarmCrate_Apple', stall.x, stall.y + 0.58, stall.z, stall.yaw);
     expect('goods sunk into a stall counter', (R) => checkPenetration(S, R), /clip FarmCrate_Apple/);
     S.remove(p);
-    const lamp = S.pieces.find((q) => q.name === 'Lantern_Wall');
-    p = put('Lantern_Wall', lamp.x + Math.sin(lamp.yaw), lamp.y, lamp.z + Math.cos(lamp.yaw), lamp.yaw);
+    // A wall lantern a metre out from the face of a wall (on its own side of the wall piece).
+    p = put('Lantern_Wall', wall.x + Math.sin(wall.yaw) * 1.0, wall.y + 1.0, wall.z + Math.cos(wall.yaw) * 1.0, wall.yaw);
     expect('a lantern hung a metre off its wall', (R) => checkMounts(S, R), /mount Lantern_Wall/);
     S.remove(p);
     const d = S.doors[0];
@@ -1227,11 +1343,19 @@ window.__geo = (() => {
     expect('two piers overlapping into a star', (R) => checkJoins(S, R), /joins wall pier.*overlaps wall pier/);
     drop(p1);
     drop(p2);
-    // A wall lantern hung at face height.
-    const lamp2 = S.pieces.find((q) => q.name === 'Lantern_Wall');
+    // A kit wall lantern hung at face height. The new doors use procedural lamps,
+    // so this fixture must not depend on a legacy Lantern_Wall still being placed.
+    const L = world.village.layout;
+    const lamp2 = S.pieces.find((q) => q.name === 'Lantern_Wall') || {
+      x: Math.max(...L.BUILDINGS.flatMap((b) => L.footprint(b).map(([x]) => x))) + 2,
+      z: wall.z, yaw: wall.yaw,
+    };
     p = put('Lantern_Wall', lamp2.x, S.ground(lamp2.x, lamp2.z) + 0.6, lamp2.z, lamp2.yaw);
     expect('a wall lantern at face height', (R) => checkHeadroom(S, R), /headroom Lantern_Wall/);
     S.remove(p);
+    gr = fakeGroup('door lantern', new T.BoxGeometry(0.2, 0.4, 0.2), new T.MeshStandardMaterial({ metalness: 1 }), lamp2.x, S.ground(lamp2.x, lamp2.z) + 1.6, lamp2.z);
+    expect('a procedural door lantern at face height', (R) => checkHeadroom(S, R), /headroom door lantern/);
+    drop(gr);
     // The wood trim sheet on a thin pole, and a roof of four giant tiles.
     let wood = null, round = null;
     for (const part of kit.parts.values()) part.traverse((o) => { if (o.isMesh) for (const m of [o.material].flat()) { if (m.name === 'MI_WoodTrim') wood = m; if (m.name === 'MI_RoundTiles') round = m; } });
@@ -1244,6 +1368,23 @@ window.__geo = (() => {
     gr = fakeGroup('canary roof', roofG, round, 60, 5, 68);
     expect('a roof of four giant tiles', (R) => checkTextures(S, R), /texture canary roof.*giant tiles/);
     drop(gr);
+    // A bank that lost its bars, a chapel that lost its bell: the role check must notice.
+    const V = g.world.village;
+    const bank = (world.colliders.buildings || []).find((q) => q.spec.type === 'bank');
+    const styles = bank.windows.map((w) => w.style);
+    bank.windows.forEach((w) => (w.style = 'casement'));
+    expect('a bank with plain glazed windows', (R) => checkRoles(S, R), /role bank .*iron bars/);
+    bank.windows.forEach((w, i) => (w.style = styles[i]));
+    const bell = V.chapel.bell;
+    V.chapel.bell = null;
+    expect('a chapel with no bell', (R) => checkRoles(S, R), /role chapel: no belfry/);
+    V.chapel.bell = bell;
+    // Grass inside: a shed planned on the open paddock; the bank with its floor taken up.
+    expect('grass growing inside a building', (R) => checkFloors(S, R, V, [{ id: 'house', role: 'canary shed', x: 24, z: 36, w: 4, d: 4, rot: 0 }]), /floor canary shed/);
+    const boards = S.pieces.filter((q) => q.cat === 'floor' && Math.hypot(q.x - V.places.bank.x, q.z - V.places.bank.z) < 4.5);
+    boards.forEach((q) => S.remove(q));
+    expect('a bank with its floor taken up', (R) => checkFloors(S, R), /floor bank/);
+    boards.forEach((q) => S.add(q));
     return { lines, caught: `${caught}/${total}` };
   }
   return { run, canary, catOf, cloudOf, scan };

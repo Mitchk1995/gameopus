@@ -82,12 +82,13 @@ export class Batcher {
   }
 
   // Adds a kit part at a world transform: (name, matrix, meta) or
-  // (name, x, y, z, rotationY, scale, meta). Meta is free-form ({ role, ... }).
+  // (name, x, y, z, rotationY, scale, meta). Meta is free-form ({ role, ... }); `meta.swap` maps kit
+  // material names to replacements ({ MI_Plaster: ochreWash }), how a house gets its own colours.
   add(name, x, y, z, rotY = 0, scale = 1, meta = null) {
     if (typeof x === 'object') meta = y ?? null;
     const matrix = typeof x === 'object' ? x : new THREE.Matrix4().compose(
       new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY), new THREE.Vector3(scale, scale, scale));
-    this.addObject(this.kit.part(name), matrix, null, false);
+    this.addObject(this.kit.part(name), matrix, null, false, meta?.swap);
     this.log.push({ name, m: matrix.elements.slice(), meta });
     return matrix;
   }
@@ -96,7 +97,7 @@ export class Batcher {
   // dequantisation from meshopt, so they're kept as part of the piece.
   // `meta` labels a procedural object ({ label, id, soft... }) for the audit; kit parts log
   // themselves in add().
-  addObject(root, matrix, meta = null, log = true) {
+  addObject(root, matrix, meta = null, log = true, swap = null) {
     root.updateMatrixWorld(true);
     // Decorative bits (mugs, bottles, lanterns, candles) are drawn but never hold the camera
     // off, and neither do door leaves: you walk through them, so the camera does too.
@@ -107,7 +108,8 @@ export class Batcher {
       if (!o.isMesh) return;
       const m = new THREE.Matrix4().multiplyMatrices(matrix, o.matrixWorld);
       if (log && meta) this.log.push({ proc: true, meta, geometry: o.geometry, material: o.material, m: m.elements.slice() });
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      let mats = Array.isArray(o.material) ? o.material : [o.material];
+      if (swap) mats = mats.map((mt) => swap[mt.name] || mt);
       if (mats.length > 1) {
         // Split multi-material meshes by group.
         for (const grp of o.geometry.groups) this.#push(mats[grp.materialIndex], subGeometry(o.geometry, grp), m);

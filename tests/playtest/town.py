@@ -105,15 +105,17 @@ STEPS = [
     // Inside the wall, with room to spare.
     for (const b of B) for (const [x, z] of fp(b)) if (L.polyDistance(x, z) > -1.4) T.fail(name(b) + ' stands on or outside the town wall');
     // Buildings never overlap.
-    for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) if (T.sat(fp(B[i], 0.1), fp(B[j], 0.1))) T.fail('buildings overlap: ' + name(B[i]) + ' and ' + name(B[j]));
+    // (the chapel's tower is built onto the west end of its nave: one building)
+    for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) if (!(B[i].type === 'chapel' && B[j].type === 'chapel') && T.sat(fp(B[i], 0.1), fp(B[j], 0.1))) T.fail('buildings overlap: ' + name(B[i]) + ' and ' + name(B[j]));
     // Nor the streets, the square, the plots or the wall.
     for (const b of B) {
       const poly = fp(b);
       const edge = [];
       poly.forEach((p, i) => { const q = poly[(i + 1) % 4]; const n = Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 0.5); for (let k = 0; k < n; k++) edge.push([p[0] + ((q[0] - p[0]) * k) / n, p[1] + ((q[1] - p[1]) * k) / n]); });
-      for (const s of L.STREETS) for (const [x, z] of edge) if (L.lineDistance(x, z, s.pts) < s.w / 2 - 0.2) { T.fail(name(b) + ' overlaps ' + s.name); break; }
+      for (const s of L.STREETS) for (const [x, z] of edge) if (!b.groundOpen && L.lineDistance(x, z, s.pts) < s.w / 2 - 0.2) { T.fail(name(b) + ' overlaps ' + s.name); break; }
       const sq = L.SQUARE;
-      if (T.sat(fp(b), T.rectPoly({ x0: sq.x0 + 0.2, x1: sq.x1 - 0.2, z0: sq.z0 + 0.2, z1: sq.z1 - 0.2 }))) T.fail(name(b) + ' overlaps the market square');
+      // (a market hall on posts stands in the square by design: its ground floor is the market's)
+      if (!b.groundOpen && T.sat(fp(b), T.rectPoly({ x0: sq.x0 + 0.2, x1: sq.x1 - 0.2, z0: sq.z0 + 0.2, z1: sq.z1 - 0.2 }))) T.fail(name(b) + ' overlaps the market square');
       for (const p of L.PLOTS) if (T.sat(fp(b), T.rectPoly(p))) T.fail(name(b) + ' overlaps plot ' + p.id);
       for (const wl of L.WALLS) { const n = Math.ceil(Math.hypot(wl.b[0] - wl.a[0], wl.b[1] - wl.a[1])); for (let k = 0; k <= n; k++) { const x = wl.a[0] + ((wl.b[0] - wl.a[0]) * k) / n, z = wl.a[1] + ((wl.b[1] - wl.a[1]) * k) / n; if (T.inPoly(x, z, fp(b, 0.6))) { T.fail(name(b) + ' is hard against the wall'); k = n + 1; } } }
     }
@@ -155,7 +157,7 @@ STEPS = [
     for (const p of L.PROPS) {
       props++;
       const label = p.type + (p.name ? ':' + p.name : '') + '@' + p.x.toFixed(1) + ',' + p.z.toFixed(1);
-      if (B.some((b) => T.inPoly(p.x, p.z, fp(b, 0.05)))) T.fail('prop inside a building: ' + label);
+      if (B.some((b) => !b.groundOpen && T.inPoly(p.x, p.z, fp(b, 0.05)))) T.fail('prop inside a building: ' + label);
       if (p.type === 'kit' && !p.why) T.fail('prop without a reason: ' + label);
       let d = Math.min(streetGap(p.x, p.z), L.rectDistance(p.x, p.z, L.SQUARE));
       for (const b of B) d = Math.min(d, T.polyDist(p.x, p.z, fp(b)));

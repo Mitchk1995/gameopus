@@ -1,5 +1,5 @@
 // Downloads the game's free art (CC0/MIT) and optimizes it into public/assets/.
-//   node scripts/fetch-assets.mjs [step ...]     steps: quaternius, combat, polyhaven, props, trees (default: all)
+//   node scripts/fetch-assets.mjs [step ...]     steps: quaternius, combat, polyhaven, props, trees, buildings (default: all)
 //   node scripts/fetch-assets.mjs kaykit         (opt-in) KayKit clips retargeted, for the animation lab
 // Raw downloads are cached in .asset-cache/ (gitignored); the optimized output is committed.
 import { mkdir, writeFile, readdir, copyFile, stat } from 'node:fs/promises';
@@ -317,6 +317,35 @@ async function propTextures() {
   }
 }
 
+// Roofing for Ashford's houses (src/world/roofs.js): weathered clay peg tiles, stone slates and reed
+// thatch. Three textures each, as the standard material wants them:
+//   build/<id>_a.webp : albedo with a touch of baked ambient occlusion (1024)
+//   build/<id>_n.webp : OpenGL normal map (512)
+//   build/<id>_r.webp : Poly Haven's ARM map (ambient occlusion, roughness, metal), read for roughness (256)
+const ROOFING = { tile: 'roof_09', slate: 'roof_slates_02', thatch: 'reed_roof_04' };
+
+async function buildings() {
+  console.log('Roofing');
+  await mkdir(path.join(OUT, 'build'), { recursive: true });
+  for (const [id, asset] of Object.entries(ROOFING)) {
+    const f = await (await fetch(`https://api.polyhaven.com/files/${asset}`)).json();
+    const diff = await cached(f.Diffuse['1k'].jpg.url, `${asset}_diff.jpg`);
+    const nor = await cached(f.nor_gl['1k'].jpg.url, `${asset}_nor.jpg`);
+    const arm = await cached(f.arm['1k'].jpg.url, `${asset}_arm.jpg`);
+    const a = await sharp(diff).resize(1024, 1024).removeAlpha().raw().toBuffer();
+    const m = await sharp(arm).resize(1024, 1024).removeAlpha().raw().toBuffer();
+    const albedo = Buffer.alloc(1024 * 1024 * 3);
+    for (let i = 0; i < 1024 * 1024; i++) {
+      const k = 1 - (1 - m[i * 3] / 255) * 0.5;
+      for (let c = 0; c < 3; c++) albedo[i * 3 + c] = a[i * 3 + c] * k;
+    }
+    await sharp(albedo, { raw: { width: 1024, height: 1024, channels: 3 } }).webp({ quality: 82 }).toFile(path.join(OUT, `build/${id}_a.webp`));
+    await sharp(nor).resize(512, 512).removeAlpha().webp({ quality: 90 }).toFile(path.join(OUT, `build/${id}_n.webp`));
+    await sharp(arm).resize(256, 256).removeAlpha().webp({ quality: 90 }).toFile(path.join(OUT, `build/${id}_r.webp`));
+    console.log(`  build/${id} (${asset})`);
+  }
+}
+
 // ---------------------------------------------------------------- ez-tree textures (MIT)
 async function trees() {
   console.log('Tree textures');
@@ -340,4 +369,5 @@ if (want('polyhaven')) await polyhaven();
 if (want('polyhaven') || want('props')) await propTextures();
 if (want('trees')) await trees();
 if (steps.includes('kaykit')) await kaykit();
+if (want('buildings')) await buildings();
 console.log('done');

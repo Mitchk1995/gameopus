@@ -41,6 +41,11 @@ export class Door {
     this.pivot.position.set(hx, def.y, hz);
     this.leafName = `Door_${def.leaf || 1}_${def.shape}`;
     this.leaf = kit.instance(this.leafName);
+    // A painted door: its boards take the house's paint (the ironwork stays iron).
+    if (def.paintMat) {
+      const swap = (m) => (m.name === 'MI_WoodTrim' ? def.paintMat : m);
+      this.leaf.traverse((o) => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material); });
+    }
     this.leaf.scale.set(this.fit.sx, this.fit.sy, 1);
     this.pivot.add(this.leaf);
     this.pivot.userData.audit = { door: true, name: this.leafName };
