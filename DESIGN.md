@@ -111,7 +111,7 @@ built from these levers, so ten people share four outfits and nobody is a copy:
 
 `tests/playtest/npc_looks.py` fails if two villagers, or a villager and the player, are too alike
 (a "look distance" summed over garments, colours in Lab, hair, beard, skin, gear, height and build),
-or if anyone wears the ranger's green. It also photographs the cast (`docs/town/after/npc_lineup.jpg`).
+or if anyone wears the ranger's green. It also photographs the cast (`docs/town/after/npc_lineup.jpg`, with `npc_lineup_left.jpg` and `npc_lineup_right.jpg` close-ups).
 
 ## Roadmap
 

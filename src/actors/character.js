@@ -62,7 +62,7 @@ const GREEN_LUMINANCE = 0.049;
 // the sun is bright and the hair files are pale grey).
 export const HAIR_COLORS = {
   black: 0x1c1714, darkbrown: 0x32241a, brown: 0x47331f, chestnut: 0x64402a, auburn: 0x74341c,
-  ginger: 0x8f4519, blond: 0xa88748, fair: 0xc4a86a, grey: 0x8a8985, white: 0xd0cdc6,
+  ginger: 0x8f4519, blond: 0xa88748, fair: 0xc4a86a, grey: 0x716f6b, white: 0xd0cdc6,
 };
 // Skin, pale to dark, as the face looks in daylight.
 export const SKIN_TONES = {
@@ -104,6 +104,8 @@ export function resolveLook(spec) {
     scale: spec.scale ?? 1,
     build: spec.build ?? 1,
     gear: spec.gear || [],
+    tint: spec.tint ?? null,
+    tintMaterial: spec.tint ? spec.tintMaterial ?? 'Ranger' : null,
   };
 }
 
@@ -118,7 +120,8 @@ const kindOf = (mat) => {
 const gainOf = (target, mean) => new THREE.Color(target.r / mean.r, target.g / mean.g, target.b / mean.b);
 
 // Replaces the green cloth of a ranger material with another colour, keeping its painted
-// light and dark, and scales the brown leather. Texels are told apart by how green they are.
+// light and dark, and scales the brown leather (grey metal and trim are left alone). Texels are
+// told apart by how green and how saturated they are.
 function recolorGreen(material, cloth, leather) {
   const before = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
@@ -132,9 +135,11 @@ function recolorGreen(material, cloth, leather) {
         {
           vec3 tx = sampledDiffuseColor.rgb;
           float lum = dot(tx, vec3(0.2126, 0.7152, 0.0722));
+          float mx = max(tx.r, max(tx.g, tx.b));
           float green = smoothstep(0.15, 0.32, (tx.g - max(tx.r, tx.b)) / max(tx.g, 0.002));
+          float brown = smoothstep(0.25, 0.45, (mx - min(tx.r, min(tx.g, tx.b))) / max(mx, 0.002)) * (1.0 - green);
           vec3 cloth = uClothTo * (lum / ${GREEN_LUMINANCE.toFixed(4)});
-          diffuseColor.rgb = diffuse * mix(tx * uLeatherGain, cloth, green);
+          diffuseColor.rgb = diffuse * mix(mix(tx, tx * uLeatherGain, brown), cloth, green);
         }
         #endif`);
   };
@@ -301,7 +306,6 @@ export class CharacterFactory {
   }
 }
 
-
 // ---------------------------------------------------------------- things to wear
 // Hats ride the head bone. Aprons and tabards are cloth panels curved round the body and
 // skinned to the spine, hips and thighs, so they hang and swing with the person. Measured on
@@ -396,13 +400,15 @@ function clothPanel(ctx, knots, { color, cols = 8, rowsPerKnot = 3, curve = 1.6,
   return mesh;
 }
 
+// Hats are lathed from a profile of [radius, height] points (metres, from the crown's middle out to
+// the edge), set on the head at `y` and `z` on the rig at rest.
 const HATS = {
   // wide brim, low round crown
   straw: { profile: [[0, 0.135], [0.045, 0.133], [0.085, 0.118], [0.099, 0.075], [0.102, 0.03], [0.12, 0.012], [0.19, 0.004], [0.255, -0.012], [0.262, -0.026]], y: 1.715, z: -0.012 },
   // a snug woollen cap with a rolled edge
+  knit: { profile: [[0, 0.104], [0.03, 0.102], [0.06, 0.093], [0.088, 0.073], [0.106, 0.045], [0.116, 0.015], [0.12, -0.012], [0.127, -0.028], [0.124, -0.043], [0.112, -0.038]], y: 1.742, z: -0.012 },
   // a tall pointed hat with a broad brim
   pointed: { profile: [[0, 0.4], [0.008, 0.37], [0.026, 0.29], [0.05, 0.19], [0.073, 0.1], [0.092, 0.035], [0.108, 0.008], [0.16, 0.0], [0.215, -0.012], [0.243, -0.03]], y: 1.728, z: -0.012 },
-  knit: { profile: [[0, 0.104], [0.03, 0.102], [0.06, 0.093], [0.088, 0.073], [0.106, 0.045], [0.116, 0.015], [0.12, -0.012], [0.127, -0.028], [0.124, -0.043], [0.112, -0.038]], y: 1.742, z: -0.012 },
 };
 
 function wear(g, ctx) {
