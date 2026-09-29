@@ -203,7 +203,7 @@ export class Village {
     const cart = stall === 'Stall_Cart_Empty';
     const COUNTER = { top: 0.83, half: 0.91, depth: 0.42, back: cart ? -0.14 : -0.42 };
     const pool = kind === 'runes'
-      ? ['Potion_1', 'Potion_2', 'Potion_4', 'CandleStick', 'Vase_4', 'Potion_2', 'Potion_1', 'Scroll_1']
+      ? ['Potion_1', 'Potion_2', 'Potion_4', 'CandleStick', 'Vase_4', 'Potion_2', 'Potion_1', 'Potion_4']
       : ['FarmCrate_Apple', 'FarmCrate_Carrot', 'FarmCrate_Apple', cart ? 'Pot_1' : 'Bag', 'Vase_4', 'Pot_1', 'Bucket_Wooden_1', 'FarmCrate_Carrot'];
     let cursor = -COUNTER.half + 0.08;
     const c = Math.cos(rot), s = Math.sin(rot);

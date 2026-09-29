@@ -110,6 +110,14 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   density, texture stretch, plus a canary that must catch deliberately broken pieces. It scans whatever
   the world and dungeon contain (Batcher logs, tagged meshes, `colliders.doors/buildings`), so new
   props are checked for free; a FAIL line names the piece and its position.
+  The town (`ashford.js` plan, `townkit.js` street furniture, `village.js`) obeys the same rules:
+  kit props go through `#prop`/`placeProp` (solids table, `floor` tops), `Lantern_Wall` and doors come from
+  the building rules, stall goods are packed onto the counter by `#goods`, and every `TownKit` method
+  calls `begin(label, x, z)` so the audit can group its meshes (soft things such as crops and washing
+  are walk-through; pass `on` for a piece resting on another). `TownKit.put` fits UVs to the material's
+  kit tile size (`TILE`), so new furniture gets un-stretched brick and wood by default. The audit also
+  fails a piece of furniture whose parts don't touch (a hovering lantern or beam) and walls with a gap under
+  them on falling ground. Kit props using the page material (`Scroll_*`, `Book_*`) fail `look.py`: leave them out.
 
 ## Open feedback from the player (do these next)
 
