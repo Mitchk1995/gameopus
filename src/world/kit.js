@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { solidsFor } from './props.js';
 
 // The two Quaternius kits (medieval village pieces and fantasy props) as named
 // templates, and a batcher that bakes every placed static piece into one mesh per
@@ -35,6 +36,19 @@ export class Kit {
     return (p.userData.box ??= new THREE.Box3().setFromObject(p));
   }
 
+  // Height of the part's top surface at a point in its own frame (-Infinity where there is none).
+  topAt(name, x, z) {
+    const rc = (this.ray ??= new THREE.Raycaster());
+    rc.set(new THREE.Vector3(x, 60, z), new THREE.Vector3(0, -1, 0));
+    const hit = rc.intersectObject(this.part(name), true);
+    return hit.length ? hit[0].point.y : -Infinity;
+  }
+
+  // The prop's solid shapes in its own frame (see props.js).
+  solids(name) {
+    return solidsFor(this, name);
+  }
+
   part(name) {
     const p = this.parts.get(name);
     if (!p) throw new Error(`kit part ${name} missing`);
@@ -45,6 +59,7 @@ export class Kit {
   // transform places it.
   instance(name) {
     const o = new THREE.Group();
+    o.userData.fromKit = name;
     o.add(this.part(name).clone(true));
     o.traverse((m) => {
       if (m.isMesh) {
@@ -61,19 +76,27 @@ export class Batcher {
     this.kit = kit;
     this.groups = new Map();
     this.m = new THREE.Matrix4();
+    // Every piece placed, kept as data (name, world matrix, optional meta) so the geometry
+    // audit (tests/playtest/geometry.py) can check what the world is made of.
+    this.log = [];
   }
 
-  // Adds a kit part at a world transform (matrix, or position/rotation-y/scale).
-  add(name, x, y, z, rotY = 0, scale = 1) {
+  // Adds a kit part at a world transform: (name, matrix, meta) or
+  // (name, x, y, z, rotationY, scale, meta). Meta is free-form ({ role, ... }).
+  add(name, x, y, z, rotY = 0, scale = 1, meta = null) {
+    if (typeof x === 'object') meta = y ?? null;
     const matrix = typeof x === 'object' ? x : new THREE.Matrix4().compose(
       new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY), new THREE.Vector3(scale, scale, scale));
-    this.addObject(this.kit.part(name), matrix);
+    this.addObject(this.kit.part(name), matrix, null, false);
+    this.log.push({ name, m: matrix.elements.slice(), meta });
     return matrix;
   }
 
   // Parts sit at the kit's origin, and their own node transforms carry the
   // dequantisation from meshopt, so they're kept as part of the piece.
-  addObject(root, matrix) {
+  // `meta` labels a procedural object ({ label, id, soft... }) for the audit; kit parts log
+  // themselves in add().
+  addObject(root, matrix, meta = null, log = true) {
     root.updateMatrixWorld(true);
     // Decorative bits (mugs, bottles, lanterns, candles) are drawn but never hold the camera
     // off, and neither do door leaves: you walk through them, so the camera does too.
@@ -82,6 +105,7 @@ export class Batcher {
     root.traverse((o) => {
       if (!o.isMesh) return;
       const m = new THREE.Matrix4().multiplyMatrices(matrix, o.matrixWorld);
+      if (log && meta) this.log.push({ proc: true, meta, geometry: o.geometry, material: o.material, m: m.elements.slice() });
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       if (mats.length > 1) {
         // Split multi-material meshes by group.
@@ -140,6 +164,8 @@ export class Batcher {
       group.add(mesh);
     }
     this.groups.clear();
+    group.userData.pieces = this.log;
+    this.log = [];
     return group;
   }
 }

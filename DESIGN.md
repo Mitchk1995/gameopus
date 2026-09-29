@@ -94,3 +94,59 @@ the quest data).
 - [x] M4 Dungeon and boss: procedural layouts, boss, drop tables, collection log, pets
 - [x] M5 People: dialogue (options and typing), two quests, shops
 - [ ] Then: more regions, skills and bosses, added between sessions
+
+## Ashford v2 (the town plan)
+
+The owner's note on the first village: buildings on a ring, barrels and crates dotted about, "too
+circular". Ashford is now a small walled market town, laid out like one. The plan lives in
+`src/world/ashford.js` (pure data, read by the terrain baker, the village builder, the workstations,
+the NPCs and `tests/playtest/town.py`); `node scripts/town-plan.mjs` draws it top-down
+(`docs/town/plan.jpg`). Coordinates: +x east, +z south; the terrace is level at y 3.2.
+
+**Shape.** A squarish town, about 92 m each way with cut corners, inside a wall: low stone wall on
+the north and east (towards the mine road and the river), clipped hedge on the south and west
+(towards the farms and the woods). Three gates, one per road, each with stone piers, lanterns and an
+"ASHFORD" board: north (Quarry Road, to the mine), east (Bridge Street), south (Lake Street). Two small
+gaps: a farm gate (south-east, trodden track to the flax field) and a garden gate (west end of Wren
+Lane, woodcutters' track to the forest). The ground is graded to the wall line, not a circle.
+
+**Streets.** The spine is Lake Street, running north from the south gate to the market square and
+ending on the bank, so the spawn (just inside the gate) looks up a cobbled street between tight rows of
+gable-fronted houses, past a well and stalls, to the bank. Bridge Street leaves the square's east side
+to the east gate. Quarry Road enters the square's north-west corner and runs north to the north gate.
+Church Lane climbs from the square's north side to the chapel. Two earth lanes cross Lake Street at a
+signposted crossroads: Wren Lane (west, houses and gardens) and Stable Lane (east, barn and farmyard).
+
+**Districts, and why.**
+- *Market row* (the civic heart): the square is a paved rectangle, 32 x 24 m. Bank on the north side
+  on the axis of Lake Street; general store on the west; the Crooked Pike inn on the north-east
+  corner. Six stalls stand in two facing rows either side of a wide aisle, with the well between
+  them (Mirelle's rune cart is the first stall in the west row). Bank, store and inn are a few steps
+  apart, so the trading loop is short.
+- *Craft quarter* on the square's south corners, open-fronted so the work is on show: the smithy
+  (furnace and anvil) on the south-east corner; the potter's workshop (spinning wheel, potter's wheel,
+  workbench) on the west side with the kiln in the alcove between it and the store.
+- *Cooking range* is the communal hearth in front of the inn, ringed with benches, where Bess's cooking
+  would be done.
+- *Residential lanes*: cottages of varied width, depth, height and stone or plaster along Lake
+  Street, Quarry Road and Wren Lane, each with a wall lantern at the door, gardens behind with fences,
+  washing lines and woodpiles; allotments (beans, cabbages, herbs) west of Quarry Road.
+- *Chapel on the rise*: a stone chapel with a bell tower on a gentle 1.4 m rise at the end of Church
+  Lane, in a walled churchyard with a lych-gate and graves. It shows above the roofs from the spawn.
+- *Working edge*: stable and watch house by the east gate (Garrow's post), toll house by the north
+  gate, barn, stable, farmyard, hay cart, haystacks and pump by the farm gate, a hay paddock. The dock is
+  outside the wall at the end of the lake road, with its crates and barrels by Old Tam.
+
+**Props with a reason.** Lamp posts every ~12 m per side down Lake Street, Bridge Street, Quarry
+Road and at the square's corners; wall lanterns at every door; barrels and cask racks only at the inn,
+the cooper's, the smithy and the store; crates and apples at the store; pots at the potter; benches at the
+inn, the hearth, the well, the bank, the churchyard; troughs at the smithy, the stables and the farm;
+signposts at the square, the crossroads and each gate. Nothing is scattered: `town.py` fails any prop
+more than 3.5 m from a building, street, fence, wall or stall.
+
+**People.** Aldwyn in the bank, Maren in the store, Bess in the inn, Brom in the smithy, Ysolde at her
+wheel, Mirelle behind her rune cart, Garrow at the east gate, Old Tam at the jetty. Wenna strolls a loop
+of the market stalls and Hob shuttles between the hearth and the well.
+
+**Kept.** Roads keep their far endpoints (mine, bandit woods, jetty), the mine and cave did not move,
+building generation and colliders are untouched.
