@@ -4,6 +4,8 @@ import { SiteKit } from './sitekit.js';
 import { buildBridge } from './bridge.js';
 import { buildFields } from './fields.js';
 import { buildRocks } from './rocks.js';
+import { buildLandmarks } from './landmarks.js';
+import { buildFort } from './fort.js';
 import { buildExits } from './exits.js';
 import { buildWaymarks } from './waymarks.js';
 import { siteMaterials } from './siteparts.js';
@@ -34,6 +36,8 @@ export class Sites {
     this.parts.bridge = buildBridge(this.sk);
     await buildFields(this.sk, this.assets);
     this.parts.rocks = await buildRocks(this.sk, this.assets);
+    this.parts.landmarks = await buildLandmarks(this.sk, this);
+    this.parts.fort = await buildFort(this.sk, this);
     this.parts.exits = buildExits(this);
     this.parts.waymarks = buildWaymarks(this);
     this.mesh = this.batch.build();
