@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { Kit, Batcher } from './kit.js';
-import { buildHouse, rng, STOREY } from './buildings.js';
+import { buildHouse, doorLantern, rng, STOREY } from './buildings.js';
 import { VILLAGE, ROADS, SPAWN, MINE_ENTRANCE } from './map.js';
 import * as A from './ashford.js';
 import { TownKit, boardTexture, findMaterial } from './townkit.js';
 import { placeProp, tag, fitUV } from './props.js';
 import { Door } from './doors.js';
+import { houseLooks } from './looks.js';
 
 // Ashford: a market town on a level terrace. Streets, the square, the rows of houses, the gates
 // and the wall are all read from ashford.js (see DESIGN.md, "Ashford v2"). This file turns that
@@ -29,15 +30,17 @@ export class Village {
     const batch = new Batcher(this.kit);
     const y = VILLAGE.y;
     this.tk = new TownKit(this.kit, batch, this.world.colliders, this.world);
+    this.looks = await houseLooks(this.kit, this.assets, this.tk);
+    const env = { tk: this.tk, looks: this.looks };
     for (const b of A.BUILDINGS) {
       const by = y + (b.rise || 0);
       const spec = { ...b, seed: 101 + b.key * 17 };
-      const info = buildHouse(this.kit, batch, this.world.colliders, spec, by);
+      const info = buildHouse(this.kit, batch, this.world.colliders, spec, by, env);
       const place = { ...spec, ...info, y: by };
       if (A.PUBLIC.includes(b.id)) this.places[b.id] = place;
       else (this.places.houses ??= []).push(place);
       // Hang the doors (public ones start open; game.js puts them on the interactable list).
-      for (const def of info.doors) this.doors.push(new Door({ kit: this.kit, scene: this.scene, colliders: this.world.colliders, def: { ...def, id: b.id } }));
+      for (const def of info.doors) this.doors.push(new Door({ kit: this.kit, scene: this.scene, colliders: this.world.colliders, def: { ...def, id: b.id, paintMat: def.paint ? this.looks.paint(def.paint) : null } }));
       // Open workshops hold their roof up on a post at each open corner.
       if (b.open?.includes('s')) {
         for (const sx of [-1, 1]) {
@@ -47,7 +50,7 @@ export class Village {
         }
       }
     }
-    this.#lanterns(batch, y);
+    this.#lanterns();
     this.#edge(batch);
     this.#plots(batch);
     this.#props(batch, y);
@@ -74,19 +77,32 @@ export class Village {
     return placeProp({ kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders }, name, x, y, z, rot, { solid });
   }
 
-  // Wall lanterns beside every door: both sides of the public doors, one side of a house's (the
-  // side with wall to spare). Each is screwed flush to the wall with the lamp hanging at chest
-  // height, where you can walk into it, so it has a collider.
-  #lanterns(batch, y) {
+  // A lantern by every front door, high enough to walk under (its underside 2.35 m up), on the
+  // latch side: on an iron bracket from the wall, or hung from the joists where the floor above
+  // is jettied out. The inn hangs its lamp over the door itself, the bank has a pair. A cottage
+  // whose eaves come down low over its door has no room for one, and goes without.
+  #lanterns() {
+    const tk = this.tk;
+    const lamps = (this.lamps = []);
     for (const p of [this.places.bank, this.places.store, this.places.inn, ...this.places.houses]) {
-      const door = p.openings[0];
-      if (!door) continue;
-      const room = (s) => Math.abs(door.lx + s * 1.0) <= p.w / 2 - 0.6;
-      const sides = A.PUBLIC.includes(p.id) ? [-1, 1] : [room(p.key % 2 ? 1 : -1) ? (p.key % 2 ? 1 : -1) : (p.key % 2 ? -1 : 1)];
-      for (const s of sides) {
-        if (!room(s)) continue;
-        const q = this.at(p, door.lx + s * 1.0, p.d / 2 + 0.04);
-        this.#prop(batch, 'Lantern_Wall', q.x, q.z, p.rot, { y: p.y + 0.9 });
+      const door = p.openings.find((o) => o.side === 's' && !o.door.back);
+      if (!door || p.role === 'chapel' || p.role === 'tower') continue;
+      const jetty = p.look.jetty > 0 && p.floors > 1;
+      const spots = p.id === 'inn' ? [0] : p.id === 'bank' ? [-1, 1] : [Math.abs(door.lx + 1.0) <= p.w / 2 - 0.55 ? 1 : -1];
+      for (const s of spots) {
+        const lx = door.lx + s * (p.id === 'inn' ? 0 : 0.98);
+        if (jetty) {
+          // Hung from the jetty's joists on a short chain.
+          const q = this.at(p, lx, p.d / 2 + Math.min(0.32, p.look.jetty * 0.6));
+          lamps.push(doorLantern(tk, q.x, p.y, q.z, p.rot, { hang: STOREY - 0.22 }));
+          continue;
+        }
+        // On a bracket: 0.42 m out on a two-storey wall, 0.3 m under a single storey's eaves if they allow.
+        const reach = p.floors > 1 ? 0.42 : 0.3;
+        const eaves = p.look.ridge === 'along' && p.floors === 1 ? p.top - (reach + 0.12) * Math.tan(p.look.pitch) : Infinity;
+        if (eaves < 2.35 + 0.5) continue;
+        const q = this.at(p, lx, p.d / 2);
+        lamps.push(doorLantern(tk, q.x, p.y, q.z, p.rot, { reach }));
       }
     }
   }

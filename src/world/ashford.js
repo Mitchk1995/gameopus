@@ -63,46 +63,52 @@ function row(face, line, start, items, gap = 2.4) {
   }
   return out;
 }
-const door = (at = 1, open = false, side = 's') => [{ side, at, open }];
+const door = (at = 1, open = false, side = 's', o = {}) => [{ side, at, open, ...o }];
 const H = (o) => ({ id: 'house', floors: 1, style: 'plaster', chimney: 1, ...o });
 
+// Every building says what it is. `type` picks a kind of building (see TYPES in buildings.js): a
+// jettied timber town house with its eaves to the street ('jetty'), a gable-fronted jettied house
+// ('gabled'), a tall narrow house ('tall'), a stone cottage ('stone'), a thatched cottage ('thatch'),
+// a stone lock-up ('lockup'), and the trades' own. Then its colours: the limewash on the plaster
+// (cream, white, ochre, pink, sage, russet), the timbers (kit, oak, black), the stone (grey, honey)
+// and the roofing (tile, tile-red, tile-brown, slate, slate-dark, thatch); neighbours never match.
 export const BUILDINGS = [
   // ---- the market square's four sides
-  // North: a cottage, and the bank, which closes the view up Lake Street.
+  // North: a gable-fronted town house, and the bank, which closes the view up Lake Street.
   ...row('S', 2, -21.5, [
-    H({ role: 'cottage', w: 6, d: 6, floors: 2, doors: door(1), chimney: 2, gap: 0 }),
-    { id: 'bank', w: 8, d: 8, floors: 2, style: 'stone', doors: door(1, true), chimney: 1, windows: 0.7, gap: 3.5 },
+    H({ role: 'cottage', type: 'gabled', wash: 'ochre', timber: 'oak', w: 6, d: 6, floors: 2, doors: door(1, false, 's', { paint: 'green' }), boxes: true, gap: 0 }),
+    { id: 'bank', type: 'bank', w: 8, d: 8, floors: 2, style: 'stone', doors: door(1, true, 's', { leaf: 4 }), chimney: 1, windows: 0.7, gap: 3.5 },
   ]),
   // West: the store, the kiln alcove, then the potter's open workshop.
   ...row('E', -24, 7, [
-    { id: 'store', w: 6, d: 8, floors: 2, style: 'plaster', doors: door(1, true), chimney: 2, windows: 0.6, gap: 0 },
-    { id: 'potter', w: 8, d: 8, floors: 1, style: 'plaster', open: ['s'], chimney: 1, windows: 0.5, gap: 5.5 },
+    { id: 'store', type: 'shop', wash: 'white', timber: 'black', w: 6, d: 8, floors: 2, style: 'plaster', doors: door(1, true, 's', { shape: 'Flat' }), chimney: 2, windows: 0.6, gap: 0 },
+    { id: 'potter', type: 'workshop', wash: 'sage', timber: 'oak', roof: 'tile-red', w: 8, d: 8, floors: 1, style: 'plaster', open: ['s'], chimney: 0, windows: 0.5, gap: 5.5 },
   ]),
   // East: the inn on the corner, the smithy (open front) facing the square.
   ...row('W', 8, 3, [
-    { id: 'inn', w: 8, d: 12, floors: 2, style: 'plaster', doors: door(1, true), chimney: 1, windows: 0.7, gap: 0 },
-    { id: 'smithy', w: 6, d: 6, floors: 1, style: 'stone', open: ['s'], chimney: 1, gap: 9 },
+    { id: 'inn', type: 'inn', wash: 'russet', timber: 'black', dormers: 2, w: 8, d: 12, floors: 2, style: 'plaster', doors: door(1, true), chimney: 1, windows: 0.7, gap: 0 },
+    { id: 'smithy', type: 'workshop', walls: 'stone', stone: 'grey', roof: 'slate', barge: false, w: 6, d: 6, floors: 1, style: 'stone', open: ['s'], chimney: 0, gap: 9 },
   ]),
 
   // ---- Lake Street, the way in from the south: cottages and shops in tight rows
   ...row('E', -10.5, 27.5, [
-    H({ role: 'cottage', w: 6, d: 8, floors: 2, doors: door(1), chimney: 2, gap: 0 }),
-    H({ role: 'cottage', w: 6, d: 6, floors: 1, style: 'stone', doors: door(1) }),
-    H({ role: 'cottage', w: 8, d: 8, floors: 2, doors: door(2), chimney: 2, gap: 7.6 }),
+    H({ role: 'cottage', type: 'jetty', wash: 'ochre', timber: 'oak', roof: 'tile', dormers: 1, boxes: true, w: 6, d: 8, floors: 2, doors: door(1, false, 's', { paint: 'red' }), gap: 0 }),
+    H({ role: 'cottage', type: 'thatch', walls: 'stone', stone: 'honey', w: 6, d: 6, floors: 1, style: 'stone', doors: door(1, false, 's', { shape: 'Flat', paint: 'blue' }), ivy: 'n' }),
+    H({ role: 'cottage', type: 'stone', stone: 'honey', roof: 'slate', dormers: 2, datestone: '1487', w: 8, d: 8, floors: 2, doors: door(2, false, 's', { shape: 'Flat', leaf: 2 }), gap: 7.6 }),
   ]),
   ...row('W', -5.5, 27.5, [
-    H({ role: 'cooper', w: 8, d: 8, floors: 2, doors: door(1), chimney: 1, gap: 0 }),
-    H({ role: 'cottage', w: 4, d: 6, floors: 1, style: 'stone', doors: door(0) }),
-    H({ role: 'cottage', w: 6, d: 8, floors: 2, doors: door(1), chimney: 2, gap: 7.4 }),
+    H({ role: 'cooper', type: 'jetty', wash: 'pink', timber: 'oak', roof: 'tile-red', w: 8, d: 8, floors: 2, doors: door(1), gap: 0 }),
+    H({ role: 'cottage', type: 'tall', wash: 'white', timber: 'black', w: 4, d: 6, floors: 3, style: 'plaster', doors: door(0, false, 's', { shape: 'Flat', paint: 'black' }) }),
+    H({ role: 'cottage', type: 'gabled', wash: 'ochre', timber: 'black', roof: 'tile-brown', lean: 0.075, w: 6, d: 8, floors: 2, doors: door(1, false, 's', { paint: 'green' }), gap: 7.4 }),
   ]),
 
   // ---- Quarry Road, north-west: the toll house at the gate and cottages facing the road
-  ...row('E', -29.4, -25, [H({ role: 'toll house', w: 6, d: 6, floors: 1, style: 'stone', doors: door(1), chimney: 1, gap: 0 })]),
+  ...row('E', -29.4, -25, [H({ role: 'toll house', type: 'lockup', stone: 'grey', w: 6, d: 6, floors: 1, style: 'stone', doors: door(1, false, 's', { shape: 'Flat' }), gap: 0 })]),
   ...row('E', -27.6, -16.6, [
-    H({ role: 'cottage', w: 6, d: 6, floors: 1, doors: door(1), gap: 0 }),
-    H({ role: 'cottage', w: 6, d: 8, floors: 2, style: 'stone', doors: door(1), chimney: 2 }),
+    H({ role: 'cottage', type: 'thatch', wash: 'white', timber: 'oak', w: 6, d: 6, floors: 1, doors: door(1, false, 's', { shape: 'Flat', paint: 'green' }), gap: 0 }),
+    H({ role: 'cottage', type: 'stone', stone: 'grey', roof: 'slate-dark', w: 6, d: 8, floors: 2, style: 'stone', doors: door(1, false, 's', { shape: 'Flat', paint: 'red' }), ivy: 'e' }),
   ]),
-  ...row('W', -22.4, -16.5, [H({ role: 'cottage', w: 6, d: 6, floors: 2, doors: door(1), chimney: 2, gap: 0 })]),
+  ...row('W', -22.4, -16.5, [H({ role: 'cottage', type: 'gabled', wash: 'sage', timber: 'black', roof: 'tile', w: 6, d: 6, floors: 2, doors: door(1), gap: 0 })]),
 
   // ---- Church Lane: the chapel on its rise, with a bell tower
   ...row('S', -14.6, -1.2, [H({ role: 'chapel', w: 6, d: 10, floors: 2, style: 'stone', doors: door(1), chimney: 0, rise: 1.4, gap: 0 })]),
@@ -110,34 +116,34 @@ export const BUILDINGS = [
 
   // ---- Bridge Street: stable and watch house on the north side, cottages on the south
   ...row('S', 12.5, 22.6, [
-    H({ role: 'stable', w: 6, d: 8, floors: 1, doors: door(1), chimney: 0, gap: 0 }),
-    H({ role: 'watch house', w: 4, d: 6, floors: 1, style: 'stone', doors: door(1), chimney: 1 }),
+    H({ role: 'stable', type: 'stable', w: 6, d: 8, floors: 1, doors: door(1, false, 's', { shape: 'Flat', leaf: 2 }), chimney: 0, gap: 0 }),
+    H({ role: 'watch house', type: 'lockup', stone: 'honey', roof: 'slate-dark', w: 4, d: 6, floors: 1, style: 'stone', doors: door(1, false, 's', { shape: 'Flat', leaf: 4 }) }),
   ]),
   ...row('N', 17.5, 16.4, [
-    H({ role: 'cottage', w: 6, d: 8, floors: 2, doors: door(1), chimney: 2, gap: 0 }),
-    H({ role: 'cottage', w: 4, d: 6, floors: 1, style: 'stone', doors: door(0) }),
-    H({ role: 'cottage', w: 4, d: 6, floors: 1, doors: door(1) }),
+    H({ role: 'cottage', type: 'jetty', wash: 'white', timber: 'black', roof: 'tile-brown', boxes: true, w: 6, d: 8, floors: 2, doors: door(1, false, 's', { paint: 'red' }), gap: 0 }),
+    H({ role: 'cottage', type: 'thatch', walls: 'stone', stone: 'grey', w: 4, d: 6, floors: 1, style: 'stone', doors: door(0, false, 's', { shape: 'Flat' }) }),
+    H({ role: 'cottage', type: 'cottage', wash: 'pink', timber: 'oak', roof: 'tile-red', w: 4, d: 6, floors: 1, doors: door(1, false, 's', { shape: 'Flat', paint: 'blue' }) }),
   ]),
 
   // ---- Wren Lane, west: the residential lane, gardens behind
   ...row('S', 45.4, -50, [
-    H({ role: 'cottage', w: 6, d: 8, floors: 2, doors: door(1), chimney: 2, gap: 0 }),
-    H({ role: 'cottage', w: 4, d: 6, floors: 1, style: 'stone', doors: door(0) }),
-    H({ role: 'cottage', w: 6, d: 8, floors: 2, doors: door(1), chimney: 1 }),
-    H({ role: 'cottage', w: 6, d: 6, floors: 1, style: 'stone', doors: door(1) }),
+    H({ role: 'cottage', type: 'jetty', wash: 'ochre', timber: 'oak', roof: 'tile-red', dormers: 1, w: 6, d: 8, floors: 2, doors: door(1, false, 's', { paint: 'blue' }), gap: 0 }),
+    H({ role: 'cottage', type: 'thatch', wash: 'white', timber: 'oak', w: 4, d: 6, floors: 1, style: 'stone', doors: door(0, false, 's', { shape: 'Flat', paint: 'green' }) }),
+    H({ role: 'cottage', type: 'gabled', wash: 'pink', timber: 'kit', roof: 'tile-brown', w: 6, d: 8, floors: 2, doors: door(1), ivy: 'w' }),
+    H({ role: 'cottage', type: 'stone', stone: 'honey', roof: 'slate', w: 6, d: 6, floors: 1, style: 'stone', doors: door(1, false, 's', { shape: 'Flat', paint: 'red' }) }),
   ]),
   ...row('N', 48.6, -50, [
-    H({ role: 'cottage', w: 4, d: 6, floors: 1, doors: door(1), gap: 0 }),
-    H({ role: 'cottage', w: 6, d: 8, floors: 2, style: 'stone', doors: door(1), chimney: 2 }),
-    H({ role: 'cottage', w: 6, d: 6, floors: 1, doors: door(1) }),
-    H({ role: 'cottage', w: 6, d: 8, floors: 2, doors: door(1), chimney: 2 }),
+    H({ role: 'cottage', type: 'cottage', wash: 'sage', timber: 'black', roof: 'tile', w: 4, d: 6, floors: 1, doors: door(1, false, 's', { shape: 'Flat' }), gap: 0 }),
+    H({ role: 'cottage', type: 'stone', stone: 'grey', roof: 'slate-dark', dormers: 1, w: 6, d: 8, floors: 2, style: 'stone', doors: door(1, false, 's', { shape: 'Flat', paint: 'green' }) }),
+    H({ role: 'cottage', type: 'thatch', wash: 'cream', timber: 'oak', w: 6, d: 6, floors: 1, doors: door(1, false, 's', { shape: 'Flat', paint: 'red' }), ivy: 'e' }),
+    H({ role: 'cottage', type: 'jetty', wash: 'sage', timber: 'black', roof: 'tile', boxes: true, w: 6, d: 8, floors: 2, doors: door(1, false, 's', { paint: 'blue' }) }),
   ]),
 
   // ---- Stable Lane, east: the working edge with a barn and a stable
-  ...row('S', 45.3, 3, [H({ role: 'cottage', w: 8, d: 8, floors: 2, doors: door(2), chimney: 2, gap: 0 })]),
+  ...row('S', 45.3, 3, [H({ role: 'cottage', type: 'stone', stone: 'honey', roof: 'tile-brown', w: 8, d: 8, floors: 2, style: 'stone', doors: door(2, false, 's', { shape: 'Flat', paint: 'blue' }), gap: 0 })]),
   ...row('N', 48.7, 4.4, [
     H({ role: 'barn', w: 8, d: 10, floors: 1, doors: door(2), chimney: 0, gap: 0 }),
-    H({ role: 'stable', w: 4, d: 8, floors: 1, doors: door(1), chimney: 0 }),
+    H({ role: 'stable', type: 'stable', w: 4, d: 8, floors: 1, doors: door(1, false, 's', { shape: 'Flat', leaf: 2 }), chimney: 0 }),
   ]),
 ].map((b, i) => ({ ...b, key: i }));
 

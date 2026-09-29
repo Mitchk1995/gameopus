@@ -96,18 +96,23 @@ STEPS = [
   {'eval': """(() => { const g = __game, sh = window.__bench, P = g.player.pos;
     const onTop = Math.abs(P.y - sh.y1) < 0.05;
     return { y: +P.y.toFixed(2), benchTop: +sh.y1.toFixed(2), failLines: onTop ? 'none' : 'FAIL bench: could not jump onto the bench (feet ' + P.y.toFixed(2) + ', seat ' + sh.y1.toFixed(2) + ')' }; })()"""},
-  # --- a hanging lantern is solid
-  {'eval': """(() => { const g = __game;
-    const sh = g.world.colliders.all.find((s) => s.prop === 'Lantern_Wall');
-    const h = g.world.village.places.bank, out = { x: Math.sin(h.rot), z: Math.cos(h.rot) };
-    window.__lamp = sh;
-    // Stand out in front of the lamp, walk straight at it.
-    const px = sh.x + out.x * 2.2, pz = sh.z + out.z * 2.2, face = Math.atan2(-out.x, -out.z);
-    g.player.spawn(px, pz, face); g.rig.yaw = face + Math.PI; g.rig.pitch = -0.1; g.run(0.3);
-    return 1; })()"""},
+  # --- door lanterns hang overhead: every one clears a tall head, and you walk under one to the wall
+  {'eval': """(() => { const g = __game, v = g.world.village, lines = [];
+    for (const l of v.lamps || []) { const up = l.bottom - g.world.heightAt(l.x, l.z); if (up < 2.3) lines.push('FAIL lantern: a door lantern at ' + l.x.toFixed(1) + ',' + l.z.toFixed(1) + ' hangs only ' + up.toFixed(2) + ' m up (head height)'); }
+    const lamp = (v.lamps || []).find((l) => !l.hung);
+    if (!lamp) lines.push('FAIL lantern: no bracket lanterns by the doors');
+    else {
+      window.__lamp = lamp;
+      const out = { x: Math.sin(lamp.rot), z: Math.cos(lamp.rot) };
+      // Stand out in front of the lamp, walk straight at the wall under it.
+      const px = lamp.wx + out.x * 2.4, pz = lamp.wz + out.z * 2.4, face = Math.atan2(-out.x, -out.z);
+      g.player.spawn(px, pz, face); g.rig.yaw = face + Math.PI; g.rig.pitch = -0.1; g.run(0.3);
+    }
+    return { lamps: (v.lamps || []).length, failLines: lines.join(' || ') || 'none' }; })()"""},
   {'key': 'KeyW'},
   {'eval': "__game.sim(2.0)"},
   {'up': 'KeyW'},
-  {'eval': """(() => { const g = __game, sh = window.__lamp, P = g.player.pos, d = Math.hypot(P.x - sh.x, P.z - sh.z);
-    return { distFromLampCentre: +d.toFixed(2), failLines: d < sh.r + 0.25 ? 'FAIL lantern: walked into the hanging lantern (' + d.toFixed(2) + ' m from its centre)' : 'none' }; })()"""},
+  {'eval': """(() => { const g = __game, l = window.__lamp, P = g.player.pos;
+    const fromWall = (P.x - l.wx) * Math.sin(l.rot) + (P.z - l.wz) * Math.cos(l.rot);
+    return { fromWall: +fromWall.toFixed(2), failLines: fromWall > 0.7 ? 'FAIL lantern: stopped ' + fromWall.toFixed(2) + ' m from the wall, short of walking under the door lantern' : 'none' }; })()"""},
 ]

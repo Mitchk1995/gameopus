@@ -631,9 +631,19 @@ window.__geo = (() => {
       const bays = 2 * (sp.w / 2 + sp.d / 2);
       if (b.windows.length / sp.floors > 0.5 * bays + 0.001) R.fail('window', lab, `${b.windows.length / sp.floors} windows per storey in ${bays} bays`);
       if (!b.openings.length && !b.windows.length && sp.w >= 6 && sp.d >= 6 && !b.spec.open) R.fail('window', lab, 'a big house with no windows');
-      // Roof seated: its origin on the wall tops, over the footprint, with an overhang.
+      // Roof seated: its origin on the wall tops, over the footprint, with an overhang. Houses built
+      // with their own roofs (buildings.js, roofs.js) report them: seated on the wall tops, overhanging
+      // the walls, and drawn (a 'roof' group over the footprint).
       const roofs = S.pieces.filter((p) => p.cat === 'roof' && Math.abs(p.x - sp.x) < 0.01 && Math.abs(p.z - sp.z) < 0.01);
-      if (!roofs.length) R.fail('roof', lab, 'no roof');
+      const own = b.roof && b.roof.ridge ? b.roof : null;
+      if (own) {
+        const rise = own.y0 - sp.floors * 3; // (heights in the house frame)
+        if (rise < 0.05 || rise > 0.2) R.fail('roof', lab, `roof sits ${f2(rise)} m above the wall tops`);
+        if (own.over < 0.2 || own.over > 1.0) R.fail('roof', lab, `roof overhangs by ${f2(own.over)} m`);
+        if (own.ridge - own.y0 < 1.2) R.fail('roof', lab, `roof ridge only ${f2(own.ridge - own.y0)} m above the eaves (flat)`);
+        const drawn = S.groups.some((gr) => gr.name === 'roof' && Math.hypot(gr.x - sp.x, gr.z - sp.z) < Math.hypot(sp.w, sp.d) / 2 + 1.5);
+        if (!drawn) R.fail('roof', lab, 'no roof');
+      } else if (!roofs.length) R.fail('roof', lab, 'no roof');
       for (const r of roofs) {
         const rise = r.y - (sp.groundY + sp.floors * 3);
         if (rise < 0.05 || rise > 0.2) R.fail('roof', lab, `roof sits ${f2(rise)} m above the wall tops`);
@@ -884,8 +894,8 @@ window.__geo = (() => {
     p = put('FarmCrate_Apple', stall.x, stall.y + 0.58, stall.z, stall.yaw);
     expect('goods sunk into a stall counter', (R) => checkPenetration(S, R), /clip FarmCrate_Apple/);
     S.remove(p);
-    const lamp = S.pieces.find((q) => q.name === 'Lantern_Wall');
-    p = put('Lantern_Wall', lamp.x + Math.sin(lamp.yaw), lamp.y, lamp.z + Math.cos(lamp.yaw), lamp.yaw);
+    // A wall lantern a metre out from the face of a wall (on its own side of the wall piece).
+    p = put('Lantern_Wall', wall.x + Math.sin(wall.yaw) * 1.0, wall.y + 1.0, wall.z + Math.cos(wall.yaw) * 1.0, wall.yaw);
     expect('a lantern hung a metre off its wall', (R) => checkMounts(S, R), /mount Lantern_Wall/);
     S.remove(p);
     const d = S.doors[0];
