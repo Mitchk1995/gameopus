@@ -15,17 +15,17 @@ const Y_UP = new THREE.Vector3(0, 1, 0);
 const KINDS = {
   reeds: {
     count: 5200, size: 84, fade: [30, 40], lattice: null,
-    mask: `max(sh.g, bA.b * smoothstep(1.1, 0.35, gy) * 0.8) * smoothstep(-0.75, -0.25, gy) * (1.0 - smoothstep(0.1, 0.4, gc.r))`,
+    mask: `max(sh.g, bA.b * smoothstep(1.1, 0.35, gy) * 0.8) * smoothstep(-0.75, -0.25, gy) * (1.0 - smoothstep(0.1, 0.4, gc.r)) * (1.0 - smoothstep(0.1, 0.4, gc.b))`,
     sway: 0.18, near: (x, z) => shoreAt(x, z)[1] > 0.1 || biomeAt(x, z)[2] > 0.3,
   },
   heather: {
     count: 5200, size: 70, fade: [24, 33], lattice: null, leaf: 'oak', lum: true,
-    mask: `smoothstep(0.25, 0.6, bA.g) * (1.0 - smoothstep(0.1, 0.4, gc.r)) * smoothstep(1.2, 1.8, gy) * smoothstep(0.8, 0.9, gN.y) * (1.0 - bB.b)`,
+    mask: `smoothstep(0.25, 0.6, bA.g) * (1.0 - smoothstep(0.1, 0.4, gc.r)) * (1.0 - smoothstep(0.1, 0.4, gc.b)) * smoothstep(1.2, 1.8, gy) * smoothstep(0.8, 0.9, gN.y) * (1.0 - bB.b)`,
     sway: 0.03, near: (x, z) => biomeAt(x, z)[1] > 0.2,
   },
   bracken: {
     count: 4500, size: 70, fade: [24, 33], lattice: null, leaf: 'ash',
-    mask: `smoothstep(0.35, 0.8, gc.g) * (1.0 - smoothstep(0.1, 0.4, gc.r)) * (1.0 - bA.b) * smoothstep(1.2, 1.8, gy) * smoothstep(0.82, 0.92, gN.y) * smoothstep(0.4, 0.5, gPatch)`,
+    mask: `smoothstep(0.35, 0.8, gc.g) * (1.0 - smoothstep(0.1, 0.4, gc.r)) * (1.0 - smoothstep(0.1, 0.4, gc.b)) * (1.0 - bA.b) * smoothstep(1.2, 1.8, gy) * smoothstep(0.82, 0.92, gN.y) * smoothstep(0.4, 0.5, gPatch)`,
     sway: 0.08, near: (x, z) => groundAt(x, z)[1] > 0.3,
   },
   wheat: {

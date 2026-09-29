@@ -380,7 +380,9 @@ export class Terrain {
               float c0 = tCrag(tp);
               vec3 cg = vec3(tCrag(tp + vec3(0.3, 0.0, 0.0)) - c0, tCrag(tp + vec3(0.0, 0.3, 0.0)) - c0, tCrag(tp + vec3(0.0, 0.0, 0.3)) - c0) / 0.3;
               cg -= tn * dot(cg, tn);
-              tn = normalize(tn - cg * 2.2 * cf);
+              // Full strength reads as crags on the far rim, but within a few tens of metres (gorge walls
+              // beside the road) it turns into zebra banding, so it eases off close up.
+              tn = normalize(tn - cg * mix(0.7, 2.2, smoothstep(0.03, 0.12, tPx)) * cf);
             }
             // Cliffs are projected from the sides as well, so steep faces don't smear.
             vec3 bw = pow(abs(tn), vec3(4.0));
