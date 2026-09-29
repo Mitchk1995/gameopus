@@ -51,14 +51,6 @@ export class GameState {
     }
   }
 
-  static wipe() {
-    try {
-      localStorage.removeItem(KEY);
-    } catch {
-      // nothing to wipe
-    }
-  }
-
   changed(what) {
     for (const l of this.listeners) l(what);
   }

@@ -75,13 +75,7 @@ export class CharacterFactory {
     root.updateMatrixWorld(true);
     root.traverse((o) => {
       if (!o.isMesh) return;
-      o.castShadow = true;
-      o.receiveShadow = true;
-      // Cull by a generous sphere around the bind pose, so animation can't escape it.
-      if (o.isSkinnedMesh) {
-        o.computeBoundingSphere();
-        o.boundingSphere.radius = Math.max(o.boundingSphere.radius * 1.6, 1.2);
-      }
+      prepareMesh(o);
       if (spec.tint && o.material?.name?.includes(spec.tintMaterial || 'Ranger')) {
         o.material = o.material.clone();
         o.material.color.multiply(new THREE.Color(spec.tint));
@@ -90,6 +84,17 @@ export class CharacterFactory {
       }
     });
     return new Character(root, bones, this.clips);
+  }
+}
+
+// Shadows on, and for skinned meshes a culling sphere generous enough around the bind
+// pose that animation can't escape it.
+export function prepareMesh(o) {
+  o.castShadow = true;
+  o.receiveShadow = true;
+  if (o.isSkinnedMesh) {
+    o.computeBoundingSphere();
+    o.boundingSphere.radius = Math.max(o.boundingSphere.radius * 1.6, 1.2);
   }
 }
 

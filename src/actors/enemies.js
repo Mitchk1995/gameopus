@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { Character } from './character.js';
+import { Character, prepareMesh } from './character.js';
 import { buildItem } from '../ui/itemart.js';
 import { STEP } from '../world/world.js';
 
@@ -18,7 +18,7 @@ export class MonsterFactory {
 
   async create(def) {
     if (def.model === 'human') {
-      const c = await this.people.create({ ...def.look, tintMaterial: def.look.tintMaterial });
+      const c = await this.people.create(def.look);
       if (def.weapon) {
         const w = buildItem(def.weapon, this.assets);
         const hand = c.bones.hand_r;
@@ -48,15 +48,7 @@ export class MonsterFactory {
         o.material.map = tex;
       });
     }
-    root.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = true;
-      o.receiveShadow = true;
-      if (o.isSkinnedMesh) {
-        o.computeBoundingSphere();
-        o.boundingSphere.radius = Math.max(o.boundingSphere.radius * 1.6, 1.2);
-      }
-    });
+    root.traverse((o) => o.isMesh && prepareMesh(o));
     root.scale.setScalar(def.scale || 1);
     return new Character(root, bones, this.#clipsFor(def.model, bones));
   }
@@ -131,7 +123,7 @@ export class Enemy {
   update(dt, ctx) {
     const { player, alive: playerAlive } = ctx;
     this.t += dt;
-    this.clock = (this.clock || 0) + dt;
+    this.clock += dt;
     const toP = new THREE.Vector3(player.pos.x - this.pos.x, 0, player.pos.z - this.pos.z);
     const dist = toP.length();
     const fromHome = Math.hypot(this.pos.x - this.home.x, this.pos.z - this.home.z);
@@ -269,7 +261,7 @@ export class Enemy {
     if (this.alive) {
       this.#move(dt, move, speed, ctx);
       if (face) this.#turn(Math.atan2(face.x, face.z), dt, this.state === 'windup' ? 10 : 7);
-      this.#animate(speed);
+      this.#animate();
     }
     this.char.update(dt);
     this.#sync();
@@ -396,8 +388,10 @@ export class Enemy {
     if (!['idle', 'chase', 'return'].includes(this.state)) return;
     const v = this.moved || 0;
     const clip = v < 0.3 ? (this.engaged ? this.def.combatIdle || 'Idle_Loop' : this.def.idle || 'Idle_Loop') : v < 2.2 ? 'Walk_Loop' : 'Jog_Fwd_Loop';
-    if (clip !== this.anim) this.play(clip, { fade: 0.2, speed: clip === 'Walk_Loop' ? Math.max(0.7, v / 0.97) : clip === 'Jog_Fwd_Loop' ? Math.max(0.6, v / 5.36) : 1 });
-    else if (clip !== 'Idle_Loop' && this.char.current) this.char.current.timeScale = clip === 'Walk_Loop' ? Math.max(0.7, v / 0.97) : Math.max(0.6, v / 5.36);
+    // Match the gait clip's rate to the ground speed (its natural speeds: walk 0.97 m/s, jog 5.36).
+    const rate = clip === 'Walk_Loop' ? Math.max(0.7, v / 0.97) : clip === 'Jog_Fwd_Loop' ? Math.max(0.6, v / 5.36) : 1;
+    if (clip !== this.anim) this.play(clip, { fade: 0.2, speed: rate });
+    else if (clip !== 'Idle_Loop' && this.char.current) this.char.current.timeScale = rate;
   }
 
   #sync() {
