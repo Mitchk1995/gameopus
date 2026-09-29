@@ -4,6 +4,7 @@ import { Terrain } from './terrain.js';
 import { Water } from './water.js';
 import { Forest } from './trees.js';
 import { Colliders } from './colliders.js';
+import { Solids } from './solids.js';
 import { Grass } from './grass.js';
 import { Village } from './village.js';
 import { Sites } from './sites.js';
@@ -19,6 +20,9 @@ export class World {
     this.scene = scene;
     this.assets = assets;
     this.colliders = new Colliders();
+    // Triangles of every static solid mesh, for the camera (see solids.js).
+    this.solids = new Solids();
+    this.solidScan = -1;
     this.updaters = [];
     this.focus = new THREE.Vector3();
   }
@@ -36,6 +40,7 @@ export class World {
     for (const t of this.forest.trees) {
       if (t.radius > 0.05) t.collider = this.colliders.addCircle(t.x, t.z, t.radius, t.y - 2, t.y + 40, { tree: t });
     }
+    this.#syncSolids();
     return this;
   }
 
@@ -52,12 +57,40 @@ export class World {
     return WORLD.water - this.terrain.heightAt(x, z);
   }
 
+  // Index any solid meshes that have joined the scene (cheap unless the scene changed).
+  #syncSolids() {
+    if (this.solidScan === this.scene.children.length) return;
+    this.solidScan = this.scene.children.length;
+    this.solids.collect(this.scene);
+  }
+
+  // The camera ignores hand-made colliders that a real mesh already covers (walls, roofs,
+  // lintels, props of every building), and keeps the rest (trees, villagers, other props).
+  cameraIgnores(sh) {
+    return this.#covered(sh);
+  }
+
+  #covered(sh) {
+    if (sh.keepCamera || sh.data?.tree) return false;
+    if (sh.camVer !== this.solids.version) {
+      sh.camVer = this.solids.version;
+      sh.camCovered = this.solids.covers(sh);
+    }
+    return sh.camCovered;
+  }
+
   // Fraction of the segment from a to b that is clear of terrain and solid shapes.
-  // `camera` sweeps a camera-sized ball instead of a thin ray: fully 3D, and blocked by
-  // ceilings and roofs too.
-  lineOfSight(a, b, pad = 0.2, camera = false) {
+  // `camera` sweeps a camera-sized ball instead of a thin ray: fully 3D, against the real
+  // triangles of every solid mesh (roofs, eaves, chimneys, walls, props) plus the colliders
+  // that have no mesh behind them, so ceilings and roofs hold it in as well.
+  lineOfSight(a, b, pad = 0.2, camera = false, tight = 0.14) {
     const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
-    let t = camera ? this.colliders.sweep(a.x, a.y, a.z, dx, dy, dz, pad) : this.colliders.raycast(a.x, a.y, a.z, dx, dy, dz, pad);
+    let t;
+    if (camera) {
+      this.#syncSolids();
+      t = this.colliders.sweep(a.x, a.y, a.z, dx, dy, dz, pad, tight, this.skipCovered || (this.skipCovered = (sh) => this.#covered(sh)));
+      if (t > 0) t = Math.min(t, this.solids.sweep(a.x, a.y, a.z, dx, dy, dz, pad, tight));
+    } else t = this.colliders.raycast(a.x, a.y, a.z, dx, dy, dz, pad);
     // March the terrain in half-metre steps.
     const n = Math.ceil(Math.hypot(dx, dz) / 0.5);
     for (let i = 1; i <= n; i++) {
@@ -69,6 +102,31 @@ export class World {
       }
     }
     return t;
+  }
+
+  // Called by the camera each frame with the head and the reach it may need: keeps the local
+  // triangle list around it.
+  prepareCamera(p, r) {
+    this.#syncSolids();
+    this.solids.prepare(p.x, p.y, p.z, Math.max(5.2, r));
+  }
+
+  // How enclosed a point is, 0 (open air) to 1 (in a closed room): a ceiling overhead and
+  // walls all round, found by casting rays into the real geometry. It lets the camera know
+  // it is indoors and behave (see camera-rig.js).
+  enclosure(x, y, z) {
+    this.#syncSolids();
+    const S = this.solids;
+    S.prepare(x, y, z, 5.2);
+    const up = S.ray(x, y, z, 0, 5, 0);
+    if (up >= 1) return 0;
+    let hit = 0;
+    const N = 8;
+    for (let k = 0; k < N; k++) {
+      const a = (k / N) * Math.PI * 2;
+      if (S.ray(x, y, z, Math.sin(a) * 5, 0, Math.cos(a) * 5) < 1) hit++;
+    }
+    return (hit / N) * Math.min(1, (1 - up) * 2 + 0.3);
   }
 
   update(dt, camera, focus) {

@@ -166,8 +166,10 @@ export class Resources {
     const dark = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 3.0), new THREE.MeshBasicMaterial({ color: 0x020202 }));
     dark.position.set(x - fx * 0.35, y + 1.5, z - fz * 0.35);
     dark.rotation.y = facing;
+    dark.userData.noCamera = true; // a painted-on shadow, not a wall
     g.add(dark);
     this.scene.add(tag(g, 'MineMouth'));
+    this.world.solids.addObject(g); // the camera collides with the real rocks and timbers
     // Lantern on the post.
     const lamp = new THREE.PointLight(0xffb060, 3, 7, 1.6);
     lamp.position.set(x + rx * 1.45 + fx * 0.3, y + 2.3, z + rz * 1.45 + fz * 0.3);

@@ -7,8 +7,10 @@ window.__cam = (() => {
 
   // The solid (camera-blocking) shape the point is inside, if any.
   function solidAt(colliders, x, y, z, r = R) {
+    // (Shapes that a real mesh covers are checked against that mesh instead: camera_mesh.js.)
+    const ignores = window.__game.rig.world.cameraIgnores;
     for (const sh of colliders.query(x, z, 2)) {
-      if (sh.noCamera) continue;
+      if (sh.noCamera || (ignores && window.__game.rig.world.cameraIgnores(sh))) continue;
       if (y < sh.y0 - r || y > sh.y1 + r) continue;
       if (sh.kind === 'c') {
         if (Math.hypot(x - sh.x, z - sh.z) < sh.r + r) return sh;
@@ -26,7 +28,8 @@ window.__cam = (() => {
     const key = label + '|' + kind;
     if (T.seen.has(key)) return;
     T.seen.add(key);
-    if (T.fails.length < 40) T.fails.push(`FAIL ${label}: ${kind} ${msg}`);
+    if (window.__camDebug && !window.__fs) { const r = g().rig; window.__fs = { head: r.pivot.toArray(), cam: g().camera.position.toArray(), fwd: r.fwd.toArray(), right: r.right.toArray(), cur: r.cur, sideK: r.sideK, dbg: r.dbg }; }
+    if (T.fails.length < 40) T.fails.push(`FAIL ${label}: ${kind} ${msg}` + (window.__camDebug ? ' DBG ' + JSON.stringify({ ...g().rig.dbg, sideK: g().rig.sideK, pivot: g().rig.pivot.toArray().map((x) => +x.toFixed(3)) }) : ''));
   }
 
   const inFoot = (b, x, z, m = 0.05) => {
@@ -75,7 +78,7 @@ window.__cam = (() => {
       T.maxStep = Math.max(T.maxStep, Math.abs(d));
       if (d > 0.002) prev.grew = true;
       if (d < -0.15) {
-        if (prev.pullAt !== undefined && T.f - prev.pullAt <= 30 && prev.grew) T.jitter++;
+        if (prev.pullAt !== undefined && T.f - prev.pullAt <= 30 && prev.grew) { T.jitter++; (T.flutterAt ??= []).push(label + ' f' + T.f); }
         prev.pullAt = T.f;
         prev.grew = false;
       }

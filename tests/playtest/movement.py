@@ -6,7 +6,6 @@ STEPS = [
   {'eval': """(() => {
     const g = __game, P = g.player, keys = g.input.keys;
     P.spawn(0, 0, 0);
-    P.spawn(P.pos.x, P.pos.z, 0);
     g.rig.yaw = 0;
     const speed = () => Math.hypot(P.vel.x, P.vel.z);
     const out = [];

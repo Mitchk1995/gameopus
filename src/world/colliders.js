@@ -5,7 +5,9 @@
 //   box:    { x, z, hx, hz, rot, y0, y1 }  (rot turns the box like object.rotation.y)
 // Flags: `floor` (walkable top), `noCamera` (the camera sees through it), `cameraOnly`
 // (only the camera collides with it: ceilings, roofs and lintels that the player can't
-// reach or would only snag on).
+// reach or would only snag on), `keepCamera` (the camera always collides with this shape,
+// even where a real mesh also covers it: villagers). The camera itself prefers real
+// geometry: shapes sitting under solid meshes are ignored by it (see world/solids.js).
 
 const CELL = 8;
 
@@ -154,11 +156,12 @@ export class Colliders {
   // and a start that is already closer to a solid than `pad` may still press on down to
   // `tight` from it (but no nearer), so hugging a wall or brushing a door jamb doesn't
   // collapse the view.
-  sweep(ox, oy, oz, dx, dy, dz, pad, tight = 0.14) {
+  // `skip(shape)` retires shapes the caller has better data for (see World.lineOfSight).
+  sweep(ox, oy, oz, dx, dy, dz, pad, tight = 0.14, skip = null) {
     const len = Math.hypot(dx, dz);
     let best = 1;
     for (const sh of this.query(ox + dx / 2, oz + dz / 2, len / 2 + 1, this.tmp3 || (this.tmp3 = []))) {
-      if (sh.noCamera) continue;
+      if (sh.noCamera || (skip && skip(sh))) continue;
       // Clearance from the start to the solid: the biggest gap on any axis.
       const gy = Math.max(sh.y0 - oy, oy - sh.y1);
       let gap, lx = 0, lz = 0, ldx = 0, ldz = 0;

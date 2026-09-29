@@ -43,26 +43,34 @@ export class Audio {
     return b;
   }
 
-  // An output node for a sound at a world position (or none for UI sounds).
+  // An output node for a sound at a world position (or none for UI sounds); null when
+  // it's too far away to hear.
   #out(at, gain = 1) {
-    const g = this.ctx.createGain();
-    let vol = gain;
-    let node = g;
+    let vol = gain, right = null;
     if (at) {
       const dx = at.x - this.listener.x, dz = at.z - this.listener.z, d = Math.hypot(dx, dz);
-      vol *= 1 / (1 + d * 0.12);
       if (d > 40) return null;
-      if (this.ctx.createStereoPanner) {
-        const p = this.ctx.createStereoPanner();
-        // Camera right is (cos yaw, -sin yaw).
-        const right = (dx * Math.cos(this.listener.yaw) - dz * Math.sin(this.listener.yaw)) / Math.max(1, d);
-        p.pan.value = Math.max(-0.8, Math.min(0.8, right));
-        g.connect(p);
-        p.connect(this.master);
-      } else g.connect(this.master);
-    } else g.connect(this.master);
+      vol *= 1 / (1 + d * 0.12);
+      // Camera right is (cos yaw, -sin yaw).
+      right = (dx * Math.cos(this.listener.yaw) - dz * Math.sin(this.listener.yaw)) / Math.max(1, d);
+    }
+    const g = this.ctx.createGain();
     g.gain.value = vol;
-    return node;
+    if (right !== null && this.ctx.createStereoPanner) {
+      const p = this.ctx.createStereoPanner();
+      p.pan.value = Math.max(-0.8, Math.min(0.8, right));
+      g.connect(p).connect(this.master);
+    } else g.connect(this.master);
+    return g;
+  }
+
+  // A gain that swells up over `attack` seconds and dies away by `dur`.
+  #envelope(now, { attack, dur, gain }) {
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(gain, now + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    return g;
   }
 
   #noise(out, { t = 0, dur = 0.2, type = 'bandpass', f0 = 1000, f1 = f0, q = 1, gain = 1, attack = 0.005 }) {
@@ -75,11 +83,7 @@ export class Audio {
     f.Q.value = q;
     f.frequency.setValueAtTime(f0, now);
     f.frequency.exponentialRampToValueAtTime(Math.max(20, f1), now + dur);
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, now);
-    g.gain.exponentialRampToValueAtTime(gain, now + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-    src.connect(f).connect(g).connect(out);
+    src.connect(f).connect(this.#envelope(now, { attack, dur, gain })).connect(out);
     src.start(now, Math.random() * 1.0);
     src.stop(now + dur + 0.05);
   }
@@ -90,11 +94,7 @@ export class Audio {
     o.type = type;
     o.frequency.setValueAtTime(freq, now);
     o.frequency.exponentialRampToValueAtTime(Math.max(20, freq1), now + dur);
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, now);
-    g.gain.exponentialRampToValueAtTime(gain, now + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-    o.connect(g).connect(out);
+    o.connect(this.#envelope(now, { attack, dur, gain })).connect(out);
     o.start(now);
     o.stop(now + dur + 0.05);
   }
@@ -134,9 +134,6 @@ export class Audio {
       case 'hurt':
         this.#tone(out, { dur: 0.18, freq: 220 * r(), freq1: 120, type: 'triangle', gain: 0.35 });
         this.#noise(out, { dur: 0.12, type: 'lowpass', f0: 1500, f1: 200, gain: 0.6 });
-        break;
-      case 'roll':
-        this.#noise(out, { dur: 0.35, type: 'lowpass', f0: 900, f1: 200, q: 0.6, gain: 0.35, attack: 0.04 });
         break;
       case 'chop':
         this.#tone(out, { dur: 0.09, freq: 320 * r(), freq1: 180, type: 'triangle', gain: 0.6 });
@@ -202,9 +199,6 @@ export class Audio {
       case 'zap':
         this.#noise(out, { dur: 0.3, type: 'highpass', f0: 2500, f1: 800, q: 0.8, gain: 0.4 });
         this.#tone(out, { dur: 0.2, freq: 520 * r(), freq1: 180, type: 'square', gain: 0.05 });
-        break;
-      case 'step':
-        this.#noise(out, { dur: 0.07, type: 'lowpass', f0: 700 * r(), f1: 200, q: 0.5, gain: 0.12 });
         break;
       default:
         break;

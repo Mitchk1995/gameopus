@@ -64,23 +64,16 @@ export class AimRig {
     this.draw = draw;
     const w = this.weight;
     const B = this.bones;
-    const root = this.char.root;
     if (w > 0.002) {
       for (const name of UPPER) {
+        if (B[name]) this.char.mark(B[name]);
         const q = this.pose[name];
         if (q && B[name]) B[name].quaternion.slerp(q, w);
       }
       // Lean the chest toward the aim pitch, shared over the upper spine.
       const pitch = Math.asin(THREE.MathUtils.clamp(this.dir.y, -1, 1));
       const right = _a.set(Math.cos(yaw), 0, -Math.sin(yaw));
-      root.updateMatrixWorld(true);
-      for (const [name, share] of [['spine_02', 0.3], ['spine_03', 0.35]]) {
-        const b = B[name];
-        b.getWorldQuaternion(_q);
-        const axis = _b.copy(right).applyQuaternion(_q.invert());
-        b.quaternion.multiply(_q2.setFromAxisAngle(axis, -pitch * share * w));
-        b.updateMatrixWorld(true);
-      }
+      tiltUpper(this.char, yaw, pitch * w, BOW_LEAN);
       // Bow (or casting) arm: straight out along the line of sight.
       const sh = B.upperarm_l.getWorldPosition(_c);
       const reach = armLength(B.upperarm_l, B.lowerarm_l, B.hand_l);
@@ -138,6 +131,38 @@ export class AimRig {
   // Where spells leave from: just in front of the casting hand.
   castPoint(out = this.cast) {
     return this.bones.hand_l.getWorldPosition(out).addScaledVector(this.dir, 0.12);
+  }
+}
+
+const BOW_LEAN = [['spine_02', 0.3], ['spine_03', 0.35]];
+
+// The point on a ray (origin o, unit direction d) that is `r` metres from `center`: where
+// a blade that reaches r from the shoulder crosses the crosshair. If the ray passes farther
+// from the center than that, the closest point on it.
+export function raySphere(o, d, center, r, out) {
+  const wx = center.x - o.x, wy = center.y - o.y, wz = center.z - o.z;
+  const a0 = wx * d.x + wy * d.y + wz * d.z;
+  const perp2 = wx * wx + wy * wy + wz * wz - a0 * a0;
+  const a = Math.max(0.5, a0 + Math.sqrt(Math.max(0, r * r - perp2)));
+  return out.set(o.x + d.x * a, o.y + d.y * a, o.z + d.z * a);
+}
+
+// Tips the upper body up (positive) or down by `pitch` radians about the character's
+// sideways axis, sharing the angle over the listed bones ([name, share]; shares that add
+// up to 1 tilt everything above them by the full angle). Melee swings use it to aim the
+// blow at the crosshair, and the bow uses it to lean into the shot.
+export function tiltUpper(char, yaw, pitch, shares) {
+  if (Math.abs(pitch) < 1e-4) return;
+  const right = _a.set(Math.cos(yaw), 0, -Math.sin(yaw));
+  char.root.updateMatrixWorld(true);
+  for (const [name, share] of shares) {
+    const b = char.bones[name];
+    if (!b) continue;
+    char.mark(b);
+    b.getWorldQuaternion(_q);
+    const axis = _b.copy(right).applyQuaternion(_q.invert());
+    b.quaternion.multiply(_q2.setFromAxisAngle(axis, -pitch * share));
+    b.updateMatrixWorld(true);
   }
 }
 

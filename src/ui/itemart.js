@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ITEMS } from '../game/items.js';
 
 // Small 3D models for items, built from primitives with PBR materials. The same
@@ -107,7 +107,7 @@ function runeGlyph(kind) {
 }
 
 const BUILD = {
-  coins(a) {
+  coins() {
     const g = new THREE.Group();
     const gold = metal(0xd8a93c);
     const coin = new THREE.CylinderGeometry(0.03, 0.03, 0.008, 24);
@@ -119,9 +119,9 @@ const BUILD = {
     return g;
   },
 
-  logs(a, assets) {
+  logs(a) {
     const g = new THREE.Group();
-    const bark = barkMaterial(a.bark, assets);
+    const bark = barkMaterial(a.bark);
     const end = ringsMaterial(a.end);
     const geo = new THREE.CylinderGeometry(0.075, 0.08, 0.5, 14, 1);
     for (const [x, y, z, ry] of [[-0.08, 0.08, 0, 0.1], [0.08, 0.08, 0.01, -0.08], [0, 0.215, -0.005, 0.03]]) {
@@ -344,7 +344,7 @@ const BUILD = {
     const pts = [];
     for (let i = 0; i <= 20; i++) {
       const t = i / 20 * 2 - 1;
-      pts.push(new THREE.Vector3(0, t * L, -(t * t) * 0.11 * (a.strung ? 1 : 0.35) + Math.abs(t) * 0.0));
+      pts.push(new THREE.Vector3(0, t * L, -(t * t) * 0.11 * (a.strung ? 1 : 0.35)));
     }
     const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.017, 7, false);
     // Taper toward the tips.
@@ -925,23 +925,29 @@ export function buildItem(id, assets) {
   return g;
 }
 
-// How each kind sits in its icon: rotation of the model, and a tilt of the camera.
+// How each kind sits in its icon (the model's rotation). Blades and staves lie on the
+// diagonal tip up; tools a touch flatter, turned to show the head.
+const BLADE = { rz: -Math.PI / 4 - 0.1, rx: 0.2 };
+const TOOL = { rz: -Math.PI / 4, ry: -0.3 };
 const POSE = {
-  sword: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
-  dagger: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
-  scimitar: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
-  axe: { rz: -Math.PI / 4, ry: -0.4 },
-  pickaxe: { rz: -Math.PI / 4, ry: -0.3 },
-  hammer: { rz: -Math.PI / 4, ry: -0.3 },
-  knife: { rz: -Math.PI / 4, ry: -0.3 },
-  rod: { rz: -Math.PI / 4, ry: -0.3 },
-  net: { rz: -Math.PI / 4, ry: -0.3 },
+  sword: BLADE,
+  dagger: BLADE,
+  scimitar: BLADE,
+  cleaver: BLADE,
+  staff: BLADE,
+  axe: { ...TOOL, ry: -0.4 },
+  pickaxe: TOOL,
+  hammer: TOOL,
+  knife: TOOL,
+  rod: TOOL,
+  net: TOOL,
   bow: { ry: -Math.PI / 2 + 0.25, rx: -0.75 },
   kiteshield: { ry: 0.35, rx: -0.1 },
   med_helm: { ry: 0.6, rx: 0.15 },
   full_helm: { ry: 0.6, rx: 0.15 },
   chainbody: { ry: 0.3 },
-  cleaver: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
+  platebody: { ry: 0.3 },
+  platelegs: { ry: 0.3 },
   crown: { rx: 0.35 },
   petgob: { ry: 0.5 },
   petbird: { ry: 0.9 },
@@ -949,13 +955,10 @@ const POSE = {
   petsapling: { ry: 0.5 },
   petfrog: { ry: 0.5 },
   hook: { rz: 0.35, ry: 0.2 },
-  staff: { rz: -Math.PI / 4 - 0.1, rx: 0.2 },
   rune: { rx: 0.5 },
   book: { rx: 0.55, ry: 0.5 },
   strongbox: { ry: 0.55, rx: 0.2 },
   mug: { ry: -0.5 },
-  platebody: { ry: 0.3 },
-  platelegs: { ry: 0.3 },
 };
 
 // Renders item icons with a small renderer of its own, lit like a shop display.
@@ -1008,10 +1011,5 @@ export class IconStudio {
     this.scene.remove(holder);
     this.cache.set(id, url);
     return url;
-  }
-
-  // Redraws everything (after textures finish loading).
-  refresh() {
-    this.cache.clear();
   }
 }
