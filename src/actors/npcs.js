@@ -21,7 +21,7 @@ export class Npc {
     this.char.play(def.idle || 'Idle_Loop', { fade: 0 });
     this.char.mixer.update(Math.random() * 3);
     this.#sync();
-    if (!this.route) world.colliders.addCircle(def.x, def.z, 0.35, this.pos.y - 1, this.pos.y + 1.9);
+    if (!this.route) world.colliders.addCircle(def.x, def.z, 0.35, this.pos.y - 1, this.pos.y + 1.9).keepCamera = true;
   }
 
   get target() {
