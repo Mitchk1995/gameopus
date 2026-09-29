@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Batcher } from './kit.js';
 import { SiteKit } from './sitekit.js';
 import { buildBridge } from './bridge.js';
+import { buildLandmarks } from './landmarks.js';
+import { buildFort } from './fort.js';
 
 // Everything built out in the vale that is not the town: the bridge, the ways out and their notices,
 // the landmarks, the fort, the signposts and the sites' markers. Read from the data in map.js.
@@ -22,6 +24,8 @@ export class Sites {
     this.batch = new Batcher(kit);
     this.sk = new SiteKit(kit, this.batch, w.colliders, w);
     this.parts.bridge = buildBridge(this.sk);
+    this.parts.landmarks = await buildLandmarks(this.sk, this);
+    this.parts.fort = await buildFort(this.sk, this);
     this.mesh = this.batch.build();
     this.scene.add(this.mesh);
     return this;
