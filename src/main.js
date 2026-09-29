@@ -9,6 +9,7 @@ import { CameraRig } from './actors/camera-rig.js';
 import { Hud } from './ui/hud.js';
 import { Game } from './game/game.js';
 import { SPAWN } from './world/map.js';
+import { detailUniforms } from './engine/detail.js';
 import { loadSettings, saveSettings, applyQuality } from './engine/settings.js';
 
 // Headless tests (#test) step the game by hand, since software GL renders slowly.
@@ -40,6 +41,7 @@ async function start() {
 
   if (TEST) {
     window.__THREE = THREE;
+    window.__detail = { detailUniforms };
     input.locked = true;
     input.lock = input.unlock = () => {};
   }
@@ -53,7 +55,7 @@ async function start() {
   hud.playButton.addEventListener('click', () => input.lock());
   const settings = loadSettings();
   const applySettings = () => {
-    applyQuality(settings.quality, { renderer, world });
+    applyQuality(settings.quality, { renderer, world, assets });
     rig.sensitivity = settings.sensitivity;
     hud.showSettings(settings);
     saveSettings(settings);

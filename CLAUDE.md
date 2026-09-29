@@ -1,12 +1,19 @@
 # Aldermere: notes for Claude
 
+**New session? Read `HANDOFF.md` first** (owner preferences, what's merged and in flight, next steps).
+
 A single-player, OSRS-style world in three.js (r186, Vite). Read `DESIGN.md` for the
 player's decisions and pillars; they outrank taste. The player tests by playing and
 gives direct feedback on feel and looks. Delegated: git, branches, PRs and merging.
 
 ## Run and test
 
-- `npm run dev` for live editing; `npm run build` for `dist/`.
+- `npm run dev` for live editing; `npm run build` for `dist/`. `npm run app` opens the built
+  game as a desktop window (`desktop/main.cjs`, Electron); `npm run package` makes
+  `release/win-unpacked/Aldermere.exe`. npm 11 skips Electron's download step: if
+  `npx electron` says it failed to install, unzip the cached zip in
+  `%LOCALAPPDATA%\electron\Cache` into `node_modules/electron/dist` and write `electron.exe` to
+  `node_modules/electron/path.txt`.
 - `npm run artifact` packs `dist-artifact/` for the claude.ai artifact (published at
   https://claude.ai/artifact/6UupW43rUU5LKTJBJUoyh5 with the `sample` capability, which
   powers typed chat). Republish only the page unless files in `public/assets` changed.
@@ -41,7 +48,13 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   End it with `npm run sync -- "what changed"` (commits everything, pulls, pushes).
   It never force-pushes; a conflict stops it and it says why.
 - Work on a branch and open a PR for anything bigger than a tweak; CI (`.github/workflows/ci.yml`)
-  builds, checks `scripts/balance.mjs`, and plays the headless scenarios listed in the workflow file.
+  builds, checks `scripts/balance.mjs`, and plays every headless scenario whose first line is the comment `# ci`
+  (add that line to a new scenario; no need to edit the workflow).
+  They run in four parallel groups (`scenarios` job), and a final `playtest` job goes green only if all
+  groups pass; `look` renders at 640x360 there because software GL is slow.
+  A scenario can opt out of unrelated PRs with `# ci paths=src/world/,src/dungeon/` on its first line
+  (it then runs only when a PR touches one of those prefixes; everything runs on main). Do this for
+  slow scenarios (camera, look, and any large audit sweep).
   Merges are automatic: `.github/workflows/automerge.yml` merges any of the owner's PRs into
   `main` once `build` and `playtest` pass (label a PR `hold` to stop it). Keep PRs based on `main`.
 - After opening any PR, turn on Auto-fix for it (the CI monitor switch) so red CI wakes the session;
@@ -81,6 +94,13 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   the boom in by a couple of metres in one frame, and the shoulder can jump about 0.25 m when a jamb
   edge passes; the camera can hug the head (hero hidden) for about a second after such a pull; thin
   scenery between the head and the camera (a post beside the boom) can still hide the hero a little.
+- Richer textures (done): the GLB textures were fine, but plaster, skin and cloth are almost
+  flat paint. `src/engine/detail.js` patches every normal-mapped GLB material (kits, chars,
+  monsters) with a shared noise map: colour grain, tiny bumps in the normal, slow mottling,
+  fading out by ~120 m; buildings map it by world position, people by their UVs. GLB textures
+  now get anisotropic filtering through `assets.setAnisotropy`. Both follow the graphics setting
+  (`aniso`/`detail` in `QUALITY`: High 16x + full, Medium 8x + one read, Low 4x + off).
+  `tests/playtest/look.py` takes before/after viewpoints (`LOOK_TAG`, `LOOK_Q`); shots in `docs/look/`.
 
 ## Open feedback from the player (do these next)
 
