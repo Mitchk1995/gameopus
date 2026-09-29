@@ -26,6 +26,8 @@ export const SPAWN = { x: -8, z: 53, facing: Math.PI };
 // Hills you can see from the square. Each is a soft dome; the landmark stands on its crown.
 export const ABBEY_HILL = { x: -6, z: -204, r: 100, h: 42, crown: 20 };
 export const BEACON_KNOLL = { x: 188, z: 4, r: 46, h: 34 };
+// The mine headframe's yard: a bench cut into Mine Hill's south flank, above the quarry.
+export const HEADFRAME = { x: -186, z: -172 };
 // The high ground east of the river, running north from the beacon knoll.
 const EAST_RIDGE = { pts: [[190, -8], [197, -70], [209, -130], [221, -190], [233, -240]], crest: [0, 1, 1, 0.9, 0.75], h: 26, w: 46 };
 // The spot where the river is born: a stream falls down a cleft in the north cliffs into a pool.
@@ -191,10 +193,11 @@ const CLASS = {
 // Every road is a list of waypoints (smoothed into a curve). `ends` names the place at each end,
 // for the signposts. The first six keep their old indexes (the town test and the ledger quest read
 // them): 0 Quarry Road, 1 Bridge Street, 2 Lake Street, 3 farm lane, 4 farm gate track, 5 woodcutters' track.
-// `zone` deepens the cutting round a pass, so the road runs in a gorge.
+// `zone` deepens the cutting round a pass, so the road runs in a gorge. `grade` overrides the class's
+// steepest grade (Bridge Street climbs the fort's rise as a steep ramp instead of a trench).
 const ROAD_DEFS = [
   { id: 'quarry', name: 'Quarry Road', cls: 'road', ends: ['Ashford', 'the Quarry'], way: [[-27, -22], [-29, -36], [-72, -86], [-120, -122], [-160, -140]] },
-  { id: 'bridge', name: 'Bridge Street', cls: 'road', ends: ['Ashford', 'Bandit Fort'], way: [[32, 15], [50, 13], [70, 4], [110, 2], [140, 14], [162, 34], [196, 50], [230, 58], [247, 64]] },
+  { id: 'bridge', name: 'Bridge Street', cls: 'road', grade: 0.24, ends: ['Ashford', 'Bandit Fort'], way: [[32, 15], [50, 13], [70, 4], [110, 2], [140, 14], [162, 34], [196, 50], [230, 58], [247, 64]] },
   { id: 'lake', name: 'Lake Street', cls: 'road', ends: ['Ashford', 'the Dock'], way: [[-8, 58], [-9, 82], [-34, 140], [-52, 168]] },
   { id: 'farmlane', name: 'Farm Lane', cls: 'track', ends: ['Bridge Street', 'the Farms'], width: 2.2, way: [[158, 32], [150, 80], [132, 140]] },
   { id: 'farmgate', name: 'Farm Track', cls: 'track', ends: ['Ashford', 'the Flax Field'], width: 2.0, way: [[20, 60], [26, 72], [44, 72]] },
@@ -206,11 +209,11 @@ const ROAD_DEFS = [
   // --- tracks and footpaths to the places worth walking to
   { id: 'abbey', name: 'Pilgrims\' Way', cls: 'track', ends: ['Quarry Road', 'the Abbey'], width: 2.0, way: [[-30, -38], [-24, -76], [-16, -108], [10, -124], [34, -136], [44, -147], [32, -155], [0, -160], [-30, -165], [-42, -174], [-32, -183], [0, -188], [28, -191], [40, -200], [28, -207], [0, -209], [-22, -211], [-12, -216]] },
   { id: 'goblin', name: 'Goblin Trail', cls: 'path', ends: ['Quarry Road', 'Goblin Camp'], way: [[-72, -86], [-84, -64], [-92, -50]] },
-  { id: 'headframe', name: 'Yard Path', cls: 'path', ends: ['the Quarry', 'the Headframe'], way: [[-160, -140], [-150, -150], [-152, -162], [-166, -166], [-178, -160], [-184, -170]] },
+  { id: 'headframe', name: 'Yard Path', cls: 'path', ends: ['the Quarry', 'the Headframe'], way: [[-160, -140], [-150, -150], [-152, -162], [-166, -166], [-190, -161], [-208, -161], [-214, -167], [-204, -172], [-195, -172]] },
   { id: 'stones', name: 'Stones Path', cls: 'path', ends: ['Bridge Street', 'the Standing Stones'], way: [[66, 4], [68, -40], [72, -80], [74, -90]] },
   { id: 'sawmill', name: 'Mill Track', cls: 'track', ends: ['Bridge Street', 'the Sawmill'], width: 2.0, way: [[112, 3], [122, -40], [132, -100], [144, -150], [150, -164]] },
   { id: 'ridge', name: 'Ridge Track', cls: 'track', ends: ['the Sawmill', 'the Quarry Ridge'], width: 2.0, way: [[150, -190], [178, -194], [206, -200], [224, -206]] },
-  { id: 'beacon', name: 'Beacon Path', cls: 'path', ends: ['Bridge Street', 'the Beacon'], way: [[190, 50], [215, 32], [224, 4], [210, -17], [188, -24], [170, -14], [166, 4], [174, 18], [188, 20], [188, 12]] },
+  { id: 'beacon', name: 'Beacon Path', cls: 'path', ends: ['Bridge Street', 'the Beacon'], way: [[190, 50], [215, 32], [224, 4], [210, -17], [188, -24], [170, -14], [166, 4], [174, 18], [188, 21], [201, 16], [205, 4], [196, 3]] },
   { id: 'waystation', name: 'Waystation Spur', cls: 'path', ends: ['Bridge Street', 'the Waystation'], way: [[178, 46], [178, 58]] },
   { id: 'battlefield', name: 'Old Battle Road', cls: 'track', ends: ['the Farms', 'the Old Battlefield'], width: 2.0, way: [[132, 140], [160, 164], [186, 184], [196, 190]] },
   { id: 'hermit', name: "Hermit's Path", cls: 'path', ends: ["Woodcutters' Track", "the Hermit's Hut"], way: [[-118, 102], [-150, 92], [-190, 74], [-230, 60], [-256, 54]] },
@@ -221,7 +224,7 @@ const ROAD_DEFS = [
 
 export const ROADS = ROAD_DEFS.map((d) => {
   const c = CLASS[d.cls];
-  return { ...d, width: d.width ?? c.width, half: d.half ?? c.half, grade: c.grade, cut: c.cut, fill: c.fill, infl: c.infl, paint: c.paint, pts: curve(d.way, d.steps || 6) };
+  return { ...d, width: d.width ?? c.width, half: d.half ?? c.half, grade: d.grade ?? c.grade, cut: c.cut, fill: c.fill, infl: c.infl, paint: c.paint, pts: curve(d.way, d.steps || 6) };
 });
 export const roadById = (id) => ROADS.find((r) => r.id === id);
 // The stone bridge on Bridge Street, where the road crosses the river.
@@ -359,13 +362,17 @@ export const POIS = [
   { id: 'battlefield', name: 'The Old Battlefield', kind: 'field', x: 196, z: 196, r: 26, facing: 0, road: 'battlefield', note: 'A wide, level plain where an old battle was fought.' },
 ];
 
-// [x, z, level radius, blend radius, how the level is chosen: 'top' = the land at the middle, 'mean' = its average nearby]
+// [x, z, level radius, blend radius, how the level is chosen: 'top' = the land at the middle, 'mean' = its average nearby,
+//  metres to add to that level]
+// The fort sits on the west-facing foot of the rim: its level is a little under the mean so the west side
+// is not a tall embankment (Bridge Street ramps up to the west gate); the east side is cut into the slope.
 const PADS = [
-  [BANDIT_CAMP.x, BANDIT_CAMP.z, 27, 18, 'mean'],
+  [BANDIT_CAMP.x, BANDIT_CAMP.z, 24, 18, 'mean', -2],
   [GOBLIN_CAMP.x, GOBLIN_CAMP.z, 14, 12, 'mean'],
   [ABBEY_HILL.x, ABBEY_HILL.z, 16, 22, 'top'],
   [BEACON_KNOLL.x, BEACON_KNOLL.z, 9, 14, 'top'],
   [MINE_ENTRANCE.x + 16, MINE_ENTRANCE.z + 10, 20, 16, 'mean'],
+  [HEADFRAME.x, HEADFRAME.z, 9, 12, 'mean', -1],
   ...POIS.map((p) => [p.x, p.z, p.r, p.r * 0.9 + 6, 'mean']),
 ];
 const padHeight = new Map();
@@ -374,13 +381,15 @@ function padY(i) {
     const [px, pz, r, , mode] = PADS[i];
     let s = land(px, pz), n = 1;
     if (mode === 'mean') for (let k = 0; k < 8; k++) { s += land(px + Math.cos(k * 0.785) * r * 0.8, pz + Math.sin(k * 0.785) * r * 0.8); n++; }
-    padHeight.set(i, s / n);
+    padHeight.set(i, s / n + (PADS[i][5] || 0));
   }
   return padHeight.get(i);
 }
+// The level of the pad centred at (x, z).
+const padAt = (x, z) => padY(PADS.findIndex((p) => p[0] === x && p[1] === z));
 export function padLevel(id) {
   const k = POIS.findIndex((p) => p.id === id);
-  return k < 0 ? null : padY(5 + k);
+  return k < 0 ? null : padY(PADS.length - POIS.length + k);
 }
 export const BANDIT_LEVEL = () => padY(0);
 
@@ -472,6 +481,8 @@ function nearestOnRoad(r, x, z) {
 function computeProfiles() {
   if (PROFILES) return;
   PROFILES = true;
+  // Paths that end on a pad arrive at its level (the fort's west gate, the beacon's crown, the headframe's yard).
+  PIN.set('bridge', [null, padAt(BANDIT_CAMP.x, BANDIT_CAMP.z)]).set('beacon', [null, padAt(BEACON_KNOLL.x, BEACON_KNOLL.z)]).set('headframe', [null, padAt(HEADFRAME.x, HEADFRAME.z)]);
   const DS = 2;
   const built = [];
   for (const r of ROADS) {
@@ -728,7 +739,7 @@ export const EXITS = EXIT_DEFS.map((e) => {
 export const LANDMARKS = {
   abbey: { name: 'Ruined Abbey', x: ABBEY_HILL.x, z: ABBEY_HILL.z, facing: Math.PI },
   beacon: { name: 'Beacon Tower', x: BEACON_KNOLL.x, z: BEACON_KNOLL.z, facing: -1.2 },
-  headframe: { name: 'Mine Headframe', x: -186, z: -174, facing: 0.35 },
+  headframe: { name: 'Mine Headframe', x: HEADFRAME.x, z: HEADFRAME.z, facing: 0.35 },
   lighthouse: { name: 'Lighthouse', x: 14, z: 226, facing: -2.1 },
   dock: { name: 'Dock', x: -52, z: 168 },
 };
