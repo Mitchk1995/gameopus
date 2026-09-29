@@ -292,40 +292,87 @@ function heathBumps(x, z) {
   return m * (1.2 + 4.6 * ridged(x * 0.045 + 3, z * 0.045 + 11, 3));
 }
 
-// Where a pass cuts through the wall, the ground beyond its closure climbs as a gorge: a narrow
-// floor that keeps rising, with cliffs on both flanks, so the way out reads as a way out and
-// the road runs up it without a pit at the end.
+// Where a road leaves the vale through the wall it runs in a gorge, and the gorge is built rather than
+// left to chance: from `gorge.from` metres along the road to the road's end the floor is level across and
+// climbs at the roads' own grade (so the road can follow it), it is `narrow` metres to each side of the
+// road and widens to `wide` for `span` metres round the closure (a level floor for towers or a toll
+// hut to stand on), and the walls beyond it are a steep, lumpy, stepped rock face on both sides. Where the
+// natural wall is lower than that face (the mouth of the East Pass has none on its south side) the
+// face is built up to meet it, so a closure always stands between two walls it can be anchored in.
 let NOTCHES = null;
 function notches() {
-  return (NOTCHES ??= EXITS.filter((e) => e.kind !== 'tunnel').map((e) => {
-    // The gorge follows the road out from the closure.
-    const pts = [[e.x, e.z], ...roadById(e.road).pts.filter((p) => roadAt(e.road, p[0], p[1]).s > e.s + 1)];
+  if (NOTCHES) return NOTCHES;
+  NOTCHES = []; // while they are being worked out the gorges do not exist yet (the pads are levelled on the land as it was)
+  return (NOTCHES = EXITS.filter((e) => e.gorge).map((e, i) => {
+    const g = e.gorge, r = roadById(e.road);
+    const start = pointAt(r, g.from);
+    const pts = [start, ...r.pts.filter((p) => roadAt(e.road, p[0], p[1]).s > g.from + 1)];
     const cum = [0];
-    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const [px, pz] of pts) { x0 = Math.min(x0, px); x1 = Math.max(x1, px); z0 = Math.min(z0, pz); z1 = Math.max(z1, pz); }
-    return { pts, cum, y: land0(e.x, e.z) - 0.4, climb: 0.15, w: 4.6, flank: 2.4, box: [x0 - 100, x1 + 100, z0 - 100, z1 + 100] };
+    const uc = e.s - g.from;
+    // The floor starts where the road would run here without the gorge (its profile over the land as it
+    // was) and climbs a hair under the road's own grade, so the road can sit on it.
+    const pre = buildProfile(r, (x, z) => surface0(x, z, land0), []);
+    const y = pre.ys[clamp(Math.round(g.from / pre.ds), 0, pre.n - 1)];
+    return { id: e.id, roadId: e.road, pts, cum, uc, g, seed: 7.3 + i * 31.7, y, climb: r.grade * 0.99, box: [x0 - 90, x1 + 90, z0 - 90, z1 + 90] };
   }));
+}
+// Half-width of a gorge's flat floor at distance u along it: `narrow`, widening to `wide` round the closure.
+function gorgeHalfWidth(n, u) {
+  const { narrow, wide, span } = n.g, a = n.uc - span / 2, b = n.uc + span / 2;
+  return narrow + (wide - narrow) * smooth(a - 14, a, u) * smooth(b + 14, b, u);
+}
+// Height of the gorge wall above the floor, s metres out from the floor's edge: a 2.7:1 rock face for the
+// first 7 m easing to 1.15:1, lumpy with buttresses and gullies and stepped with ledges. Never flatter than
+// about 1.6:1 in the first 7 m, so the foot of a wall cannot be climbed.
+function gorgeWall(s, u, seed) {
+  if (s <= 0) return 0;
+  // Built as a sum of slopes, so the face never leans back on itself: 2.7:1 for the first 6 m easing to 1.2:1
+  // by 9 m, each metre's slope varied by the noise (buttresses where the face is steeper, gullies where it eases)
+  // and by a ledge rhythm.
+  let h = 0;
+  const top = Math.min(s, 34);
+  for (let t = 0; t < top; t += 1) {
+    const d = Math.min(1, top - t), tm = t + d / 2;
+    const base = tm < 6 ? 2.7 : tm < 9 ? 2.7 - (tm - 6) * 0.5 : 1.2;
+    const n = clamp((fbm(u * 0.075 + seed, tm * 0.12 + seed * 0.5) - 0.5) * 3.4, -1, 1);
+    h += d * base * (1 + 0.42 * n + 0.14 * Math.sin(tm * 0.9 + n * 3));
+  }
+  return s > 34 ? h + (s - 34) * 1.1 : h;
+}
+// Signed distance behind the start of a gorge along its first segment, and the nearest point's lateral
+// distance and distance along it.
+function gorgeFrame(n, x, z) {
+  let best = Infinity, u = 0;
+  for (let i = 0; i < n.pts.length - 1; i++) {
+    const [ax, az] = n.pts[i], [bx, bz] = n.pts[i + 1], dx = bx - ax, dz = bz - az;
+    const t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+    const d = Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+    if (d < best) { best = d; u = n.cum[i] + Math.hypot(dx, dz) * t; }
+  }
+  const [sx, sz] = n.pts[0];
+  const back = ((x - sx) * (n.pts[1][0] - sx) + (z - sz) * (n.pts[1][1] - sz)) / (Math.hypot(n.pts[1][0] - sx, n.pts[1][1] - sz) || 1);
+  return { best, u, back };
 }
 function passNotch(h, x, z) {
   for (const n of notches()) {
     if (x < n.box[0] || x > n.box[1] || z < n.box[2] || z > n.box[3]) continue;
-    let best = Infinity, u = 0;
-    for (let i = 0; i < n.pts.length - 1; i++) {
-      const [ax, az] = n.pts[i], [bx, bz] = n.pts[i + 1], dx = bx - ax, dz = bz - az;
-      const t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1);
-      const d = Math.hypot(x - (ax + dx * t), z - (az + dz * t));
-      if (d < best) { best = d; u = n.cum[i] + Math.hypot(dx, dz) * t; }
-    }
-    // Before the closure the road's own cutting does the work; the gorge starts a little short of it.
-    const [sx, sz] = n.pts[0];
-    const back = ((x - sx) * (n.pts[1][0] - sx) + (z - sz) * (n.pts[1][1] - sz)) / (Math.hypot(n.pts[1][0] - sx, n.pts[1][1] - sz) || 1);
-    const floor = n.y + u * n.climb;
-    const flank = floor + Math.max(0, best - n.w - u * 0.05) * n.flank;
-    const k = smooth(-14, 4, back) * smooth(100, 60, best);
-    if (flank < h) h = mix(h, smin(h, flank, 3), k);
+    const { best, u, back } = gorgeFrame(n, x, z);
+    const s = Math.max(0, best - gorgeHalfWidth(n, u));
+    const target = n.y + u * n.climb + gorgeWall(s, u, n.seed);
+    if (target < h) h = mix(h, smin(h, target, 2.5), smooth(-16, 6, back) * smooth(90, 60, best));
+    else if (s < 30) h = mix(h, smax(h, target, 2), smooth(-8, 26, back) * smooth(30, 16, s));
   }
   return h;
+}
+// The level of a gorge's floor at a point along it (metres from its start).
+export function gorgeFloor(id, x, z) {
+  const n = notches().find((q) => q.id === id);
+  if (!n) return null;
+  const { best, u } = gorgeFrame(n, x, z);
+  return { y: n.y + u * n.climb, half: gorgeHalfWidth(n, u), lateral: best, u };
 }
 const land = (x, z) => passNotch(land0(x, z), x, z);
 
@@ -385,8 +432,9 @@ export function padLevel(id) {
 export const BANDIT_LEVEL = () => padY(0);
 
 // The land with the pads flattened into it (what roads follow, and what the water and roads then cut).
-export function surface0(x, z) {
-  let h = land(x, z);
+// `ground` is the land to flatten them into (`land0` gives the land before the gorges are built).
+export function surface0(x, z, ground = land) {
+  let h = ground(x, z);
   for (let i = 0; i < PADS.length; i++) {
     const [px, pz, r, b] = PADS[i];
     const d = Math.hypot(x - px, z - pz);
@@ -469,43 +517,55 @@ function nearestOnRoad(r, x, z) {
   return { d: best, y: by, i: bi };
 }
 
+// One road's profile: the height of `surf` along it, smoothed, pinned to the roads it joins and limited to
+// its grade. `gorge` (a row of notches()) puts the road on its gorge's floor instead of on the land.
+function buildProfile(r, surf, built, gorge = null) {
+  const DS = 2;
+  const { xs, zs } = resample(r.pts, DS);
+  const n = xs.length;
+  const raw = xs.map((x, i) => surf(x, zs[i]));
+  // Smooth over about 30 m.
+  const W = 7;
+  const y = raw.map((_, i) => {
+    let s = 0, k = 0;
+    for (let j = Math.max(0, i - W); j <= Math.min(n - 1, i + W); j++) { s += raw[j]; k++; }
+    return s / k;
+  });
+  // Join other roads at the same height, or at a pinned height.
+  const pin = PIN.get(r.id) || [null, null];
+  const joinY = (x, z) => {
+    let best = 3.5, yy = null;
+    for (const o of built) {
+      const q = nearestOnRoad(o, x, z);
+      if (q.d < best) { best = q.d; yy = q.y; }
+    }
+    return yy;
+  };
+  const y0 = pin[0] ?? joinY(xs[0], zs[0]), y1 = pin[1] ?? joinY(xs[n - 1], zs[n - 1]);
+  // Carry the pinned offsets along the road, fading over 60 m.
+  if (y0 != null) { const off = y0 - y[0]; for (let i = 0; i < n; i++) y[i] += off * smooth(30, 0, i); }
+  if (y1 != null) { const off = y1 - y[n - 1]; for (let i = 0; i < n; i++) y[i] += off * smooth(30, 0, n - 1 - i); }
+  // Limit the grade, both ways round, holding the pinned ends.
+  const g = r.grade * DS;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 1; i < n; i++) y[i] = clamp(y[i], y[i - 1] - g, y[i - 1] + g);
+    for (let i = n - 2; i >= 0; i--) y[i] = clamp(y[i], y[i + 1] - g, y[i + 1] + g);
+  }
+  // In a gorge the road runs exactly on the gorge's floor (see notches()), which climbs at a hair under the
+  // road's grade; before the gorge it eases onto it.
+  if (gorge) for (let i = 0; i < n; i++) {
+    const u = i * DS - gorge.g.from;
+    y[i] = mix(y[i], gorge.y + Math.max(0, u) * gorge.climb, smooth(-14, 0, u));
+  }
+  return { n, xs, zs, ys: y, ds: DS, y0, y1 };
+}
+
 function computeProfiles() {
   if (PROFILES) return;
   PROFILES = true;
-  const DS = 2;
   const built = [];
   for (const r of ROADS) {
-    const { xs, zs } = resample(r.pts, DS);
-    const n = xs.length;
-    const raw = xs.map((x, i) => surface0(x, zs[i]));
-    // Smooth over about 30 m.
-    const W = 7;
-    const y = raw.map((_, i) => {
-      let s = 0, k = 0;
-      for (let j = Math.max(0, i - W); j <= Math.min(n - 1, i + W); j++) { s += raw[j]; k++; }
-      return s / k;
-    });
-    // Join other roads at the same height, or at a pinned height.
-    const pin = PIN.get(r.id) || [null, null];
-    const joinY = (x, z) => {
-      let best = 3.5, yy = null;
-      for (const o of built) {
-        const q = nearestOnRoad(o, x, z);
-        if (q.d < best) { best = q.d; yy = q.y; }
-      }
-      return yy;
-    };
-    const y0 = pin[0] ?? joinY(xs[0], zs[0]), y1 = pin[1] ?? joinY(xs[n - 1], zs[n - 1]);
-    // Carry the pinned offsets along the road, fading over 60 m.
-    if (y0 != null) { const off = y0 - y[0]; for (let i = 0; i < n; i++) y[i] += off * smooth(30, 0, i); }
-    if (y1 != null) { const off = y1 - y[n - 1]; for (let i = 0; i < n; i++) y[i] += off * smooth(30, 0, n - 1 - i); }
-    // Limit the grade, both ways round, holding the pinned ends.
-    const g = r.grade * DS;
-    for (let pass = 0; pass < 3; pass++) {
-      for (let i = 1; i < n; i++) y[i] = clamp(y[i], y[i - 1] - g, y[i - 1] + g);
-      for (let i = n - 2; i >= 0; i--) y[i] = clamp(y[i], y[i + 1] - g, y[i + 1] + g);
-    }
-    r.prof = { n, xs, zs, ys: y, ds: DS, y0, y1 };
+    r.prof = buildProfile(r, surface0, built, notches().find((q) => q.roadId === r.id));
     built.push(r);
   }
   // Index the segments in cells, each listed in every cell its influence reaches.
@@ -618,6 +678,8 @@ export function heightAt(x, z) {
 
   // Roads are cut into the land (and hold themselves above the marsh).
   h = roadStamp(h, x, z);
+  // The North Pass's porch is set into the rock at the end of the Highroad.
+  h = portalFace(h, x, z);
   return Math.min(h, 320);
 }
 
@@ -661,42 +723,50 @@ export function forestDensity(x, z) {
 // Three passes lead out of the vale, and all three are sealed. Each is a row of data: a quest that
 // sets `locked: false` (world.sites.setLocked(id, false)) opens the way. `at` is where the closure
 // stands on its road; the position, facing (the way it looks into the vale) and height come from
-// the road there. `kind` picks how it is built (see sites.js): a collapsed tunnel, a barred
-// gatehouse, a toll bar.
+// the road there. `kind` picks how it is built (exits.js): a collapsed tunnel portal, a barred
+// gatehouse, a toll bar. `gorge` shapes the ground round the two that stand in a gorge (see
+// notches()); `portal` sizes the North Pass's masonry porch (see portalFace()). `clear` is how far
+// trees and props must keep from the closure: [metres along the road each way, metres across each way].
 const EXIT_DEFS = [
   {
     id: 'north', name: 'North Pass', kind: 'tunnel', road: 'highroad', at: [-106, -270], locked: true,
     leads: 'the dwarf mountains',
+    portal: { front: 2.0, depth: 3.6, half: 4.9, top: 7.6 },
+    clear: [16, 14],
     sign: {
       title: 'The Highroad is closed',
       text: [
-        "NOTICE OF THE DELVERS' GUILD.",
-        'The Highroad tunnel fell in with the spring quakes. The Guild will not send a crew while goblins from the Old Warren gnaw at its props from below.',
+        "NOTICE OF THE DELVERS' GUILD.\nThe Highroad tunnel fell in with the spring quakes. The roof came down in the night and took the timbers with it. Nobody was under it, which is the only good news.",
+        'The Guild will not send a crew to shore it while goblins from the Old Warren gnaw at the props from below. Beyond the tunnel lie the dwarf holds of the high mountains, and no caravan has come through from them since.',
         'The way north opens when the Warren is cleared and the tunnel is shored. Ask at the smithy in Ashford: Brom knows the Guild.',
       ],
     },
   },
   {
-    id: 'east', name: 'East Pass', kind: 'gatehouse', road: 'eastroad', at: [298, 94], locked: true,
+    id: 'east', name: 'East Pass', kind: 'gatehouse', road: 'eastroad', at: [318.5, 105.4], locked: true,
     leads: 'Redwater Keep',
+    gorge: { from: 12, narrow: 5.2, wide: 11.5, span: 22 },
+    clear: [14, 16],
     sign: {
       title: 'The East Gate is barred',
       text: [
-        'BY ORDER OF THE WARDEN OF REDWATER KEEP.',
-        'The East Pass is shut to all traffic while the road through the bandit country is unsafe. No carts, no travellers, no exceptions.',
-        'The gate will open for whoever can show that the bandit captain has been beaten. Ask Garrow, the guard at Ashford\'s east gate.',
+        'BY ORDER OF THE WARDEN OF REDWATER KEEP.\nThe East Pass is shut to all traffic while the road through the bandit country is unsafe. No carts, no travellers, no exceptions.',
+        'Redwater Keep lies three days east of this gate, on the far side of the mountains. Its patrols have not been seen on this road since the bandits took the old fort.',
+        "The gate will open for whoever can show that the bandit captain has been beaten. Ask Garrow, the guard at Ashford's east gate.",
       ],
     },
   },
   {
-    id: 'south', name: 'South Pass', kind: 'toll', road: 'harbour', at: [48, 292], locked: true,
+    id: 'south', name: 'South Pass', kind: 'toll', road: 'harbour', at: [55.5, 313.5], locked: true,
     leads: 'Saltmere Harbour',
+    gorge: { from: 180, narrow: 5.2, wide: 9.6, span: 16 },
+    clear: [12, 12],
     sign: {
       title: 'The toll bar is shut',
       text: [
-        'SALTMERE HARBOUR ROAD. TOLL BAR.',
-        'Shut until the harbourmaster\'s men have mended the road that washed out beyond the pass. Tolls are paid to the keeper at the bar. The keeper is away.',
-        'They say the bar goes up for anyone carrying the harbourmaster\'s seal. Old Tam at the jetty may know who saw it last.',
+        "SALTMERE HARBOUR ROAD. TOLL BAR.\nShut until the harbourmaster's men have mended the road that washed out beyond the pass. Tolls are paid to the keeper at the bar. The keeper is away.",
+        "Saltmere is a day's walk on, where the road meets the sea and the fishing boats land. Ashford's catch goes there by this road when it is open.",
+        "They say the bar goes up for anyone carrying the harbourmaster's seal. Old Tam at the jetty may know who saw it last.",
       ],
     },
   },
@@ -719,9 +789,32 @@ export function roadAt(id, x, z) {
 
 export const EXITS = EXIT_DEFS.map((e) => {
   const q = roadAt(e.road, e.at[0], e.at[1]);
-  // Faces back down the road, into the vale.
-  return { ...e, x: q.x, z: q.z, facing: Math.atan2(-q.tx, -q.tz), s: q.s };
+  // Faces back down the road, into the vale. (tx, tz) is the way the road runs on, out of the vale.
+  return { ...e, x: q.x, z: q.z, tx: q.tx, tz: q.tz, facing: Math.atan2(-q.tx, -q.tz), s: q.s };
 });
+
+// The North Pass's portal is a masonry porch built into the rock at the end of the Highroad: a block
+// `depth` m thick whose front face stands `front` m beyond the road's end, `half` m to either side of
+// the road, `top` m above its floor, with an arch through it. The rock behind it rises well above
+// the roof, and the ground under it is level: heightAt() takes care of both (portalFace).
+export const PORTAL = (() => {
+  const e = EXITS.find((q) => q.kind === 'tunnel');
+  return { ...e.portal, x: e.x, z: e.z, tx: e.tx, tz: e.tz };
+})();
+function portalFace(h, x, z) {
+  const P = PORTAL, dx = x - P.x, dz = z - P.z;
+  const u = dx * P.tx + dz * P.tz, v = dz * P.tx - dx * P.tz;
+  const u1 = P.front + P.depth;
+  if (u < P.front - 2 || u > u1 + 40 || Math.abs(v) > P.half + 8) return h;
+  computeProfiles();
+  const r = roadById('highroad'), y = r.prof.ys[r.prof.n - 1];
+  // The floor under the porch stays level, wall to wall, and runs on a little way behind it.
+  const pad = smooth(P.half + 1.2, P.half - 0.2, Math.abs(v)) * smooth(P.front - 0.8, P.front + 0.2, u) * smooth(u1 + 1.0, u1 - 0.2, u);
+  h = mix(h, y, pad);
+  // Behind it the rock stands well above the roof, so the porch is set into the mountain.
+  const rise = smooth(u1 - 0.4, u1 + 0.8, u) * smooth(P.half + 8, P.half + 2, Math.abs(v));
+  return mix(h, Math.max(h, y + P.top + 2.4 + 0.7 * (u - u1)), rise);
+}
 
 // ------------------------------------------------------------------ landmarks
 // Things you can see from the square, each on high ground and each a different shape.
@@ -800,3 +893,4 @@ export const WARNINGS = [
   { id: 'warn_bandits', x: 218, z: 51, board: 'BANDIT COUNTRY', text: ['Bandits hold the road east of here. The tolls they take are paid in blood. Turn back unless you can fight.'], face: 1.7 },
   { id: 'warn_highroad', x: -90, z: -226, board: 'HIGHROAD CLOSED', text: ['The Highroad is closed ahead at the fallen tunnel. There is nothing beyond but rock.'], face: -1.4 },
 ];
+export const __dbg = { land0, notches, gorgeWall, gorgeHalfWidth };

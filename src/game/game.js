@@ -218,6 +218,7 @@ export class Game {
       for (const n of this.npcs) n.update(dt, this.player);
       this.resources.update(dt);
       this.world.village.update(dt);
+      this.world.sites.step(dt);
     }
     this.fight.update(dt);
     this.pets.update(dt, this.player);
@@ -521,6 +522,22 @@ export class Game {
     this.resources.add({ kind: 'station', station: 'well', name: 'Well', verb: 'Draw water at', x: w.x, y: VILLAGE.y + 0.9, z: w.z, r: 1.2, h: 1.8, reach: 2.4 });
     // Doors swing on E; private houses only answer a knock.
     for (const d of this.world.village.doors) this.resources.add(d.target);
+    // The notices out in the vale: the ways out, the signposts, the sites' name boards.
+    for (const s of this.world.sites.interactables) this.resources.add(s);
+  }
+
+  // A notice or signboard: its text one page at a time.
+  #readSign(s) {
+    this.stop();
+    this.player.faceTowards(s.x, s.z);
+    this.freeMouse();
+    const pages = Array.isArray(s.text) ? s.text : [s.text];
+    let i = 0;
+    const show = () => {
+      const last = i === pages.length - 1;
+      this.talk.show(s.title, pages[i], [{ label: last ? 'Close.' : 'Read on.', run: () => (last ? this.endTalk() : (i++, show())) }], { kind: 'narrate' });
+    };
+    show();
   }
 
   #door(door) {
@@ -566,6 +583,8 @@ export class Game {
         return this.#openChest(s);
       case 'quest':
         return this.quests.use(s);
+      case 'sign':
+        return this.#readSign(s);
     }
   }
 
