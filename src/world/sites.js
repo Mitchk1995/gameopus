@@ -22,8 +22,9 @@ export class Sites {
     const kit = w.village.kit;
     this.batch = new Batcher(kit);
     this.sk = new SiteKit(kit, this.batch, w.colliders, w);
+    const cliff = { map: await this.assets.texture('ground/cliff_a.webp'), normal: await this.assets.texture('ground/cliff_nr.webp', { srgb: false }) };
     this.parts.bridge = buildBridge(this.sk);
-    this.parts.exits = buildExits(this);
+    this.parts.exits = buildExits(this, cliff);
     this.mesh = this.batch.build();
     this.scene.add(this.mesh);
     return this;

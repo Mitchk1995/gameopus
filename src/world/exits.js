@@ -1,8 +1,11 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EXITS, PORTAL } from './map.js';
 import { frame } from './sitekit.js';
 import { Batcher } from './kit.js';
 import { rng } from './buildings.js';
+import { fitUV } from './props.js';
+import { enhance } from '../engine/detail.js';
 import { boardTexture, texturedMaterial } from './townkit.js';
 
 // The three ways out of the vale, each closed for a reason you can read on a notice beside it:
@@ -33,8 +36,55 @@ function archPts(cx, ys, R, n = 28, inner = false) {
   return out;
 }
 
+// The kit's wood is a trim sheet, not a tiling texture: from the top its rows are orange planks (v 0..0.3), dark
+// planks (0.31..0.6), end-grain blocks and a strip of stone, so projecting it at world scale onto a post paints
+// bands of all of them. `bandUV` rewrites a geometry's UVs so it samples one band: u follows the piece's length
+// (the grain runs along it), v goes across, folding back and forth (a triangle wave) so no seam shows. The
+// scale is the kit's own (`tile` metres per repeat), so the texture keeps its size.
+const WOOD = { dark: [0.345, 0.585], orange: [0.04, 0.27] };
+export function bandUV(src, [v0, v1], { round = false, tile = 2.2 } = {}) {
+  const g = src.index ? src.toNonIndexed() : src.clone();
+  if (!g.attributes.normal) g.computeVertexNormals();
+  g.computeBoundingBox();
+  const lo = g.boundingBox.min, size = g.boundingBox.getSize(new THREE.Vector3()), mid = g.boundingBox.getCenter(new THREE.Vector3());
+  const along = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
+  const [a1, a2] = [0, 1, 2].filter((k) => k !== along);
+  const p = g.attributes.position, n = g.attributes.normal, uv = new Float32Array(p.count * 2);
+  let period = tile * (v1 - v0);
+  // A round piece goes a whole number of folds (a fold is two periods) once round, so it closes without a seam.
+  const radius = Math.max(size.getComponent(a1), size.getComponent(a2)) / 2;
+  if (round) period = (2 * Math.PI * radius) / (2 * Math.max(1, Math.round((2 * Math.PI * radius) / (2 * period))));
+  const tri = (x) => { const t = ((x % 2) + 2) % 2; return t < 1 ? t : 2 - t; };
+  const at = (i, k) => (k === 0 ? p.getX(i) : k === 1 ? p.getY(i) : p.getZ(i));
+  const nc = (i, k) => (k === 0 ? n.getX(i) : k === 1 ? n.getY(i) : n.getZ(i));
+  for (let i = 0; i < p.count; i++) {
+    let u = at(i, along) - lo.getComponent(along), across;
+    if (Math.abs(nc(i, along)) > 0.7) {
+      // An end: laid flat, across its first axis.
+      u = at(i, a1) - lo.getComponent(a1);
+      across = at(i, a2) - lo.getComponent(a2);
+    } else if (round) {
+      across = radius * (Math.atan2(at(i, a2) - mid.getComponent(a2), at(i, a1) - mid.getComponent(a1)) + Math.PI);
+    } else across = Math.abs(nc(i, a1)) >= Math.abs(nc(i, a2)) ? at(i, a2) - lo.getComponent(a2) : at(i, a1) - lo.getComponent(a1);
+    uv[i * 2] = u / tile;
+    uv[i * 2 + 1] = v0 + (v1 - v0) * tri(across / period);
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.userData.wuv = true;
+  return g;
+}
+const geoCache = new Map();
+const cached = (key, make) => { if (!geoCache.has(key)) geoCache.set(key, make()); return geoCache.get(key); };
+// Big faces are cut up (a quarter metre a cell) so the folds of the band mapping happen at vertices.
+const cut = (s) => (s > 0.5 ? Math.ceil(s / 0.25) : 1);
+const woodBox = (w, h, d, band) => bandUV(new THREE.BoxGeometry(w, h, d, cut(w), cut(h), cut(d)), band);
+// A dark-plank timber (base on y = 0 like SiteKit's box), an orange-plank board, a log, and a centred timber for struts.
+const timber = (w, h, d) => cached(`t${w}|${h}|${d}`, () => woodBox(w, h, d, WOOD.dark).translate(0, h / 2, 0));
+const plank = (w, h, d) => cached(`p${w}|${h}|${d}`, () => woodBox(w, h, d, WOOD.orange).translate(0, h / 2, 0));
+const log = (r0, r1, h, seg = 8) => cached(`l${r0}|${r1}|${h}|${seg}`, () => bandUV(new THREE.CylinderGeometry(r0, r1, h, seg).translate(0, h / 2, 0), WOOD.dark, { round: true }));
+const beamGeo = (len, t) => cached(`b${len.toFixed(3)}|${t}`, () => woodBox(len, t, t, WOOD.dark));
 const cboxCache = new Map();
-// A box centred on its own origin (for struts and timbers set at any angle).
+// A box centred on its own origin (for struts set at any angle).
 function cbox(w, h, d) {
   const k = `${w}|${h}|${d}`;
   if (!cboxCache.has(k)) cboxCache.set(k, new THREE.BoxGeometry(w, h, d));
@@ -45,24 +95,28 @@ function cbox(w, h, d) {
 function strut(sk, mat, A, B, t) {
   const dx = B[0] - A[0], dy = B[1] - A[1], dz = B[2] - A[2];
   const len = Math.hypot(dx, dy, dz), horiz = Math.hypot(dx, dz);
-  sk.put(cbox(len, t, t), mat, (A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2, Math.atan2(-dz, dx), 1, 1, 1, 0, Math.atan2(dy, horiz));
+  const geo = mat === sk.m.wood ? beamGeo(len, t) : cbox(len, t, t);
+  sk.put(geo, mat, (A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2, Math.atan2(-dz, dx), 1, 1, 1, 0, Math.atan2(dy, horiz));
 }
 
-// A lumpy, angular rock of about `size` (radius) metres, its size baked in so its texture keeps the kit's scale.
-function rockGeo(size, rnd, flat = 0.72) {
-  const g = new THREE.IcosahedronGeometry(size, 1);
+// A lumpy rock of about `size` (radius) metres, its size baked in and its UVs at a fixed scale (`fitUV`), so its
+// texture keeps the same grain whatever the size. `angular` keeps the facets (broken stone from the collapse);
+// otherwise the corners are welded and it shades smoothly (a boulder).
+function rockGeo(size, rnd, flat = 0.72, angular = true) {
+  let g = new THREE.IcosahedronGeometry(size, angular ? 1 : 2);
   const p = g.attributes.position;
   const seed = [rnd() * 9, rnd() * 9, rnd() * 9];
-  // (The icosahedron is already unindexed, its corners repeated per face: the displacement depends on position
-  // alone, so the faces stay joined.)
+  // (The icosahedron is unindexed, its corners repeated per face; the displacement depends on position alone, so
+  // the faces stay joined.)
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
     const jitter = (Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + seed[0]) * 43758.5453) % 1;
-    const n = 1 + 0.3 * (Math.sin(x * 3.7 / size + seed[0]) * Math.sin(y * 3.1 / size + seed[1]) * Math.sin(z * 4.3 / size + seed[2])) + jitter * 0.07;
+    const n = 1 + 0.3 * (Math.sin(x * 3.7 / size + seed[0]) * Math.sin(y * 3.1 / size + seed[1]) * Math.sin(z * 4.3 / size + seed[2])) + jitter * (angular ? 0.07 : 0.02);
     p.setXYZ(i, x * n, y * n * flat, z * n);
   }
+  if (!angular) { g.deleteAttribute('normal'); g.deleteAttribute('uv'); g = mergeVertices(g); }
   g.computeVertexNormals();
-  return g;
+  return fitUV(g, 3.0);
 }
 
 // A dressed block of w x h x d with slightly knocked corners.
@@ -108,6 +162,39 @@ function bannerTexture(field, device) {
   return t;
 }
 
+// A carved plaque: pale stone with chiselled lettering and a cut border.
+function stoneTexture(text, W, H) {
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#a9a394';
+  g.fillRect(0, 0, W, H);
+  let seed = 5;
+  const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = `rgba(${r() < 0.5 ? '40,36,30' : '235,230,215'},${r() * 0.12})`;
+    g.fillRect(r() * W, r() * H, 1 + r() * 5, 1 + r() * 3);
+  }
+  g.strokeStyle = 'rgba(50,45,38,0.75)';
+  g.lineWidth = 5;
+  g.strokeRect(9, 9, W - 18, H - 18);
+  g.strokeStyle = 'rgba(240,235,220,0.5)';
+  g.lineWidth = 2;
+  g.strokeRect(14, 14, W - 28, H - 28);
+  g.font = `bold ${Math.round(H * 0.56)}px Georgia, serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(245,240,225,0.65)';
+  g.fillText(text, W / 2 + 2, H / 2 + 5);
+  g.fillStyle = '#332f28';
+  g.fillText(text, W / 2, H / 2 + 3);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
 // A plane that hangs in soft folds (fixed at its top edge).
 function wavyPlane(w, h, seed, amp = 0.09) {
   const g = new THREE.PlaneGeometry(w, h, 8, 16);
@@ -121,13 +208,61 @@ function wavyPlane(w, h, seed, amp = 0.09) {
 }
 
 // ------------------------------------------------------------------ shared builders
-function materials(sk) {
+function materials(sk, cliff) {
   const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
+  // Boulders and broken rock wear the mountain's own cliff scan, taken to grey as the terrain shader does, so a
+  // fallen rock matches the wall it fell from.
+  const grey = (() => {
+    const img = cliff.map.image, cv = document.createElement('canvas');
+    cv.width = cv.height = 512;
+    const g = cv.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, 512, 512);
+    const d = g.getImageData(0, 0, 512, 512);
+    for (let i = 0; i < d.data.length; i += 4) {
+      const l = d.data[i] * 0.3 + d.data[i + 1] * 0.55 + d.data[i + 2] * 0.15;
+      d.data[i] = (l * 0.75 + d.data[i] * 0.25) * 0.93;
+      d.data[i + 1] = (l * 0.75 + d.data[i + 1] * 0.25) * 0.95;
+      d.data[i + 2] = (l * 0.75 + d.data[i + 2] * 0.25) * 1.0;
+    }
+    g.putImageData(d, 0, 0);
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  })();
+  const boulder = new THREE.MeshStandardMaterial({ map: grey, normalMap: cliff.normal, roughness: 0.95, color: 0xc9c9c9 });
+  boulder.name = 'CliffBoulder';
+  enhance(boulder);
   return {
+    boulder,
+    iron: std(0x2c2c31, { metalness: 0.2, roughness: 0.6 }),
     dark: std(0x1a1613, { roughness: 1 }),                    // the inside of the bore, arrow slits
     black: new THREE.MeshBasicMaterial({ color: 0x040302 }),  // where the tunnel goes on
     red: std(0xa5312a, { roughness: 0.65 }),
     white: std(0xe8e2d2, { roughness: 0.65 }),
+    paper: (() => {
+      // A pinned sheet: off-white with lines of a clerk's hand and a seal.
+      const cv = document.createElement('canvas');
+      cv.width = 96;
+      cv.height = 128;
+      const g = cv.getContext('2d');
+      g.fillStyle = '#e6dcc0';
+      g.fillRect(0, 0, 96, 128);
+      let seed = 3;
+      const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      g.fillStyle = 'rgba(40,30,20,0.75)';
+      g.fillRect(14, 12, 40 + r() * 20, 5);
+      for (let y = 30; y < 100; y += 8) g.fillRect(12, y, 58 + r() * 24, 2.5);
+      g.fillStyle = 'rgba(150,30,20,0.85)';
+      g.beginPath();
+      g.arc(70, 108, 9, 0, Math.PI * 2);
+      g.fill();
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 4;
+      return new THREE.MeshStandardMaterial({ map: t, roughness: 0.9 });
+    })(),
   };
 }
 
@@ -182,7 +317,7 @@ function clearTrees(world, e) {
 // A notice: two posts, a board with a painted header and a few sheets pinned to it, a little roof.
 // Returns its interactable (E reads it).
 function noticeStand(ctx, f, lx, lz, header, sign, { width = 1.4 } = {}) {
-  const { sk, m, w } = ctx;
+  const { sk, m, w, X } = ctx;
   const [x, z] = f.at(lx, lz);
   const c = Math.cos(f.yaw), s = Math.sin(f.yaw);
   sk.begin('notice board', x, z);
@@ -190,11 +325,11 @@ function noticeStand(ctx, f, lx, lz, header, sign, { width = 1.4 } = {}) {
   const px = [-1, 1].map((k) => f.at(lx + k * (width / 2 + 0.06), lz));
   const gy = px.map(([qx, qz]) => sk.ground(qx, qz));
   const base = Math.min(...gy), y = Math.max(...gy);
-  px.forEach(([qx, qz], i) => sk.put(sk.box(0.14, y + 2.55 - (gy[i] - 0.25), 0.14), m.wood, qx, gy[i] - 0.25, qz, f.yaw));
+  px.forEach(([qx, qz], i) => sk.put(timber(0.14, y + 2.55 - (gy[i] - 0.25), 0.14), m.wood, qx, gy[i] - 0.25, qz, f.yaw));
   const yb = y + 0.95;
-  sk.put(sk.box(width, 0.92, 0.07), m.wood, x, yb, z, f.yaw);
+  sk.put(plank(width, 0.92, 0.07), m.wood, x, yb, z, f.yaw);
   // Header plank with the title painted on.
-  sk.put(sk.box(width + 0.24, 0.3, 0.09), m.wood, x, yb + 0.95, z, f.yaw);
+  sk.put(plank(width + 0.24, 0.3, 0.09), m.wood, x, yb + 0.95, z, f.yaw);
   const mat = texturedMaterial(boardTexture(header, { w: 512, h: 112 }), 0.85);
   sk.put(new THREE.PlaneGeometry(width + 0.1, 0.24), mat, x + s * 0.048, yb + 1.1, z + c * 0.048, f.yaw);
   // Sheets pinned to the board.
@@ -202,12 +337,12 @@ function noticeStand(ctx, f, lx, lz, header, sign, { width = 1.4 } = {}) {
   for (let i = 0; i < 5; i++) {
     const kx = -width / 2 + 0.2 + (i / 4) * (width - 0.4) + (rnd() - 0.5) * 0.08, ky = yb + 0.3 + rnd() * 0.32;
     const [qx, qz] = f.at(lx + kx, lz + 0.045);
-    sk.put(sk.box(0.24 + rnd() * 0.1, 0.32 + rnd() * 0.16, 0.012), m.paper, qx, ky, qz, f.yaw + (rnd() - 0.5) * 0.16);
+    sk.put(sk.box(0.24 + rnd() * 0.1, 0.32 + rnd() * 0.16, 0.012), X.paper, qx, ky, qz, f.yaw + (rnd() - 0.5) * 0.16);
   }
   // A little roof over the lot: two planks meeting at a ridge.
   for (const k of [-1, 1]) {
     const [qx, qz] = f.at(lx, lz + k * 0.2);
-    sk.put(sk.box(width + 0.5, 0.05, 0.42), m.wood, qx, y + 2.5 + 0.1, qz, f.yaw, 1, 1, 1, k * 0.42, 0);
+    sk.put(plank(width + 0.5, 0.05, 0.42), m.wood, qx, y + 2.5 + 0.1, qz, f.yaw, 1, 1, 1, k * 0.42, 0);
   }
   const sh = w.colliders.addBox(x, z, width / 2 + 0.25, 0.22, f.yaw, base - 0.4, y + 2.6);
   return {
@@ -222,31 +357,39 @@ function boulders(ctx, f, list, seed) {
   const rnd = rng(seed);
   for (const [lx, lz, size] of list) {
     const [x, z] = f.at(lx, lz);
-    const g0 = sk.ground(x, z), flat = 0.68 + rnd() * 0.2;
+    // A boulder on a slope sits on its downhill side: rest it on the lowest ground under it.
+    let g0 = sk.ground(x, z);
+    for (let k = 0; k < 8; k++) g0 = Math.min(g0, sk.ground(x + Math.cos(k * 0.785) * size * 0.8, z + Math.sin(k * 0.785) * size * 0.8));
+    const flat = 0.68 + rnd() * 0.2;
     sk.begin('boulder', x, z);
-    sk.put(rockGeo(size, rnd, flat), sk.m.rock, x, g0 + size * flat * 0.45, z, rnd() * PI * 2);
-    w.colliders.addCircle(x, z, size * 0.82, g0 - 0.3, g0 + size * flat * 1.4);
+    sk.put(rockGeo(size, rnd, flat, false), ctx.X.boulder, x, g0 + size * flat * 0.42, z, rnd() * PI * 2);
+    w.colliders.addCircle(x, z, size * 1.02, g0 - 0.3, g0 + size * flat * 1.6);
   }
 }
 
-// Solid rock standing in the gorge walls at both ends of a closure: tall boxes from `lx0` to `lx1` on each side,
-// sunk in the wall, so nobody can go round the end of the structure by climbing the gorge's foot. They hold
-// nothing to see (the rock is the terrain), so the audit is told they are meant.
-function seals(ctx, f, y0, lx0, lx1, lz, thick = 1.6, top = 34) {
-  const { w } = ctx;
+// The seal: a run of boxes standing in the closure's line on both sides, from `lx0` (the edge of the way through)
+// out to `lx1`, deep in the rock, each reaching `rise` metres above the highest ground under it. Whatever the
+// visible structure does, nobody can go round it over the gorge's foot or up its wall, because the ground never
+// climbs clear of these. They hold nothing to see (the rock and the structure are what you see), so the audit is
+// told they are meant, and the camera passes through them.
+function seals(ctx, f, lx0, lx1, lz, { thick = 2.0, rise = 6, step = 2 } = {}) {
+  const { sk, w } = ctx;
   for (const side of [-1, 1]) {
-    const lo = Math.min(side * lx0, side * lx1), hi = Math.max(side * lx0, side * lx1);
-    const [x, z] = f.at((lo + hi) / 2, lz);
-    const sh = w.colliders.addBox(x, z, (hi - lo) / 2, thick / 2, f.yaw, y0 - 3, y0 + top);
-    sh.noCamera = true;
-    sh.exempt = true;
+    for (let a = lx0; a < lx1; a += step) {
+      const b = Math.min(lx1, a + step);
+      const [x, z] = f.at((side * (a + b)) / 2, lz);
+      const gs = [f.at(side * a, lz), f.at(side * b, lz), [x, z]].map(([px, pz]) => sk.ground(px, pz));
+      const sh = w.colliders.addBox(x, z, (b - a) / 2 + 0.05, thick / 2, f.yaw, Math.min(...gs) - 4, Math.max(...gs) + rise);
+      sh.noCamera = true;
+      sh.exempt = true;
+    }
   }
 }
 
 // ------------------------------------------------------------------ the builder
-export function buildExits(sites) {
+export function buildExits(sites, cliff) {
   const sk = sites.sk, world = sites.world, scene = sites.scene;
-  const ctx = { sk, w: world, scene, m: sk.m, kit: sk.kit, X: materials(sk), sites };
+  const ctx = { sk, w: world, scene, m: sk.m, kit: sk.kit, X: materials(sk, cliff), sites };
   const out = { byId: {}, list: [] };
   for (const e of EXITS) {
     const build = { tunnel: buildTunnel, gatehouse: buildGatehouse, toll: buildToll }[e.kind];
@@ -322,7 +465,15 @@ function buildTunnel(ctx, e) {
     for (let k = 0, y = 0; y < YS - 0.34; k++, y += 0.5) {
       const len = k % 2 ? 0.55 : 0.95;
       const [jx, jz] = at(s * (R + len / 2 - 0.02), lzF + 0.1);
-      sk.put(sk.box(len, 0.46, 0.2), m.rock, jx, y0 + y, jz, f.yaw);
+      sk.put(sk.box(len, 0.48, 0.2), m.rock, jx, y0 + y, jz, f.yaw);
+    }
+  }
+  // Dressed pilasters up both ends of the face, long and short in turn.
+  for (const s of [-1, 1]) {
+    for (let k = 0, y = 0.6; y < TOP - 1.7; k++, y += 0.5) {
+      const long = k % 2 ? 0.6 : 1.05;
+      const [qx, qz] = at(s * (HALF - long / 2 - 0.05), lzF + 0.055);
+      sk.put(sk.box(long, 0.48, 0.12), m.rock, qx, y0 + y, qz, f.yaw);
     }
   }
   // A plinth band, a string course under the parapet, and the coping.
@@ -331,6 +482,11 @@ function buildTunnel(ctx, e) {
   const [sx, sz] = at(0, lzF + 0.1);
   sk.put(sk.box(2 * HALF + 0.2, 0.26, 0.26), m.rock, sx, y0 + TOP - 1.35, sz, f.yaw);
   sk.put(sk.box(2 * HALF + 0.5, 0.3, P.depth + 0.5), m.rock, cx, y0 + TOP - 0.02, cz, f.yaw);
+  // A carved plaque over the keystone: what the road is.
+  {
+    const [qx, qz] = at(0, lzF + 0.012);
+    sk.put(new THREE.PlaneGeometry(5.2, 0.74), texturedMaterial(stoneTexture('THE HIGHROAD', 1024, 146), 0.9), qx, y0 + TOP - 0.62, qz, f.yaw);
+  }
   wings(ctx, f, y0, lzF, lzB, HALF, TOP, 4);
 
   // --- the timber sets in the mouth: two frames of posts and a cap, the first just inside the face
@@ -339,10 +495,10 @@ function buildTunnel(ctx, e) {
     sk.begin('timber set', tx, tz);
     for (const s of [-1, 1]) {
       const [qx, qz] = at(s * (R - 0.3), lz);
-      sk.put(sk.box(0.34, YS + 0.5, 0.34), m.wood, qx, y0 - 0.1, qz, f.yaw);
+      sk.put(timber(0.34, YS + 0.5, 0.34), m.wood, qx, y0 - 0.1, qz, f.yaw);
       w.colliders.addBox(qx, qz, 0.17, 0.17, f.yaw, y0 - 0.2, y0 + YS + 0.4);
     }
-    sk.put(sk.box(2 * R + 0.1, 0.38, 0.4), m.wood, tx, y0 + YS + 0.35 - sag, tz, f.yaw);
+    sk.put(timber(2 * R + 0.1, 0.38, 0.4), m.wood, tx, y0 + YS + 0.35 - sag, tz, f.yaw);
   }
   // --- where the bore goes on: a dark lining, a black end, a solid stop
   sk.begin('bore', cx, cz);
@@ -357,7 +513,7 @@ function buildTunnel(ctx, e) {
   }
 
   // --- the choke: a heap of fallen stone and broken timber filling the mouth and spilling onto the road
-  const HEAP = { a: 4.1, b: 6.7, h: 4.55 };
+  const HEAP = { a: 4.1, b: 6.7, h: 3.35 };
   const hh = (lx, lz) => {
     const q = (lx / HEAP.a) ** 2 + ((lz - lzF) / HEAP.b) ** 2;
     if (q >= 1) return 0;
@@ -382,14 +538,14 @@ function buildTunnel(ctx, e) {
     shell.setIndex(idx);
     const sg = shell.toNonIndexed();
     sg.computeVertexNormals();
-    sk.put(sg, m.rock, 0, 0, 0, 0);
+    sk.put(fitUV(sg, 3.0), X.boulder, 0, 0, 0, 0);
     // Rocks on it, big ones inside and small ones toward the road.
     for (let n = 0; n < 150; n++) {
       const lx = (rnd() * 2 - 1) * 4.0, lz = lzF - 0.2 + rnd() * 6.6, h = hh(lx, lz);
       if (h < 0.12) continue;
       const size = (0.22 + rnd() * rnd() * 0.85) * (0.6 + Math.min(1, h / 3) * 0.75), flat = 0.6 + rnd() * 0.3;
       const [x, z] = at(lx, lz);
-      sk.put(rockGeo(size, rnd, flat), m.rock, x, surf(lx, lz) + size * flat * 0.25, z, rnd() * PI * 2, 1, 1, 1, (rnd() - 0.5) * 0.5, (rnd() - 0.5) * 0.5);
+      sk.put(rockGeo(size, rnd, flat), X.boulder, x, surf(lx, lz) + size * flat * 0.25, z, rnd() * PI * 2, 1, 1, 1, (rnd() - 0.5) * 0.5, (rnd() - 0.5) * 0.5);
     }
     // Blocks of the arch's own dressed stone, tumbled.
     for (let n = 0; n < 16; n++) {
@@ -414,23 +570,23 @@ function buildTunnel(ctx, e) {
       const lx = (rnd() * 2 - 1) * 3.6, lz = lzF + 6.2 + rnd() * 2.6, [x, z] = at(lx, lz);
       sk.begin('pebbles', x, z, true);
       const size = 0.09 + rnd() * 0.16;
-      sk.put(rockGeo(size, rnd, 0.6), m.rock, x, sk.ground(x, z) + size * 0.1, z, rnd() * PI * 2);
+      sk.put(rockGeo(size, rnd, 0.6), X.boulder, x, sk.ground(x, z) + size * 0.1, z, rnd() * PI * 2);
     }
   });
   // The colliders that shut the way: a plug in the arch and a stepped block over the heap.
   const shapes = [];
   const [plx, plz] = at(0, lzF);
   shapes.push(w.colliders.addBox(plx, plz, R + 0.15, 0.7, f.yaw, y0 - 1.5, y0 + YS + R + 0.4));
-  for (const [lx0, lx1, lz0, lz1, top] of [[-3.5, 3.5, lzF, lzF + 1.6, 4.4], [-3.3, 3.3, lzF + 1.6, lzF + 3.2, 3.2], [-2.8, 2.8, lzF + 3.2, lzF + 4.8, 2.4], [-2.0, 2.0, lzF + 4.8, lzF + 6.0, 1.7]]) {
+  for (const [lx0, lx1, lz0, lz1, top] of [[-3.5, 3.5, lzF, lzF + 1.6, 3.7], [-3.3, 3.3, lzF + 1.6, lzF + 3.2, 2.9], [-2.8, 2.8, lzF + 3.2, lzF + 4.8, 2.4], [-2.0, 2.0, lzF + 4.8, lzF + 6.0, 1.6]]) {
     const [x, z] = at((lx0 + lx1) / 2, (lz0 + lz1) / 2);
     shapes.push(w.colliders.addBox(x, z, (lx1 - lx0) / 2, (lz1 - lz0) / 2, f.yaw, y0 - 1.5, y0 + top));
   }
-  seals(ctx, f, y0, HALF + 1.5, HALF + 26, lzM, 2.0, 40);
+  seals(ctx, f, HALF - 0.4, HALF + 28, lzM, { rise: 7 });
 
-  boulders(ctx, f, [[-6.6, 8.5, 1.15], [6.8, 6.2, 1.45], [7.6, 13.5, 0.95], [-7.0, 14.5, 1.3], [5.2, 21, 1.0]], 51);
+  boulders(ctx, f, [[-4.5, 8.5, 1.05], [4.7, 15.5, 1.25], [-4.7, 22, 0.95], [4.4, 5.0, 0.8]], 51);
   const notice = noticeStand(ctx, f, 5.2, 12.2, 'CLOSED', e.sign);
   return {
-    seconds: 1.8, notice, front: { x: at(0, 9)[0], z: at(0, 9)[1] },
+    seconds: 1.8, stopU: 3.0, openU: 3.6, notice, front: { x: at(0, 9)[0], z: at(0, 9)[1] },
     apply(t) {
       heap.position.y = -6.4 * ease(t);
       spill.position.y = -1.2 * ease(t);
@@ -450,7 +606,10 @@ function wings(ctx, f, y0, frontLz, backLz, half, top, steps) {
       const lx0 = half + i * len, lx1 = lx0 + len, lx = (side * (lx0 + lx1)) / 2;
       const [ox, oz] = f.at(side * lx1, lz);
       const t = Math.min(y0 + top - 1.3 * (i + 1), Math.max(y0 + 1.0, sk.ground(ox, oz) + 0.5));
+      // A step that would lie wholly under the slope is left out (the rock is there instead).
       const [cx, cz] = f.at(lx, lz);
+      const low = Math.min(...[[lx0, frontLz], [lx0, backLz], [lx1, frontLz], [lx1, backLz]].map(([a, b]) => sk.ground(...f.at(side * a, b))));
+      if (t < low + 0.9 || t < sk.ground(cx, cz) + 0.4) continue;
       sk.begin('portal wing', cx, cz);
       sk.block(f, lx, lz, len, depth, t, m.stone);
       sk.put(sk.box(len + 0.02, 0.24, depth + 0.4), m.rock, cx, t - 0.02, cz, f.yaw);
@@ -484,9 +643,9 @@ function buildGatehouse(ctx, e) {
       for (let k = 0, y = yF + 0.95; y < yF + TOWER - 0.4; k++, y += 0.5) {
         const long = k % 2 ? 0.55 : 1.0, short = k % 2 ? 1.0 : 0.55;
         const [fx, fz] = at(tx + sx * (TW / 2 - long / 2 + 0.005), sz * (HD + 0.055));
-        sk.put(sk.box(long, 0.47, 0.12), m.rock, fx, y, fz, f.yaw);
+        sk.put(sk.box(long, 0.48, 0.12), m.rock, fx, y, fz, f.yaw);
         const [gx, gz] = at(tx + sx * (TW / 2 + 0.055), sz * (HD - short / 2 + 0.005));
-        sk.put(sk.box(0.12, 0.47, short), m.rock, gx, y, gz, f.yaw);
+        sk.put(sk.box(0.12, 0.48, short), m.rock, gx, y, gz, f.yaw);
       }
     }
     const slit = (lx, lz, turn, y) => {
@@ -531,7 +690,7 @@ function buildGatehouse(ctx, e) {
         for (let k = 0, y = 0; y < YS - 0.34; k++, y += 0.5) {
           const len = k % 2 ? 0.55 : 0.95;
           const [jx, jz] = at(s * (R + len / 2 - 0.03), face * (HD + 0.1));
-          sk.put(sk.box(len, 0.46, 0.2), m.rock, jx, yF + y, jz, f.yaw);
+          sk.put(sk.box(len, 0.48, 0.2), m.rock, jx, yF + y, jz, f.yaw);
         }
       }
       const [qx, qz] = at(0, face * (HD + 0.06));
@@ -542,23 +701,25 @@ function buildGatehouse(ctx, e) {
   for (const s of [-1, 1]) {
     const [bx, bz] = at(s * (R + 1.05), HD + 0.02), [lx, lz] = at(s * (R + 1.05), HD + 0.38);
     sk.begin('lantern bracket', bx, bz, false, true);
-    sk.put(sk.box(0.07, 0.07, 0.44), m.iron, (bx + lx) / 2, yF + 2.6, (bz + lz) / 2, f.yaw);
+    sk.put(sk.box(0.07, 0.07, 0.44), X.iron, (bx + lx) / 2, yF + 2.6, (bz + lz) / 2, f.yaw);
     sk.put(sk.box(0.26, 0.4, 0.26), m.glass, lx, yF + 2.14, lz, f.yaw);
-    sk.put(sk.box(0.32, 0.05, 0.32), m.iron, lx, yF + 2.54, lz, f.yaw);
+    sk.put(sk.box(0.32, 0.05, 0.32), X.iron, lx, yF + 2.54, lz, f.yaw);
   }
 
   // --- the curtain walls across the rest of the gorge floor, sunk into the flanks
   const wallEnd = 17;
   for (const side of [-1, 1]) {
-    const lx0 = R + TW, len = wallEnd - lx0, lx = (side * (lx0 + wallEnd)) / 2, lz = 2.0, d = 2.6;
+    // A rampart as deep as the towers, so nothing can slip behind it either.
+    const lx0 = R + TW, len = wallEnd - lx0, lx = (side * (lx0 + wallEnd)) / 2, lz = 0, d = TD;
     const [cx, cz] = at(lx, lz);
     sk.begin('gatehouse wall', cx, cz);
     const top = yF + 6.6;
     sk.block(f, lx, lz, len, d, top, m.stone, { colliderTop: top + 1.2 });
     sk.put(sk.box(len, 0.28, d + 0.4), m.rock, cx, top - 0.02, cz, f.yaw);
-    sk.merlons(f, lx, lz + d / 2 + 0.05, len, top + 0.26, { thick: 0.5, height: 0.85, gap: 0.85, mat: m.stone });
+    sk.merlons(f, lx, HD + 0.05, len, top + 0.26, { thick: 0.5, height: 0.85, gap: 0.85, mat: m.stone });
+    sk.merlons(f, lx, -HD - 0.05, len, top + 0.26, { thick: 0.5, height: 0.85, gap: 0.85, mat: m.stone });
   }
-  seals(ctx, f, yF, wallEnd - 2, wallEnd + 24, 0, 2.2, 44);
+  seals(ctx, f, R + TW - 0.4, wallEnd + 26, 0, { thick: 2.2, rise: 8 });
 
   // --- the way through: a portcullis in the front of the arch and a pair of timber gates behind it
   const portH = YS + R + 0.35, portAt = HD - 1.25, gateAt = -0.7;
@@ -570,18 +731,18 @@ function buildGatehouse(ctx, e) {
       const lx = -PW / 2 + 0.08 + i * step;
       const top = YS + Math.sqrt(Math.max(0, R * R - lx * lx)) - 0.05;
       const [qx, qz] = at(lx, portAt);
-      sk.put(sk.box(0.085, top + 0.35, 0.085), m.iron, qx, yF - 0.28, qz, f.yaw);
-      sk.put(sk.cyl(0.003, 0.06, 0.28, 4), m.iron, qx, yF - 0.34, qz, f.yaw + PI / 4);
+      sk.put(sk.box(0.085, top + 0.35, 0.085), X.iron, qx, yF - 0.28, qz, f.yaw);
+      sk.put(sk.cyl(0.003, 0.06, 0.28, 4), X.iron, qx, yF - 0.34, qz, f.yaw + PI / 4);
     }
     for (const y of [0.4, 1.15, 1.9, 2.6, 3.2, 3.75, 4.25, 4.7]) {
       if (y > YS + R - 0.25) continue;
       const half = y < YS ? R : Math.sqrt(Math.max(0.01, R * R - (y - YS) * (y - YS)));
       const [qx, qz] = at(0, portAt + 0.02);
-      sk.put(sk.box(2 * half - 0.05, 0.1, 0.075), m.iron, qx, yF + y, qz, f.yaw);
+      sk.put(sk.box(2 * half - 0.05, 0.1, 0.075), X.iron, qx, yF + y, qz, f.yaw);
     }
     for (const y of [1.2, 2.85]) {
       const [qx, qz] = at(0, portAt - 0.05);
-      sk.put(sk.box(PW - 0.05, 0.2, 0.12), m.wood, qx, yF + y, qz, f.yaw);
+      sk.put(timber(PW - 0.05, 0.2, 0.12), m.wood, qx, yF + y, qz, f.yaw);
     }
   });
   // One leaf of the gate: planks in a frame that follows the arch, iron straps, studs and a ring. `d` runs from
@@ -589,25 +750,29 @@ function buildGatehouse(ctx, e) {
   const leafGroup = (side) => dynamic(sk, scene, () => {
     const [cx, cz] = at(side * R / 2, gateAt);
     sk.begin('gate leaf', cx, cz);
-    const curve = [];
-    for (let i = 0; i <= 12; i++) { const d = ((R - 0.03) * i) / 12; curve.push([d, YS + Math.sqrt(Math.max(0, R * R - d * d)) - 0.05]); }
-    const outline = [[0, -0.02], ...curve, [R - 0.03, -0.02]];
-    sk.profile(f, 0, gateAt, yF, outline.map(([d, y]) => [side * d, y]), 0.24, m.wood);
+    // Eight upright planks a side, each as tall as the arch is there, side by side.
+    const pw = (R - 0.03) / 8;
+    for (let i = 0; i < 8; i++) {
+      const dc = 0.02 + pw * (i + 0.5);
+      const h = YS + Math.sqrt(Math.max(0, R * R - dc * dc)) - 0.05 + 0.02;
+      const [qx, qz] = at(side * dc, gateAt);
+      sk.put(plank(pw - 0.008, h, 0.22), m.wood, qx, yF - 0.02, qz, f.yaw);
+    }
     const topAt = (d) => YS + Math.sqrt(Math.max(0, R * R - d * d)) - 0.05;
     for (const y of [0.55, 1.6, 2.6]) {
       const d0 = 0.03, d1 = R - 0.08;
       const [sx, sz] = at(side * (d0 + d1) / 2, gateAt + 0.14);
-      sk.put(sk.box(d1 - d0, 0.16, 0.05), m.iron, sx, yF + y - 0.08, sz, f.yaw);
+      sk.put(sk.box(d1 - d0, 0.16, 0.05), X.iron, sx, yF + y - 0.08, sz, f.yaw);
       for (let d = d0 + 0.2; d < d1 - 0.05; d += 0.28) {
         const [tx, tz] = at(side * d, gateAt + 0.175);
-        sk.put(sk.cyl(0.035, 0.04, 0.03, 6), m.iron, tx, yF + y - 0.02, tz, f.yaw, 1, 1, 1, PI / 2, 0);
+        sk.put(sk.cyl(0.035, 0.04, 0.03, 6), X.iron, tx, yF + y - 0.02, tz, f.yaw, 1, 1, 1, PI / 2, 0);
       }
     }
     const [dx, dz] = at(side * 0.05, gateAt + 0.145);
-    sk.put(sk.box(0.09, topAt(0.05) - 0.3, 0.05), m.iron, dx, yF, dz, f.yaw);
+    sk.put(sk.box(0.09, topAt(0.05) - 0.3, 0.05), X.iron, dx, yF, dz, f.yaw);
     const [rx, rz] = at(side * 0.5, gateAt + 0.18);
-    sk.put(sk.box(0.22, 0.22, 0.03), m.iron, rx, yF + 1.04, rz, f.yaw);
-    sk.put(new THREE.TorusGeometry(0.17, 0.025, 6, 12), m.iron, rx, yF + 1.15, rz + 0.0, f.yaw);
+    sk.put(sk.box(0.22, 0.22, 0.03), X.iron, rx, yF + 1.04, rz, f.yaw);
+    sk.put(new THREE.TorusGeometry(0.17, 0.025, 6, 12), X.iron, rx, yF + 1.15, rz + 0.0, f.yaw);
   });
   const leaves = [-1, 1].map((side) => {
     const [hx, hz] = at(side * R, gateAt);
@@ -641,7 +806,7 @@ function buildGatehouse(ctx, e) {
     const [cx, cz] = at(tx, HD + 0.36);
     sk.begin('banner', cx, cz, true, true);
     strut(sk, m.wood, at3(tx - 0.95, HD + 0.36, by), at3(tx + 0.95, HD + 0.36, by), 0.09);
-    for (const k of [-0.7, 0.7]) strut(sk, m.iron, at3(tx + k, HD + 0.02, by), at3(tx + k, HD + 0.36, by), 0.05);
+    for (const k of [-0.7, 0.7]) strut(sk, X.iron, at3(tx + k, HD + 0.02, by), at3(tx + k, HD + 0.36, by), 0.05);
     const [qx, qz] = at(tx, HD + 0.45);
     sk.put(wavyPlane(1.65, 3.5, side * 1.7 + 0.4), cloth, qx, by - 1.85, qz, f.yaw);
   }
@@ -651,7 +816,7 @@ function buildGatehouse(ctx, e) {
   const notice = noticeStand(ctx, f, 6.4, 10.2, 'BY ORDER', e.sign);
 
   return {
-    seconds: 3.4, notice, front: { x: at(0, 12)[0], z: at(0, 12)[1] },
+    seconds: 3.4, stopU: -1.0, openU: HD + 1.2, notice, front: { x: at(0, 12)[0], z: at(0, 12)[1] },
     apply(t) {
       portcullis.position.y = (portH + 0.5) * ease(t / 0.75);
       for (const { side, node } of leaves) node.rotation.y = -side * (PI / 2 + 0.06) * ease((t - 0.3) / 0.7);
@@ -684,51 +849,51 @@ function buildToll(ctx, e) {
     sk.put(sk.box(HW, WALL - 0.5, HDp), m.plaster, cx, yF + 0.5, cz, f.yaw);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       const [x, z] = at(HX + sx * (HW / 2 + 0.02), sz * (HDp / 2 + 0.02));
-      sk.put(sk.box(0.2, WALL - 0.4, 0.2), m.wood, x, yF + 0.5, z, f.yaw);
+      sk.put(timber(0.2, WALL - 0.4, 0.2), m.wood, x, yF + 0.5, z, f.yaw);
     }
     // Plate, sill and mid rails round the walls.
     for (const sz of [-1, 1]) {
       const [x, z] = at(HX, sz * (HDp / 2 + 0.05));
-      sk.put(sk.box(HW + 0.3, 0.2, 0.16), m.wood, x, yF + WALL - 0.02, z, f.yaw);
-      sk.put(sk.box(HW + 0.1, 0.16, 0.14), m.wood, x, yF + 0.45, z, f.yaw);
-      sk.put(sk.box(HW + 0.1, 0.14, 0.12), m.wood, x, yF + 1.55, z, f.yaw);
+      sk.put(timber(HW + 0.3, 0.2, 0.16), m.wood, x, yF + WALL - 0.02, z, f.yaw);
+      sk.put(timber(HW + 0.1, 0.16, 0.14), m.wood, x, yF + 0.45, z, f.yaw);
+      sk.put(timber(HW + 0.1, 0.14, 0.12), m.wood, x, yF + 1.55, z, f.yaw);
     }
     for (const sx of [-1, 1]) {
       const [x, z] = at(HX + sx * (HW / 2 + 0.05), 0);
-      sk.put(sk.box(0.16, 0.2, HDp + 0.3), m.wood, x, yF + WALL - 0.02, z, f.yaw);
-      sk.put(sk.box(0.14, 0.16, HDp + 0.1), m.wood, x, yF + 0.45, z, f.yaw);
-      sk.put(sk.box(0.12, 0.14, HDp + 0.1), m.wood, x, yF + 1.55, z, f.yaw);
+      sk.put(timber(0.16, 0.2, HDp + 0.3), m.wood, x, yF + WALL - 0.02, z, f.yaw);
+      sk.put(timber(0.14, 0.16, HDp + 0.1), m.wood, x, yF + 0.45, z, f.yaw);
+      sk.put(timber(0.12, 0.14, HDp + 0.1), m.wood, x, yF + 1.55, z, f.yaw);
     }
     // Gable ends: plaster triangles with a timber barge board and a king post.
     for (const sz of [-1, 1]) {
       const tri = [[-HW / 2 - 0.02, 0], [HW / 2 + 0.02, 0], [0, RIDGE]];
       sk.profile(f, HX, sz * (HDp / 2 - 0.1), yF + WALL, tri, 0.2, m.plaster);
       const [x, z] = at(HX, sz * (HDp / 2 + 0.03));
-      sk.put(sk.box(0.12, RIDGE, 0.1), m.wood, x, yF + WALL, z, f.yaw);
+      sk.put(timber(0.12, RIDGE, 0.1), m.wood, x, yF + WALL, z, f.yaw);
     }
     // The door on the road side, closed, with a lantern beside it and a hanging sign over it.
     {
       const dx = HX - HW / 2 - 0.05;
       const [x, z] = at(dx, -0.4);
-      sk.put(sk.box(0.09, 2.0, 1.0), m.wood, x, yF + 0.5, z, f.yaw);
-      for (const y of [0.75, 1.6]) { const [sx, sz] = at(dx - 0.05, -0.4); sk.put(sk.box(0.03, 0.14, 1.0), m.iron, sx, yF + y, sz, f.yaw); }
+      sk.put(plank(0.09, 2.0, 1.0), m.wood, x, yF + 0.5, z, f.yaw);
+      for (const y of [0.75, 1.6]) { const [sx, sz] = at(dx - 0.05, -0.4); sk.put(sk.box(0.03, 0.14, 1.0), X.iron, sx, yF + y, sz, f.yaw); }
       const [lx1, lz1] = at(dx - 0.42, 0.7);
-      strut(sk, m.iron, at3(dx, 0.7, yF + 2.2), at3(dx - 0.42, 0.7, yF + 2.2), 0.06);
+      strut(sk, X.iron, at3(dx, 0.7, yF + 2.2), at3(dx - 0.42, 0.7, yF + 2.2), 0.06);
       sk.put(sk.box(0.25, 0.36, 0.25), m.glass, lx1, yF + 1.84, lz1, f.yaw);
-      sk.put(sk.box(0.31, 0.05, 0.31), m.iron, lx1, yF + 2.2, lz1, f.yaw);
-      sk.put(sk.box(0.05, 0.2, 0.05), m.iron, lx1, yF + 2.2, lz1, f.yaw);
+      sk.put(sk.box(0.31, 0.05, 0.31), X.iron, lx1, yF + 2.2, lz1, f.yaw);
+      sk.put(sk.box(0.05, 0.2, 0.05), X.iron, lx1, yF + 2.2, lz1, f.yaw);
       // The toll board over the door.
       const [bx, bz] = at(dx - 0.12, -0.4);
       const mat = texturedMaterial(boardTexture('TOLL', { w: 256, h: 112 }), 0.85);
-      sk.put(sk.box(0.06, 0.34, 1.1), m.wood, bx, yF + 2.12, bz, f.yaw);
+      sk.put(plank(0.06, 0.34, 1.1), m.wood, bx, yF + 2.12, bz, f.yaw);
       sk.put(new THREE.PlaneGeometry(1.0, 0.28), mat, bx - Math.cos(f.yaw) * 0.04, yF + 2.15, bz + Math.sin(f.yaw) * 0.04, f.yaw - PI / 2);
     }
     // A shuttered window in the gable that looks up the road.
     {
       const [x, z] = at(HX, HDp / 2 + 0.06);
-      sk.put(sk.box(1.0, 0.95, 0.07), m.wood, x, yF + 1.0, z, f.yaw);
+      sk.put(plank(1.0, 0.95, 0.07), m.wood, x, yF + 1.0, z, f.yaw);
       sk.put(sk.box(1.14, 0.1, 0.16), m.rock, x, yF + 0.9, z, f.yaw);
-      for (const s of [-1, 1]) { const [sx, sz] = at(HX + s * 0.25, HDp / 2 + 0.11); sk.put(sk.box(0.46, 0.85, 0.04), m.wood, sx, yF + 1.05, sz, f.yaw); }
+      for (const s of [-1, 1]) { const [sx, sz] = at(HX + s * 0.25, HDp / 2 + 0.11); sk.put(plank(0.46, 0.85, 0.04), m.wood, sx, yF + 1.05, sz, f.yaw); }
     }
     // Roof: two tile slopes meeting at a ridge along the road, overhanging, with a ridge beam.
     {
@@ -739,7 +904,7 @@ function buildToll(ctx, e) {
         sk.put(sk.box(L, 0.14, HDp + 1.0), m.tiles, x, yF + WALL + RIDGE - Math.sin(tilt) * mid, z, f.yaw, 1, 1, 1, 0, -s * tilt);
       }
       const [rx, rz] = at(HX, 0);
-      sk.put(sk.box(0.2, 0.2, HDp + 1.05), m.wood, rx, yF + WALL + RIDGE + 0.06, rz, f.yaw);
+      sk.put(timber(0.2, 0.2, HDp + 1.05), m.wood, rx, yF + WALL + RIDGE + 0.06, rz, f.yaw);
     }
     // A stone chimney on the cliff side.
     const [kx, kz] = at(HX + 0.9, -1.0);
@@ -753,9 +918,9 @@ function buildToll(ctx, e) {
     const [x, z] = at(lx, 0);
     sk.begin('toll post', x, z);
     const g = sk.ground(x, z);
-    sk.put(sk.box(0.34, top - g + 0.3, 0.34), m.wood, x, g - 0.3, z, f.yaw);
+    sk.put(timber(0.34, top - g + 0.3, 0.34), m.wood, x, g - 0.3, z, f.yaw);
     sk.put(sk.box(0.5, 0.12, 0.5), m.rock, x, top - 0.02, z, f.yaw);
-    sk.put(sk.cyl(0.005, 0.36, 0.3, 4), m.wood, x, top + 0.1, z, f.yaw + PI / 4);
+    sk.put(log(0.005, 0.36, 0.3, 4), m.wood, x, top + 0.1, z, f.yaw + PI / 4);
     w.colliders.addBox(x, z, 0.25, 0.25, f.yaw, g - 0.3, top + 0.4);
   };
   post(-POST, yF + 2.75);
@@ -771,20 +936,20 @@ function buildToll(ctx, e) {
       const g = sk.ground(x, z), top = yF + FENCE + (rnd() - 0.5) * 0.3;
       if (top < g + 0.2) continue;
       const r = 0.15 + rnd() * 0.02;
-      sk.put(sk.cyl(r, r, top - g + 0.4, 7), m.wood, x, g - 0.4, z, rnd() * 3);
-      sk.put(sk.cyl(0.004, r, 0.36, 7), m.wood, x, top, z, rnd() * 3);
+      sk.put(log(r, r, top - g + 0.4, 7), m.wood, x, g - 0.4, z, rnd() * 3);
+      sk.put(log(0.004, r, 0.36, 7), m.wood, x, top, z, rnd() * 3);
     }
-    for (const y of [0.7, 1.9]) { const [x, z] = at(lx, -0.28); sk.put(sk.box(len, 0.13, 0.12), m.wood, x, yF + y, z, f.yaw); }
+    for (const y of [0.7, 1.9]) { const [x, z] = at(lx, -0.28); sk.put(timber(len, 0.13, 0.12), m.wood, x, yF + y, z, f.yaw); }
     w.colliders.addBox(cx, cz, len / 2, 0.3, f.yaw, yF - 1.2, yF + FENCE + 0.4);
   };
-  stockade(-POST + 0.15, -14);
-  stockade(9.6, 14);
-  seals(ctx, f, yF, 13, 38, 0, 2.0, 44);
+  stockade(-POST + 0.15, -12);
+  stockade(7.6, 12.4);
+  seals(ctx, f, POST + 0.25, 40, 0, { rise: 6 });
 
   // --- the boom: a striped pole on the hut-side post with a counterweight, lifting to open the way
   const boomGroup = dynamic(sk, scene, () => {
     const [cx, cz] = at(0, POLE_Z);
-    sk.begin('toll boom', cx, cz);
+    sk.begin('toll boom', cx, cz, false, true);
     const segs = 10, seg = (2 * POST + 0.8) / segs;
     for (let i = 0; i < segs; i++) {
       // The pole runs from the tail (past the hinge on the hut side) across the road to the far post.
@@ -793,32 +958,32 @@ function buildToll(ctx, e) {
     }
     const [tx, tz] = at(POST + 0.6, POLE_Z);
     sk.put(sk.box(0.36, 0.44, 0.3), m.rock, tx, BOOM_Y - 0.5, tz, f.yaw);
-    sk.put(sk.box(0.05, 0.4, 0.05), m.iron, tx, BOOM_Y - 0.24, tz, f.yaw);
+    sk.put(sk.box(0.05, 0.4, 0.05), X.iron, tx, BOOM_Y - 0.24, tz, f.yaw);
   });
   const boom = hingeZ(scene, boomGroup, at3(POST, POLE_Z, BOOM_Y), f.yaw);
   // The hinge plate on the hut-side post and the rest on the far one.
   {
     const [x, z] = at(POST, POLE_Z - 0.1);
     sk.begin('boom hinge', x, z, false, true);
-    sk.put(sk.box(0.42, 0.26, 0.1), m.iron, x, BOOM_Y - 0.13, z, f.yaw);
+    sk.put(sk.box(0.42, 0.26, 0.1), X.iron, x, BOOM_Y - 0.13, z, f.yaw);
     const [fx, fz] = at(-POST, POLE_Z - 0.1);
     sk.begin('boom rest', fx, fz, false, true);
-    sk.put(sk.box(0.42, 0.1, 0.1), m.iron, fx, BOOM_Y - 0.11, fz, f.yaw);
+    sk.put(sk.box(0.42, 0.1, 0.1), X.iron, fx, BOOM_Y - 0.11, fz, f.yaw);
   }
   // The chain that locks the pole down: from a staple in the far post to the pole.
   const chain = dynamic(sk, scene, () => {
     const [ax, az] = at(-POST + 0.02, 0.22), [bx, bz] = at(-POST + 0.62, POLE_Z + 0.02);
-    sk.begin('boom chain', ax, az);
+    sk.begin('boom chain', ax, az, false, true);
     const links = 8;
     for (let i = 0; i < links; i++) {
       const t = i / (links - 1), x = ax + (bx - ax) * t, z = az + (bz - az) * t;
       const y = BOOM_Y - 0.56 + 0.5 * t - 0.09 * Math.sin(t * PI);
-      sk.put(new THREE.TorusGeometry(0.045, 0.011, 5, 8), m.iron, x, y, z, f.yaw + (i % 2 ? 0 : PI / 2));
+      sk.put(new THREE.TorusGeometry(0.045, 0.011, 5, 8), X.iron, x, y, z, f.yaw + (i % 2 ? 0 : PI / 2));
     }
-    sk.put(sk.box(0.11, 0.14, 0.05), m.iron, ax, BOOM_Y - 0.66, az, f.yaw);
+    sk.put(sk.box(0.11, 0.14, 0.05), X.iron, ax, BOOM_Y - 0.66, az, f.yaw);
   });
   // The notice board, beside the road in front of the hut.
-  const notice = noticeStand(ctx, f, POST + 1.0, 3.6, 'TOLL BAR', e.sign, { width: 1.3 });
+  const notice = noticeStand(ctx, f, -5.6, 3.8, 'TOLL BAR', e.sign, { width: 1.3 });
 
   // The collider that shuts the way: the pole's whole span, floor to well above a jump.
   const shapes = [];
@@ -829,7 +994,7 @@ function buildToll(ctx, e) {
   boulders(ctx, f, [[-7.6, 8, 1.2], [7.9, 12, 1.5], [-8.4, 20, 1.0], [8.2, 26, 1.3], [-4.2, 31, 0.9]], 53);
 
   return {
-    seconds: 1.5, notice, front: { x: at(0, 9)[0], z: at(0, 9)[1] },
+    seconds: 1.5, stopU: 0.0, openU: 2.2, notice, front: { x: at(0, 9)[0], z: at(0, 9)[1] },
     apply(t) {
       boom.rotation.z = -(PI / 2 - 0.12) * ease(t);
       chain.visible = t < 0.08;
