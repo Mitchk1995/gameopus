@@ -42,5 +42,6 @@ export function applyQuality(level, { renderer, world, assets }) {
     sun.shadow.map = null;
   }
   world.grass.setDensity(q.grass);
+  world.plants?.setDensity(q.grass);
   world.forest.setNear(q.treesNear);
 }

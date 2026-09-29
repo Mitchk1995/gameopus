@@ -6,6 +6,9 @@ import { Forest } from './trees.js';
 import { Colliders } from './colliders.js';
 import { Solids } from './solids.js';
 import { Grass } from './grass.js';
+import { Plants } from './plants.js';
+import { Falls } from './falls.js';
+import { Mood } from './mood.js';
 import { Village } from './village.js';
 import { Sites } from './sites.js';
 import { WORLD } from './map.js';
@@ -34,9 +37,13 @@ export class World {
     this.water = new Water({ scene: this.scene, terrain: this.terrain });
     this.forest = await new Forest({ ...ctx, terrain: this.terrain }).load();
     this.grass = new Grass({ scene: this.scene, terrain: this.terrain });
+    this.plants = new Plants({ scene: this.scene, terrain: this.terrain, leaves: this.forest.leafTex });
     this.village = await new Village({ ...ctx, world: this }).load();
     this.sites = await new Sites({ ...ctx, world: this }).load();
     this.updaters.push((dt) => this.sites.update(dt));
+    this.falls = new Falls({ scene: this.scene, world: this });
+    this.mood = new Mood({ scene: this.scene, sky: this.sky });
+    this.updaters.push((dt, camera, focus) => { this.falls.update(dt); this.mood.update(dt, focus); });
     for (const t of this.forest.trees) {
       if (t.radius > 0.05) t.collider = this.colliders.addCircle(t.x, t.z, t.radius, t.y - 2, t.y + 40, { tree: t });
     }
@@ -132,6 +139,7 @@ export class World {
   update(dt, camera, focus) {
     this.focus.copy(focus);
     this.grass.update(dt, focus, focus);
+    this.plants.update(dt, focus);
     this.sky.update(camera, focus);
     this.terrain.update(camera);
     this.water.update(dt);
