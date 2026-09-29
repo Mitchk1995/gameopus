@@ -27,7 +27,16 @@ STEPS = [
       // The notice is out where you come from, within reach of the front of the closure.
       const d = Math.hypot(n.x - p.front.x, n.z - p.front.z);
       if (d > 14) W.fail('the notice at exit ' + e.id + ' is ' + d.toFixed(0) + ' m from the way in');
-      out.push('PASS exit ' + e.id + ' (' + e.kind + '): locked by default, notice "' + e.sign.title + '" ' + d.toFixed(1) + ' m from the way in');
+      // The solids that shut the way stand at least 2.4 m tall above the ground under them (no hopping over).
+      for (const sh of p.seal) {
+        const top = sh.y1 - g.world.heightAt(sh.x, sh.z);
+        if (top < 2.4) W.fail('a solid that shuts the ' + e.id + ' way is only ' + top.toFixed(1) + ' m tall');
+      }
+      // No tree stands in the closure's footprint (they are felled at build time; whoever grows the woods keeps clear too).
+      const [along, across] = e.clear;
+      const trees = g.world.forest.trees.filter((t) => !t.felled && t.radius > 0 && Math.abs((t.x - e.x) * e.tx + (t.z - e.z) * e.tz) < along && Math.abs((t.z - e.z) * e.tx - (t.x - e.x) * e.tz) < across);
+      if (trees.length) W.fail(trees.length + ' trees stand in the ' + e.id + ' closure clearing');
+      out.push('PASS exit ' + e.id + ' (' + e.kind + '): locked by default, ' + p.seal.length + ' shutting solids all 2.4 m or more, clearing free of trees, notice "' + e.sign.title + '" ' + d.toFixed(1) + ' m from the way in');
     }
     if (M.EXITS.length !== 3) W.fail('expected three ways out, found ' + M.EXITS.length);
     return out.join(' | ');

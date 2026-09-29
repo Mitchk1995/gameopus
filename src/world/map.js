@@ -743,8 +743,9 @@ export function forestDensity(x, z) {
 // stands on its road; the position, facing (the way it looks into the vale) and height come from
 // the road there. `kind` picks how it is built (exits.js): a collapsed tunnel portal, a barred
 // gatehouse, a toll bar. `gorge` shapes the ground round the two that stand in a gorge (see
-// notches()); `portal` sizes the North Pass's masonry porch (see portalFace()). `clear` is how far
-// trees and props must keep from the closure: [metres along the road each way, metres across each way].
+// notches()); `portal` sizes the North Pass's masonry porch (see portalFace()); `apron` paves a forecourt (metres
+// from the closure along the road, negative in front of it, and half-width across; see exitApron()). `clear` is how
+// far trees and props must keep from the closure: [metres along the road each way, metres across each way].
 const EXIT_DEFS = [
   {
     id: 'north', name: 'North Pass', kind: 'tunnel', road: 'highroad', at: [-106, -270], locked: true,

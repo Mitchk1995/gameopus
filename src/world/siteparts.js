@@ -108,25 +108,29 @@ export function siteMaterials(sk, cliff) {
   // Boulders and broken rock wear the mountain's own cliff scan, taken to grey as the terrain shader does, so a
   // fallen rock matches the wall it fell from.
   const grey = (() => {
-    const img = cliff.map.image, cv = document.createElement('canvas');
-    cv.width = cv.height = 512;
-    const g = cv.getContext('2d', { willReadFrequently: true });
-    g.drawImage(img, 0, 0, 512, 512);
-    const d = g.getImageData(0, 0, 512, 512);
-    for (let i = 0; i < d.data.length; i += 4) {
-      const l = d.data[i] * 0.3 + d.data[i + 1] * 0.55 + d.data[i + 2] * 0.15;
-      d.data[i] = (l * 0.75 + d.data[i] * 0.25) * 0.93;
-      d.data[i + 1] = (l * 0.75 + d.data[i + 1] * 0.25) * 0.95;
-      d.data[i + 2] = (l * 0.75 + d.data[i + 2] * 0.25) * 1.0;
+    try {
+      const img = cliff.map.image, cv = document.createElement('canvas');
+      cv.width = cv.height = 512;
+      const g = cv.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0, 512, 512);
+      const d = g.getImageData(0, 0, 512, 512);
+      for (let i = 0; i < d.data.length; i += 4) {
+        const l = d.data[i] * 0.3 + d.data[i + 1] * 0.55 + d.data[i + 2] * 0.15;
+        d.data[i] = (l * 0.75 + d.data[i] * 0.25) * 0.93;
+        d.data[i + 1] = (l * 0.75 + d.data[i + 1] * 0.25) * 0.95;
+        d.data[i + 2] = (l * 0.75 + d.data[i + 2] * 0.25) * 1.0;
+      }
+      g.putImageData(d, 0, 0);
+      const t = new THREE.CanvasTexture(cv);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 8;
+      return t;
+    } catch {
+      return cliff.map; // pixels not readable here: the scan as it is
     }
-    g.putImageData(d, 0, 0);
-    const t = new THREE.CanvasTexture(cv);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 8;
-    return t;
   })();
-  const boulder = new THREE.MeshStandardMaterial({ map: grey, normalMap: cliff.normal, roughness: 0.95, color: 0xc9c9c9 });
+  const boulder = new THREE.MeshStandardMaterial({ map: grey, normalMap: cliff.normal, roughness: 0.95, color: grey === cliff.map ? 0x9a9690 : 0xc9c9c9 });
   boulder.name = 'CliffBoulder';
   enhance(boulder);
   return {
@@ -169,6 +173,7 @@ export function dynamic(sk, scene, fn) {
   try { fn(); } finally { sk.batch = main; }
   const g = b.build();
   scene.add(g);
+  (sk.dynamicGroups ??= []).push(g);   // (the pieces that are not in the main batch, for anything that must know them)
   return g;
 }
 

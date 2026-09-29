@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { EXITS, PORTAL } from './map.js';
+import { EXITS, PORTAL, roadAt, roadById } from './map.js';
 import { frame } from './sitekit.js';
 import { rng } from './buildings.js';
 import { fitUV } from './props.js';
@@ -187,15 +187,55 @@ function noticeStand(ctx, f, lx, lz, header, sign, { width = 1.4 } = {}) {
   };
 }
 
-// A scatter of fallen boulders in a frame: [lx, lz, size] each, sunk into the ground and solid.
-function boulders(ctx, f, list, seed) {
+// A scatter of fallen boulders in a frame: [lx, lz, size] each, sunk into the ground and solid. A rock lies where
+// the ground under it is fairly level and it leaves the road clear, so one asked for on a cliff face or on the
+// road is moved to the nearest place where it could have come to rest (never nearer the closure, never into
+// a notice: `avoid` is [lx, lz, radius] of what to keep off), and left out if there is none within reach.
+function boulders(ctx, f, list, seed, { road, avoid = [] } = {}) {
   const { sk, w } = ctx;
   const rnd = rng(seed);
-  for (const [lx, lz, size] of list) {
+  const halfRoad = road ? roadById(road).width / 2 : 0;
+  const taken = [];
+  // The ground under a boulder at (lx, lz): the lowest and highest points of its footprint, and under its middle.
+  const under = (lx, lz, size) => {
     const [x, z] = f.at(lx, lz);
+    const mid = sk.ground(x, z);
+    let lo = mid, hi = mid;
+    for (let k = 0; k < 8; k++) {
+      const g = sk.ground(x + Math.cos(k * 0.785) * size * 0.8, z + Math.sin(k * 0.785) * size * 0.8);
+      lo = Math.min(lo, g);
+      hi = Math.max(hi, g);
+    }
+    return { x, z, lo, spread: hi - lo, sunk: mid - lo };
+  };
+  const free = (lx, lz, size, u) => {
+    if (road && roadAt(road, u.x, u.z).d < halfRoad + size * 1.02 + 0.9) return false;
+    if (avoid.some(([ax, az, ar]) => Math.hypot(lx - ax, lz - az) < ar + size)) return false;
+    return taken.every(([tx, tz, tr]) => Math.hypot(lx - tx, lz - tz) > tr + size * 1.02 + 0.4);
+  };
+  for (const [lx0, lz0, size] of list) {
+    // Fine where asked for, or (failing that) the flattest spot in the first ring outwards that is fairly level.
+    const hard = (u) => u.spread <= 1.3 + size * 0.5 && u.sunk <= 0.5 + size * 0.4;
+    const easy = (u) => u.spread <= 0.6 + size * 0.3 && u.sunk <= 0.3 + size * 0.2;
+    let spot = null, u = under(lx0, lz0, size);
+    if (hard(u) && free(lx0, lz0, size, u)) spot = [lx0, lz0];
+    for (let d = 0.5; d <= 7 && !spot; d += 0.5) {
+      let best = null;
+      const n = Math.round(d * 8);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * PI * 2;
+        const lx = lx0 + Math.cos(a) * d, lz = lz0 + Math.sin(a) * d;
+        if (lz < lz0 - 1.5) continue;
+        const c = under(lx, lz, size);
+        if (easy(c) && free(lx, lz, size, c) && (!best || c.spread < best.c.spread)) best = { lx, lz, c };
+      }
+      if (best) { spot = [best.lx, best.lz]; u = best.c; }
+    }
+    if (!spot) continue;
+    const [x, z] = f.at(spot[0], spot[1]);
+    taken.push([spot[0], spot[1], size * 1.02]);
     // A boulder on a slope sits on its downhill side: rest it on the lowest ground under it.
-    let g0 = sk.ground(x, z);
-    for (let k = 0; k < 8; k++) g0 = Math.min(g0, sk.ground(x + Math.cos(k * 0.785) * size * 0.8, z + Math.sin(k * 0.785) * size * 0.8));
+    const g0 = u.lo;
     const flat = 0.68 + rnd() * 0.2;
     sk.begin('boulder', x, z);
     sk.put(rockGeo(size, rnd, flat, false), ctx.X.boulder, x, g0 + size * flat * 0.42, z, rnd() * PI * 2);
@@ -419,10 +459,10 @@ function buildTunnel(ctx, e) {
   }
   seals(ctx, f, HALF - 0.4, HALF + 28, lzM, { rise: 7 });
 
-  boulders(ctx, f, [[-4.5, 8.5, 1.05], [4.7, 15.5, 1.25], [-4.7, 22, 0.95], [4.4, 5.0, 0.8]], 51);
+  boulders(ctx, f, [[-4.5, 8.5, 1.05], [4.7, 15.5, 1.25], [-4.7, 22, 0.95], [4.4, 5.0, 0.8]], 51, { road: e.road, avoid: [[5.2, 12.2, 1.6]] });
   const notice = noticeStand(ctx, f, 5.2, 12.2, 'CLOSED', e.sign);
   return {
-    seconds: 1.8, stopU: 3.0, openU: 3.6, notice, front: { x: at(0, 9)[0], z: at(0, 9)[1] },
+    seconds: 1.8, stopU: 3.0, openU: 3.6, notice, seal: shapes.slice(0, 2), front: { x: at(0, 9)[0], z: at(0, 9)[1] },
     apply(t) {
       heap.position.y = -6.4 * ease(t);
       spill.position.y = -1.2 * ease(t);
@@ -648,11 +688,11 @@ function buildGatehouse(ctx, e) {
   }
 
   // --- the fallen rock in the approach, and the Warden's notice
-  boulders(ctx, f, [[-9.1, 11.5, 1.35], [10.4, 5.2, 1.05], [-8.7, 19, 1.7], [9.3, 24, 1.25], [-5.6, 33, 0.95], [7.2, 41, 1.5]], 52);
+  boulders(ctx, f, [[-9.1, 11.5, 1.35], [10.4, 5.2, 1.05], [-8.7, 19, 1.7], [9.3, 24, 1.25], [-5.6, 33, 0.95], [7.2, 41, 1.5]], 52, { road: e.road, avoid: [[6.4, 10.2, 1.6]] });
   const notice = noticeStand(ctx, f, 6.4, 10.2, 'BY ORDER', e.sign);
 
   return {
-    seconds: 3.4, stopU: -1.0, openU: HD + 1.2, notice, front: { x: at(0, 12)[0], z: at(0, 12)[1] },
+    seconds: 3.4, stopU: -1.0, openU: HD + 1.2, notice, seal: shapes, front: { x: at(0, 12)[0], z: at(0, 12)[1] },
     apply(t) {
       portcullis.position.y = (portH + 0.5) * ease(t / 0.75);
       for (const { side, node } of leaves) node.rotation.y = -side * (PI / 2 + 0.06) * ease((t - 0.3) / 0.7);
@@ -827,10 +867,10 @@ function buildToll(ctx, e) {
     const [x, z] = at(0, POLE_Z);
     shapes.push(w.colliders.addBox(x, z, POST + 0.25, 0.22, f.yaw, yF - 0.8, yF + 2.6));
   }
-  boulders(ctx, f, [[-7.6, 8, 1.2], [7.9, 12, 1.5], [-8.4, 20, 1.0], [8.2, 26, 1.3], [-4.2, 31, 0.9]], 53);
+  boulders(ctx, f, [[-7.6, 8, 1.2], [7.9, 12, 1.5], [-8.4, 20, 1.0], [8.2, 26, 1.3], [-4.2, 31, 0.9]], 53, { road: e.road, avoid: [[-5.6, 3.8, 1.6]] });
 
   return {
-    seconds: 1.5, stopU: 0.0, openU: 2.2, notice, front: { x: at(0, 9)[0], z: at(0, 9)[1] },
+    seconds: 1.5, stopU: 0.0, openU: 2.2, notice, seal: shapes, front: { x: at(0, 9)[0], z: at(0, 9)[1] },
     apply(t) {
       boom.rotation.z = -(PI / 2 - 0.12) * ease(t);
       chain.visible = t < 0.08;
