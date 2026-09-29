@@ -220,9 +220,9 @@ export class Dungeon {
     bowl.position.set(x, 1.05, z);
     const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 0.9, 8), mat);
     stand.position.set(x, 0.45, z);
-    tag(bowl, 'Brazier');
-    tag(stand, 'Brazier');
-    this.scene.add(bowl, stand);
+    const brazier = new THREE.Group();
+    brazier.add(bowl, stand);
+    this.scene.add(tag(brazier, 'Brazier'));
     this.fires.push(new Fire(this.scene, x, 1.1, z, { size: 0.55, light: false }));
     this.torches.push(new THREE.Vector3(x, 1.8, z));
     this.colliders.addCircle(x, z, 0.5, -1, 1.3);

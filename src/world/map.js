@@ -3,14 +3,18 @@
 //
 // Coordinates are metres: +x is east, +z is south, y is up. Water sits at y = 0.
 
+import { TOWN, polyDistance, riseAt, townGround } from './ashford.js';
+
 export const WORLD = { size: 800, half: 400, water: 0 };
 
-export const VILLAGE = { x: -8, z: 18, r: 46, y: 3.2 };
+// Ashford's plan lives in ashford.js; VILLAGE is its centre, nominal radius and terrace height.
+export const VILLAGE = { x: TOWN.x, z: TOWN.z, r: TOWN.r, y: TOWN.y };
 export const LAKE = { x: -70, z: 250, r: 78 };
 export const MINE_HILL = { x: -195, z: -205, r: 105, h: 36 };
 export const MINE_ENTRANCE = { x: -170, z: -142, facing: 0.35 };
 export const BANDIT_CAMP = { x: 262, z: 70, r: 22 };
-export const SPAWN = { x: -8, z: 40, facing: Math.PI };
+// Just inside the south gate, looking up Lake Street to the market square and the bank.
+export const SPAWN = { x: -8, z: 53, facing: Math.PI };
 
 // Catmull-Rom smoothing so rivers and roads curve instead of kinking.
 function curve(pts, steps = 6) {
@@ -35,14 +39,18 @@ export const RIVER = curve([
 const RIVER_WIDTH = (t) => 4.5 + t * 4;
 
 export const ROADS = [
-  // village to the mine, north-west
-  { width: 3.2, pts: curve([[-8, 18], [-30, -30], [-72, -86], [-120, -122], [-160, -140]]) },
-  // village east over the bridge, then to the farms and the bandit woods
-  { width: 3.2, pts: curve([[-8, 18], [30, 10], [70, 2], [110, 0], [160, 16], [214, 40], [250, 62]]) },
-  // village south to the lake dock
-  { width: 2.6, pts: curve([[-8, 18], [-16, 80], [-34, 140], [-52, 168]]) },
+  // Quarry Road: out of the north gate, north-west to the mine
+  { width: 3.2, pts: curve([[-27, -22], [-29, -36], [-72, -86], [-120, -122], [-160, -140]]) },
+  // Bridge Street: out of the east gate, over the bridge, then to the farms and the bandit woods
+  { width: 3.2, pts: curve([[32, 15], [50, 13], [70, 3], [110, 0], [160, 16], [214, 40], [250, 62]]) },
+  // Lake Street: out of the south gate to the lake dock
+  { width: 2.6, pts: curve([[-8, 58], [-9, 82], [-34, 140], [-52, 168]]) },
   // farm lane
   { width: 2.2, pts: curve([[160, 16], [150, 80], [132, 140]]) },
+  // the farm gate: a trodden track to the flax field
+  { width: 2.0, pts: curve([[20, 60], [26, 72], [44, 72]]) },
+  // the garden gate: the woodcutters' track to the forest
+  { width: 1.8, pts: curve([[-50, 47], [-72, 58], [-100, 84], [-118, 102]]) },
 ];
 export const BRIDGE = { x: 89, z: 1, along: [1, 0] };
 
@@ -170,9 +178,10 @@ export function heightAt(x, z) {
   const [rd, rw] = roadDistance(x, z);
   if (rd < rw + 10) h = mix(h, Math.max(2.4, 4.0 + (fbm(x * 0.0065 + 3.1, z * 0.0065 - 1.7) - 0.5) * 6), smooth(rw + 10, rw, rd) * 0.55);
 
-  // The village sits on a level terrace.
-  const dv = Math.hypot(x - VILLAGE.x, z - VILLAGE.z);
-  h = mix(h, VILLAGE.y, smooth(VILLAGE.r + 34, VILLAGE.r, dv));
+  // The town sits on a level terrace that follows its wall, grading into the land beyond it;
+  // the chapel stands on a gentle rise inside.
+  const dv = Math.max(0, polyDistance(x, z));
+  h = mix(h, VILLAGE.y + riseAt(x, z), smooth(30, 0, dv));
 
   // Farms are flat.
   for (const f of FARMS) {
@@ -205,9 +214,10 @@ export function groundAt(x, z) {
   const [rd, rw] = roadDistance(x, z);
   const n = fbm(x * 0.15, z * 0.15);
   let path = smooth(rw + 0.9, rw - 0.6, rd + (n - 0.5) * 1.6);
-  const dv = Math.hypot(x - VILLAGE.x, z - VILLAGE.z);
-  const cobble = smooth(15, 12, dv + (n - 0.5) * 2.5);
-  path = Math.max(path, smooth(VILLAGE.r - 6, VILLAGE.r - 22, dv) * 0.6 * (0.6 + n));
+  // Ashford's streets and square are cobbled; lanes and yards are trodden earth.
+  const [tDirt, tCobble] = townGround(x, z);
+  const cobble = Math.min(1, tCobble * (0.86 + 0.28 * n));
+  path = Math.max(path, tDirt * (0.8 + 0.4 * n));
   let forest = 0;
   for (const f of FORESTS) {
     const d = Math.hypot(x - f.x, z - f.z) / f.r;

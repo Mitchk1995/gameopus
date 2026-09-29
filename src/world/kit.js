@@ -83,18 +83,21 @@ export class Batcher {
     if (typeof x === 'object') meta = y ?? null;
     const matrix = typeof x === 'object' ? x : new THREE.Matrix4().compose(
       new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY), new THREE.Vector3(scale, scale, scale));
-    this.addObject(this.kit.part(name), matrix);
+    this.addObject(this.kit.part(name), matrix, null, false);
     this.log.push({ name, m: matrix.elements.slice(), meta });
     return matrix;
   }
 
   // Parts sit at the kit's origin, and their own node transforms carry the
   // dequantisation from meshopt, so they're kept as part of the piece.
-  addObject(root, matrix) {
+  // `meta` labels a procedural object ({ label, id, soft... }) for the audit; kit parts log
+  // themselves in add().
+  addObject(root, matrix, meta = null, log = true) {
     root.updateMatrixWorld(true);
     root.traverse((o) => {
       if (!o.isMesh) return;
       const m = new THREE.Matrix4().multiplyMatrices(matrix, o.matrixWorld);
+      if (log && meta) this.log.push({ proc: true, meta, geometry: o.geometry, material: o.material, m: m.elements.slice() });
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       if (mats.length > 1) {
         // Split multi-material meshes by group.

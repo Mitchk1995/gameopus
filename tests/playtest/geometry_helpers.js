@@ -97,15 +97,15 @@ window.__geo = (() => {
     return arr;
   }
 
-  // Surface points of a tagged procedural object, in world space.
-  function meshCloud(obj) {
+  // Surface points of a procedural group (a tagged object, or one piece of town furniture), in world space.
+  function groupCloud(g) {
+    if (g._cloud) return g._cloud;
     const out = [];
     let seed = 24680;
     const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
     const A = new T.Vector3(), B = new T.Vector3(), C = new T.Vector3(), n = new T.Vector3();
-    obj.updateMatrixWorld(true);
-    obj.traverse((o) => {
-      if (!o.isMesh || o.material.transparent || !o.geometry.attributes.position) return;
+    for (const o of g.objs) {
+      if ([o.material].flat().some((m) => m.transparent) || !o.geometry.attributes.position) continue;
       const pos = o.geometry.attributes.position, idx = o.geometry.index;
       const cnt = idx ? idx.count : pos.count;
       for (let i = 0; i < cnt; i += 3) {
@@ -121,14 +121,14 @@ window.__geo = (() => {
           out.push(A.x + (B.x - A.x) * r1 + (C.x - A.x) * r2, A.y + (B.y - A.y) * r1 + (C.y - A.y) * r2, A.z + (B.z - A.z) * r1 + (C.z - A.z) * r2);
         }
       }
-    });
-    return new Float32Array(out);
+    }
+    return (g._cloud = new Float32Array(out));
   }
 
   // ---- scanning a scene
   function scan(scene, kit, world) {
     scene.updateMatrixWorld(true);
-    const pieces = [], tagged = [];
+    const pieces = [], tagged = [], procs = new Map();
     const mk = (name, m, meta, src) => {
       const e = m.elements;
       const s = Math.hypot(e[0], e[8]);
@@ -145,12 +145,33 @@ window.__geo = (() => {
       return p;
     };
     scene.traverse((o) => {
-      if (o.userData.pieces) for (const e of o.userData.pieces) pieces.push(mk(e.name, new T.Matrix4().fromArray(e.m), e.meta, 'batch'));
+      if (o.userData.pieces) {
+        for (const e of o.userData.pieces) {
+          if (e.proc) {
+            // A procedural piece of street furniture: grouped by the object it belongs to.
+            const g = procs.get(e.meta.id) || procs.set(e.meta.id, { name: e.meta.label, soft: !!e.meta.soft, on: !!e.meta.on, x: e.meta.x, z: e.meta.z, objs: [] }).get(e.meta.id);
+            g.objs.push({ geometry: e.geometry, material: e.material, matrixWorld: new T.Matrix4().fromArray(e.m) });
+          } else pieces.push(mk(e.name, new T.Matrix4().fromArray(e.m), e.meta, 'batch'));
+        }
+      }
       const a = o.userData.audit;
       if (!a) return;
       if (a.kit) pieces.push(mk(a.kit, o.matrixWorld.clone(), a, 'live'));
       else if (a.name && !a.door) tagged.push(o);
     });
+    // Tagged objects become groups too (their meshes, flagged where they are kit props).
+    const groups = [...procs.values()];
+    for (const o of tagged) {
+      const g = { name: o.userData.audit.name, soft: !!o.userData.audit.soft, x: o.position.x, z: o.position.z, objs: [], obj: o };
+      o.updateMatrixWorld(true);
+      o.traverse((m) => {
+        if (!m.isMesh || !m.geometry.attributes.position) return;
+        let fromKit = false;
+        for (let q = m.parent; q && q !== o.parent; q = q.parent) if (q.userData.fromKit) fromKit = true;
+        g.objs.push({ geometry: m.geometry, material: m.material, matrixWorld: m.matrixWorld, fromKit });
+      });
+      groups.push(g);
+    }
     // A spatial hash over the pieces' footprints.
     const hash = new Map();
     const CELL = 3;
@@ -178,7 +199,7 @@ window.__geo = (() => {
       pieces.splice(pieces.indexOf(p), 1);
       for (const k of cellsOf(p.box)) { const l = hash.get(k); l.splice(l.indexOf(p), 1); }
     };
-    return { scene, kit, world, pieces, tagged, doors, near, add, remove, mk, ground: (x, z) => world.heightAt(x, z) };
+    return { scene, kit, world, pieces, tagged, groups, doors, near, add, remove, mk, ground: (x, z) => world.heightAt(x, z) };
   }
 
   // A piece's solid shapes in world space (from the solids table in props.js).
@@ -482,7 +503,7 @@ window.__geo = (() => {
         for (let i = 0; i < pts.length; i += 3) add(pts[i], pts[i + 1], pts[i + 2]);
       }
     }
-    for (const o of S.tagged) { const pts = meshCloud(o); for (let i = 0; i < pts.length; i += 3) add(pts[i], pts[i + 1], pts[i + 2]); }
+    for (const gr of S.groups) { const pts = groupCloud(gr); for (let i = 0; i < pts.length; i += 3) add(pts[i], pts[i + 1], pts[i + 2]); }
     for (const d of S.doors) { const pts = leafCloud(S, d); for (let i = 0; i < pts.length; i += 3) add(pts[i], pts[i + 1], pts[i + 2]); }
     return {
       has(x, z, y0, y1, r = 0.3) {
@@ -525,16 +546,20 @@ window.__geo = (() => {
       }
       if (n >= 12 && 1 - miss / n < TOL.covered) R.fail('collider', label(p), `${Math.round((miss / n) * 100)}% of its body has no collider (walk-through near ${at(mx / miss, my / miss, mz / miss)})`);
     }
-    // (b) Tagged procedural things and doors: same test on their surface points.
-    for (const o of S.tagged) {
-      const nm = o.userData.audit.name;
-      if (/^(Boulders|MineMouth)$/.test(nm)) continue; // rocks and timbers are covered by hand-placed round shapes; checked by (c)
-      const pts = meshCloud(o);
-      const ground = S.ground(o.position.x, o.position.z);
+    // (b) Procedural things (tagged objects and town furniture): same test on their surface points.
+    for (const gr of S.groups) {
+      if (gr.soft) continue; // crops and washing: walked through like grass
+      if (/^(Boulders|MineMouth)$/.test(gr.name)) continue; // rocks and timbers are covered by hand-placed round shapes; checked by (c)
+      const pts = groupCloud(gr);
+      let gmin = Infinity;
+      for (let i = 0; i < pts.length; i += 3) gmin = Math.min(gmin, pts[i + 1]);
+      if (!Number.isFinite(gmin)) continue;
+      const ground = S.ground(gr.x, gr.z);
+      const feet = Math.max(ground, Math.min(gmin, ground + 0.5));
       let n = 0, miss = 0, mx = 0, mz = 0;
       for (let i = 0; i < pts.length; i += 3) {
         const y = pts[i + 1];
-        if (y < ground + STEP || y > ground + HEAD - 0.1) continue;
+        if (y < feet + STEP || y > feet + HEAD - 0.1) continue;
         n++;
         let ok = false;
         for (const sh of cols.query(pts[i], pts[i + 2], 0.4)) {
@@ -543,7 +568,7 @@ window.__geo = (() => {
         }
         if (!ok) { miss++; mx += pts[i]; mz += pts[i + 2]; }
       }
-      if (n >= 12 && 1 - miss / n < TOL.covered) R.fail('collider', `${nm} ${at(o.position.x, o.position.y, o.position.z)}`, `${Math.round((miss / n) * 100)}% of its body has no collider (walk-through near ${at(mx / miss, ground, mz / miss)})`);
+      if (n >= 12 && 1 - miss / n < TOL.covered) R.fail('collider', `${gr.name} ${at(gr.x, ground, gr.z)}`, `${Math.round((miss / n) * 100)}% of its body has no collider (walk-through near ${at(mx / miss, ground, mz / miss)})`);
     }
     // (c) Colliders with nothing to see in them.
     const mass = massIndex(S);
@@ -719,32 +744,89 @@ window.__geo = (() => {
   }
   function checkTextures(S, R) {
     const ref = refDensity(S);
-    for (const o of S.tagged) {
-      const nm = o.userData.audit.name;
+    for (const gr of S.groups) {
+      const nm = gr.name;
       const acc = {};
-      o.updateMatrixWorld(true);
-      o.traverse((m) => {
-        if (!m.isMesh || !m.geometry.attributes.uv || m.material.transparent) return;
-        for (let q = m.parent; q && q !== o.parent; q = q.parent) if (q.userData.fromKit) return; // a kit prop: its UVs are the artist's
+      for (const m of gr.objs) {
+        if (m.fromKit || !m.geometry.attributes.uv || [m.material].flat().some((x) => x.transparent)) continue;
         for (const t of triangles(m)) {
           if (!t.mat.map) continue;
           const a = (acc[t.mat.name || t.mat.uuid] ??= { w: 0, u: 0, an: [] });
           a.w += t.wa; a.u += t.ua; a.an.push([t.aniso, t.wa]);
         }
-      });
+      }
       for (const [mat, a] of Object.entries(acc)) {
         if (a.w < 0.3) continue;
         const dens = Math.sqrt(a.u / a.w);
         a.an.sort((x, y) => x[0] - y[0]);
         let half = a.w / 2, med = 1;
         for (const [v, w] of a.an) { half -= w; if (half <= 0) { med = v; break; } }
-        const lab = `${nm} material ${mat} ${at(o.position.x, o.position.y, o.position.z)}`;
-        if (med > TOL.stretch) R.fail('texture', lab, `stretched ${f2(med)}:1 (one texture axis is ${f2(med)}x the other)`);
+        const lab = `${nm} material ${mat} ${at(gr.x, S.ground(gr.x, gr.z), gr.z)}`;
+        if (/^MI_/.test(mat) && med > TOL.stretch) R.fail('texture', lab, `stretched ${f2(med)}:1 (one texture axis is ${f2(med)}x the other)`);
         if (ref[mat]) {
           const ratio = dens / ref[mat];
           if (ratio < TOL.density[0] || ratio > TOL.density[1]) R.fail('texture', lab, `${f2(dens)} repeats per metre vs ${f2(ref[mat])} in the kit (${f2(ratio)}x: bricks ${ratio < 1 ? 'too big' : 'too small'})`);
         }
       }
+    }
+  }
+
+  // Every part of a piece of furniture must touch the rest of it (a lantern on a gate pier, a beam
+  // on its posts, a signboard on its post): loose parts hover.
+  function checkAttached(S, R) {
+    for (const gr of S.groups) {
+      if (gr.soft || gr.on || gr.objs.length < 2) continue;
+      const boxes = [];
+      for (const o of gr.objs) {
+        if ([o.material].flat().some((m) => m.transparent) || !o.geometry.attributes.position) continue;
+        o.geometry.boundingBox || o.geometry.computeBoundingBox();
+        boxes.push(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
+      }
+      const n = boxes.length;
+      if (n < 2) continue;
+      const dist = (a, b) => Math.hypot(Math.max(a.min.x - b.max.x, b.min.x - a.max.x, 0), Math.max(a.min.y - b.max.y, b.min.y - a.max.y, 0), Math.max(a.min.z - b.max.z, b.min.z - a.max.z, 0));
+      const comp = boxes.map((_, i) => i);
+      const find = (i) => (comp[i] === i ? i : (comp[i] = find(comp[i])));
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (dist(boxes[i], boxes[j]) <= 0.03) comp[find(i)] = find(j);
+      const roots = [...new Set(boxes.map((_, i) => find(i)))];
+      if (roots.length < 2) continue;
+      // Report the smallest loose component and how far it floats from the nearest other part.
+      const members = (r) => boxes.map((b, i) => [b, i]).filter(([, i]) => find(i) === r).map(([b]) => b);
+      roots.sort((a, b) => members(a).length - members(b).length);
+      const loose = members(roots[0]);
+      let gap = Infinity;
+      for (const a of loose) for (let i = 0; i < n; i++) if (find(i) !== roots[0]) gap = Math.min(gap, dist(a, boxes[i]));
+      const c = new T.Box3();
+      loose.forEach((b) => c.union(b));
+      const ctr = c.getCenter(new T.Vector3());
+      R.fail('floating', `${gr.name} ${at(gr.x, S.ground(gr.x, gr.z), gr.z)}`, `a part at ${at(ctr.x, ctr.y, ctr.z)} is not attached: ${f2(gap)} m off the rest`);
+    }
+  }
+
+  // Procedural furniture standing on the ground: the underside must meet it (no gap under a wall,
+  // a lamp or a gate pier), column by column.
+  function checkGroups(S, R) {
+    for (const gr of S.groups) {
+      if (gr.soft || gr.on) continue;
+      const pts = groupCloud(gr);
+      const cols = new Map();
+      for (let i = 0; i < pts.length; i += 3) {
+        const k = Math.floor(pts[i] / 0.5) * 100003 + Math.floor(pts[i + 2] / 0.5);
+        const c = cols.get(k);
+        if (!c || pts[i + 1] < c.y) cols.set(k, { y: pts[i + 1], x: pts[i], z: pts[i + 2] });
+      }
+      let worst = 0, wx = 0, wz = 0, wy = 0, low = Infinity, lowY = Infinity;
+      for (const c of cols.values()) lowY = Math.min(lowY, c.y);
+      for (const c of cols.values()) {
+        const gap = c.y - S.ground(c.x, c.z);
+        low = Math.min(low, gap);
+        // Only the body's underside counts (columns holding just a cap's overhang sit higher).
+        if (c.y <= lowY + 0.25 && gap > worst) { worst = gap; wx = c.x; wz = c.z; wy = c.y; }
+      }
+      // A beam or a washing line is above the ground on purpose: flag a group only when its
+      // lowest point anywhere is off the ground, or a wall has a visible gap under it.
+      if (cols.size && low > TOL.hover + 0.02) R.fail('floating', `${gr.name} ${at(gr.x, S.ground(gr.x, gr.z), gr.z)}`, `hovers ${f2(low)} m above the ground`);
+      else if (worst > 0.3 && /^(wall|hedge|wall pier)$/.test(gr.name)) R.fail('floating', `${gr.name} ${at(wx, wy, wz)}`, `a ${f2(worst)} m gap under it where the ground falls away`);
     }
   }
 
@@ -760,7 +842,7 @@ window.__geo = (() => {
     S.dungeon = !!dungeon;
     const R = makeReport();
     const checks = {
-      floating: () => { checkFloating(S, R); checkMounts(S, R); },
+      floating: () => { checkFloating(S, R); checkMounts(S, R); checkGroups(S, R); checkAttached(S, R); },
       penetration: () => checkPenetration(S, R),
       doors: () => checkDoors(S, R),
       coverage: () => { withDoors(S, false, () => checkCoverage(S, R)); withDoors(S, true, () => checkCoverage(S, R)); },
@@ -771,7 +853,7 @@ window.__geo = (() => {
     if (dungeon) delete checks.doors, delete checks.buildings, delete checks.textures;
     (name === 'all' ? Object.values(checks) : [checks[name]]).forEach((c) => c());
     return {
-      check: name, ms: Math.round(performance.now() - t0), pieces: S.pieces.length, tagged: S.tagged.length, doors: S.doors.length, colliders: world.colliders.all.length,
+      check: name, ms: Math.round(performance.now() - t0), pieces: S.pieces.length, tagged: S.groups.length, doors: S.doors.length, colliders: world.colliders.all.length,
       fails: R.fails.length, counts: R.counts, lines: R.fails.map((f) => f.line),
     };
   }
@@ -827,9 +909,10 @@ window.__geo = (() => {
     const fake = new T.Mesh(new T.PlaneGeometry(4, 0.5), brick);
     fake.userData.audit = { name: 'CanaryWall' };
     g.scene.add(fake);
-    S.tagged.push(fake);
+    S.groups.push({ name: 'CanaryWall', soft: false, x: 0, z: 0, objs: [{ geometry: fake.geometry, material: fake.material, matrixWorld: fake.matrixWorld }] });
     expect('a stretched brick texture', (R) => checkTextures(S, R), /texture CanaryWall/);
     g.scene.remove(fake);
+    S.groups.pop();
     return { lines, caught: `${caught}/${total}` };
   }
   return { run, canary, catOf, cloudOf, scan };

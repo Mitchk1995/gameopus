@@ -27,6 +27,13 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
 - `src/world/`: terrain, sky, water, forest, grass, village (modular buildings), mine,
   fishing spots and stations, colliders (2D grid of circles and boxes with height spans;
   only shapes flagged `floor` count as ground, `noCamera` shapes don't block the camera).
+- Ashford's plan is data in `src/world/ashford.js` (outline, gates, streets, square, building rows, plots,
+  props with reasons, stall/well/fire/kiln spots, where Mirelle, Garrow, Wenna and Hob stand). `village.js`
+  builds it, `townkit.js` makes the street furniture the kits lack (lamps, walls, hedges, gates, signs,
+  crops, hay), `map.js` grades and paints the ground from it. After editing `ashford.js` or `map.js` run
+  `node scripts/bake-world.mjs` (height and ground maps) and `node scripts/town-plan.mjs` (top-down plan),
+  then `python tests/playtest/play.py tests/playtest/town.py` (a `# ci` scenario: reachability, overlaps,
+  slopes, doors, NPC spots, gates and roads, orphan props).
 - `src/actors/`: player controller (states: move, act, roll, attack, block, hurt, dead),
   camera rig, characters (Quaternius modular outfits on one skeleton), NPCs, enemies,
   `aim.js` (upper-body aim layer + two-bone IK for bows and casting).
@@ -83,6 +90,12 @@ gives direct feedback on feel and looks. Delegated: git, branches, PRs and mergi
   offset backs off to centre when it would shorten the view (door jambs, corners); pull-in is
   instant, ease-out is smooth. `tests/playtest/camera.py` checks it numerically. Known gap: with a
   wall right behind the player the camera comes all the way in to the head and the hero hides.
+- Ashford v2 (done): the ring of houses is now a walled market town (see DESIGN.md, 'Ashford v2'):
+  Lake Street from the south gate to a rectangular square with the bank at its head, store, inn (with the
+  cooking hearth) and open-fronted smithy and potter around it, cottage rows, Wren and Stable lanes, a
+  chapel on a rise, three gates. Buildings still come from `buildHouse` untouched. Known gaps: all roofs
+  are the same tile colour (kit limit), no bridge over the river yet (the east road stops at the water),
+  and the hero's camera is tight in the 5 m streets.
 
 - Building quality (done): `src/world/props.js` holds the real solid shape of every prop that matters
   (`SOLIDS`: a stall is a counter block plus posts, a bench is a jumpable slab, a lantern is a lamp on
