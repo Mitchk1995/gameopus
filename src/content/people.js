@@ -282,11 +282,10 @@ Crafting: dig clay at the quarry, soften it with water from the well, shape pots
 
   {
     id: 'mirelle', name: 'Mirelle', role: 'mage',
-    // A travelling mage: deep violet, long black hair, a pale face, a tall pointed hat.
+    // A travelling mage: deep violet, long black hair, a pale face. (No pointed hat: that's a cartoon witch.)
     look: {
       outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female', hairColor: 'black', skin: 'pale',
       dye: { torso: 0x5a3a9a, arms: 0x6a4aa8, legs: 0x2a2038, feet: 0x2a2038 },
-      gear: [{ kind: 'hat', style: 'pointed', color: 0x3a2a6a, band: 0xc9b070 }],
     },
     at: PEOPLE_AT.mirelle,
     persona: `Mirelle is a travelling mage who has set up a rune stall on the west side of the market aisle in Ashford's square, selling runes and staves. Quick-witted, theatrical, delighted by anyone curious about magic, and a little vain about her own spellwork.
