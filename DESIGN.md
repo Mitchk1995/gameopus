@@ -77,12 +77,29 @@ the quest data).
 ## Art sources (all free for any use)
 
 - **Quaternius (CC0):** Universal Base Characters, Modular Character Outfits (Fantasy),
-  Universal Animation Library 1 and 2 (86 clips on one rig), Medieval Village MegaKit,
-  Fantasy Props MegaKit, Bestiary Dungeon Monsters.
+  Universal Animation Library 1 and 2 (the free Standard sets: 86 clips on one rig, 56 shipped),
+  Medieval Village MegaKit, Fantasy Props MegaKit, Bestiary Dungeon Monsters.
+- **Composed clips (CC0, built here):** the sword guard (`Sword_Guard_Loop`) and a blow landing on
+  it (`Sword_Guard_Hit`) are assembled from pieces of Quaternius clips by `scripts/compose-clips.mjs`
+  into `anims/combat.glb` (the library has no holdable sword guard).
 - **Poly Haven (CC0):** terrain and building textures, HDRI skies, rocks.
 - **ez-tree (MIT):** procedural trees with real bark and leaf textures.
 
-`scripts/fetch-assets.mjs` downloads and optimizes them into `public/assets/`.
+`scripts/fetch-assets.mjs` downloads and optimizes them into `public/assets/`;
+`public/assets/CREDITS.md` lists them per folder.
+
+**Animation sources checked (Sept 2026)**, for sword-and-shield combat. The repo is public, so only
+licences that allow redistribution qualify.
+
+| Source | Licence, access | Rig | Verdict |
+|---|---|---|---|
+| Quaternius UAL 1 + 2, Standard | CC0, free, no login | ours | In use. The free set is exhausted for sword work: 3 light slashes (+ recoveries), a heavy, a spinning heavy combo, a dash, one block, shield idle/break/bash, one roll, 3 hit reactions. No strafes, dodges, parry or riposte. |
+| Quaternius UAL1 Pro ($9.99) / UAL2 Source ($14.99) | CC0, paid on itch | ours, no retargeting | Best upgrade: side dodges, 8-way jog and walk strafes, hit reactions (shoulder L/R, stomach), sword draw and sheathe, newer Sword_Light combos with recoveries, sword uppercut and ground pound. Needs the owner to buy. |
+| KayKit Character Animations 1.1 | CC0, free, no login | KayKit Rig_Medium, retargeted by `scripts/retarget.mjs` | Not shipped. Retargets cleanly (1H attacks, block/block hit, 4 quick dodges, strafe runs, hits), but made for chunky toy proportions: arms held wide and a stiff upright body on our people. `fetch-assets.mjs kaykit` rebuilds it for the lab. |
+| Mixamo "Pro Sword and Shield Pack" | free with an Adobe account; may ship inside a game, not as raw files | Mixamo, needs retargeting | Best free-with-account set (slashes, attacks, block and block idle, impacts, strafes, draw/sheathe). Owner's call. |
+| Kevin Iglesias, Human Melee Animations FREE | pay-what-you-want; licence not stated | Unity humanoid | Out (unclear licence; one attack per style, no block, parry or dodge in the free part). |
+| MoCap Online, T.C. Sword free pack | free; MoCap Online EULA (not open) | UE/FBX mocap | Out unless its EULA allows raw files in a public repo. |
+| CMU mocap (RancidMilk conversions), Bandai Namco dataset | free / CC BY-NC-ND | various | Out: no sword combat, or no derivatives allowed. |
 
 ## Roadmap
 

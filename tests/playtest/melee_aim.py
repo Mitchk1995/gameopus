@@ -229,7 +229,8 @@ STEPS = [
       if (cur && cur.hitAt !== null && P.state === 'attack' && P.move === cur.move) cur.side = side();
       F.stamina = 100;
     }
-    const order = swings.slice(0, 7).map((s) => s.clip.replace('Sword_Regular_', '').replace('Sword_Attack', 'H')).join('');
+    // The finisher (C) reuses the heavy blow's clip, so name the moves by kind, not by clip.
+    const order = swings.slice(0, 7).map((s) => (s.move.kind === 'finisher' ? 'C' : s.move.kind === 'heavy' ? 'H' : s.clip.replace('Sword_Regular_', ''))).join('');
     check('chain order', order === 'ABCABCA', order + ' (each press cuts in as soon as the last blow has landed)');
     const gaps = swings.slice(1, 7).map((s, i) => s.start - swings[i].start);
     check('chain window is short', gaps.every((d) => d < 0.42), 'gaps ' + gaps.map((d) => (d * 1000).toFixed(0)).join(', ') + ' ms');

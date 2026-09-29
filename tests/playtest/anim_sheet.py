@@ -13,6 +13,14 @@ dt = float(os.environ.get('LAB_DT', '0.05'))
 tag = os.environ.get('LAB_TAG', 'lab')
 PER = 18
 STEPS = [{'eval': '@anim_sheet.js'}]
+# Lab-only files (e.g. lab/kaykit.glb from `node scripts/fetch-assets.mjs kaykit`) live in
+# .asset-cache/lab/ and are copied next to the build for the page to load.
+import shutil
+for p in loads:   # paths are relative to the repository root, where this is run from
+  src = os.path.join('.asset-cache', p)
+  if p.startswith('lab/') and os.path.exists(src):
+    os.makedirs(os.path.join('dist', 'assets', 'lab'), exist_ok=True)
+    shutil.copy(src, os.path.join('dist', 'assets', p))
 for p in loads:
   STEPS.append({'eval': f"__lab.load({json.dumps(p)}).then((n) => n.join(' | '))"})
 for c in clips:

@@ -14,7 +14,7 @@ import * as THREE from 'three';
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
 
 // Value of a glTF animation channel at time t (linear, slerp for rotations).
-function sampler(ch) {
+export function sampler(ch) {
   const s = ch.getSampler();
   const times = s.getInput().getArray(), vals = s.getOutput().getArray();
   const n = ch.getTargetPath() === 'rotation' ? 4 : 3;

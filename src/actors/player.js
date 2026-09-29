@@ -239,12 +239,20 @@ export class Player {
     return { t, afterHit: this.hitDone, canChain: this.hitDone && t >= this.move.hit + (this.move.next ?? 0.1) };
   }
 
-  startBlock(shield) {
+  // The guard: blade held upright in front, left forearm raised (anims/combat.glb, built by
+  // scripts/compose-clips.mjs), with or without a shield. A blow on it jolts it back briefly.
+  startBlock() {
     if (this.state === 'act') this.stopAction();
     this.state = 'block';
     this.stateTime = 0;
-    this.blockClip = shield ? 'Idle_Shield_Loop' : 'Sword_Block';
-    this.char.play(this.blockClip, { loop: !!shield, speed: shield ? 1 : 1.6, fade: 0.08, restart: true });
+    this.guardJolt = 0;
+    this.char.play('Sword_Guard_Loop', { fade: 0.08, restart: true });
+  }
+
+  // A blow landed on the guard (not a parry): the guard rocks back and settles.
+  blockHit() {
+    if (this.state !== 'block') return;
+    this.guardJolt = this.char.play('Sword_Guard_Hit', { loop: false, fade: 0.04, restart: true }).getClip().duration;
   }
 
   endBlock() {
@@ -371,10 +379,7 @@ export class Player {
       const k = 1 - Math.exp(-14 * dt);
       this.vel.x += (wish.x * 1.4 - this.vel.x) * k;
       this.vel.z += (wish.z * 1.4 - this.vel.z) * k;
-      if (this.blockClip === 'Sword_Block') {
-        const a = this.char.current;
-        if (a && a.time > 0.32) a.paused = true;
-      }
+      if (this.guardJolt > 0 && (this.guardJolt -= dt) <= 0) this.char.play('Sword_Guard_Loop', { fade: 0.1 });
     } else if (this.state === 'hurt' && this.knock) {
       const step = Math.min(this.knock.left, dt * 4);
       this.pos.addScaledVector(this.knock.dir, step);
