@@ -7,7 +7,94 @@
 #   - every NPC stands somewhere walkable, near their work (or walks a clear route)
 #   - the three gates are open and the three roads connect to the town
 #   - every prop has a reason: it stands within a few metres of a building, street, fence, wall or stall
+# The grounds checks (the recurring mistakes in docs/critic/town-2026-09-29.md, helpers in town_helpers.js):
+#   crossing  plots well inside the wall and hedge; no prop in the wall, a fence line or a house; signposts
+#             stand free of walls, lanterns and other signs
+#   sealed    80% of every plot reachable on foot, and its gate from both sides; a plot side within 2 m
+#             of a house needs a door into the plot (no slots behind houses)
+#   barrier   1.2 x 2 m straight out of every door is clear and reaches a street, square, yard or plot;
+#             a wall, hedge or fence within 4 m in front has an opening near the door's axis; gateways
+#             stay 90% of their width clear
+#   grass     no grass in the beds (read from the baked ground map the grass shader reads)
+#   promised  what the lore and the design promise (gates, well, bridge, the dock's crates and barrels,
+#             the hearth) exists and can be reached; a walk east from x 70 crosses the bridge
+#   dead      (a warning) big empty places inside the wall that nothing uses
+# A canary step breaks a copy of the plan for each of these and requires the check to notice.
 # Prints "FAIL ..." lines for misses (play.py exits non-zero on those) and a summary line.
+GROUNDS = r"""(() => {
+  const T = __town, g = __game, V = g.world.village, L = V.layout, w = g.world, out = {};
+  const lines = [];
+  // crossing: plots inside the boundary, props clear of walls, fences and houses (radius per kind of prop).
+  const R = { lantern: 0.2, brazier: 0.36, well: 1.12, cross: 2.05, treeBench: 1.2, handcart: 0.6, basket: 0.25, sign: 0.15, trough: 0.35, pump: 0.3, bale: 0.25, woodpile: 0.36, washtub: 0.42, shed: 0.8, compost: 0.6, skeps: 0.5, notice: 0.2, pole: 0.1 };
+  const radiusOf = (q) => (q.type === 'haystack' ? q.r * 1.07 : q.type === 'kit' ? q.r ?? null : R[q.type] ?? null);
+  const props = L.PROPS.flatMap((q) => (q.type === 'washing' ? [{ ...q, type: 'pole' }, { ...q, type: 'pole', x: q.to[0], z: q.to[1] }] : [q]));
+  lines.push(...T.planCrossings({ ...L, PROPS: props }, radiusOf));
+  for (const s of L.PROPS.filter((q) => q.type === 'sign')) {
+    const lab = 'signpost@' + s.x.toFixed(1) + ',' + s.z.toFixed(1);
+    for (const b of L.BUILDINGS) { const d = T.polyDist(s.x, s.z, L.footprint(b)); if (d < 1.5) lines.push('FAIL crossing: ' + lab + ' stands ' + d.toFixed(2) + ' m from ' + T.name(b) + ' (want 1.5, so it can be read)'); }
+    for (const q of L.PROPS) if (q !== s && (q.type === 'sign' || q.type === 'lantern') && Math.hypot(q.x - s.x, q.z - s.z) < 1.5) lines.push('FAIL crossing: ' + lab + ' stands ' + Math.hypot(q.x - s.x, q.z - s.z).toFixed(2) + ' m from a ' + q.type);
+  }
+  // sealed, barrier, grass.
+  lines.push(...T.sealedPlaces(L, __fine));
+  lines.push(...T.barriers(L, w, T.lines(L)));
+  const read = T.groundReader(w);
+  lines.push(...T.grassInBeds(L, read));
+  // promised: each thing on the plan's manifest exists (as a built piece near where it should be) and can be reached.
+  const pieces = [];
+  g.scene.traverse((o) => { for (const e of o.userData.pieces || []) pieces.push(e.proc ? { label: e.meta.label, x: e.meta.x, z: e.meta.z } : { kit: e.name, x: e.m[12], z: e.m[14] }); });
+  const npc = (id) => g.npcs.find((n) => n.def.id === id)?.pos;
+  for (const p of L.PROMISED) {
+    let at = p.at || (p.near ? npc(p.near) : null);
+    let found = pieces.filter((q) => (p.label ? (p.label instanceof RegExp ? p.label.test(q.label || '') : q.label === p.label) : p.kit ? p.kit.test(q.kit || '') : false) && (!at || Math.hypot(q.x - at.x, q.z - at.z) < (p.r || 3)));
+    if (p.station) found = g.resources.items.filter((o) => o.station === p.station).map((o) => ({ x: o.x, z: o.z }));
+    const tag = p.owner ? 'WARN (for the ' + p.owner + ' builder)' : 'FAIL';
+    if (found.length < (p.count || 1)) { lines.push(tag + ' promised: ' + p.id + ' is missing (' + found.length + ' of ' + (p.count || 1) + ' found; ' + p.why + ')'); continue; }
+    for (const f of found.slice(0, p.count || 1)) {
+      const inTown = f.x > -72 && f.x < 54 && f.z > -44 && f.z < 82;
+      const ok = inTown ? __fine.reach(f.x, f.z, (p.reach || 2.5)) : __valley.reach(f.x, f.z, (p.reach || 2.5) + 2);
+      if (!ok) lines.push(tag + ' promised: ' + p.id + ' at ' + f.x.toFixed(0) + ',' + f.z.toFixed(0) + ' cannot be reached on foot');
+    }
+  }
+  // dead: connected places over 60 m2 inside the wall more than 6 m from anything that is built or used.
+  const regions = T.deadSpace(L, __fine);
+  out.deadSpace = regions.length ? regions : 'none over 60 m2';
+  out.warnings = lines.filter((l) => /^WARN/.test(l));
+  for (const l of lines) if (/^FAIL/.test(l) && T.fails.length < 120) T.fails.push(l);
+  out.fails = T.fails.length;
+  return out;
+})()"""
+
+CANARY = r"""(() => {
+  const T = __town, g = __game, V = g.world.village, L = V.layout, w = g.world, miss = [];
+  const expect = (what, lines, pattern) => { if (!lines.some((l) => pattern.test(l))) miss.push('FAIL canary: the grounds checks missed ' + what); };
+  // crossing: the old quarry garden through the north-west wall, and a lantern standing in the hedge.
+  expect('a plot through the town wall', T.planCrossings({ ...L, PLOTS: [...L.PLOTS, { id: 'canary plot', x0: -50, z0: -22, x1: -38, z1: -8, crop: 'beans', gate: 'e' }] }, () => null), /canary plot/);
+  expect('a lantern in the hedge', T.planCrossings({ ...L, PLOTS: [], PROPS: [{ type: 'lantern', x: -54, z: 20 }] }, () => 0.2), /lantern@-54\.0,20\.0/);
+  // sealed: a garden whose gate opens against the back of a house, and one 1 m behind a house with no door.
+  expect('a garden gated against a house wall', T.sealedPlaces({ ...L, PLOTS: [{ id: 'canary garden', x0: -49, z0: 33, x1: -43.5, z1: 37, crop: 'lawn', gate: 's' }] }, __fine), /canary garden/);
+  expect('a slot behind a house', T.sealedPlaces({ ...L, PLOTS: [{ id: 'canary slot', x0: -24, z0: 28, x1: -19.5, z1: 33, crop: 'lawn', gate: 'w' }] }, __fine), /canary slot.*no door/);
+  // barrier: a fence across the bank's doorway, and a gateway half blocked.
+  {
+    const y = w.heightAt(-9, 4.5);
+    const sh = w.colliders.addBox(-9, 4.5, 2.5, 0.09, 0, y - 0.5, y + 0.85);
+    expect('a fence across a doorway', T.barriers({ ...L, GATES: [], GAPS: [] }, w, [[[-11.5, 4.5], [-6.5, 4.5], 'canary fence']]), /canary fence/);
+    w.colliders.remove(sh);
+    const sy = w.heightAt(-6, 64);
+    const sh2 = w.colliders.addBox(-6.2, 64, 0.6, 0.6, 0, sy - 0.5, sy + 2);
+    expect('a gateway half blocked', T.barriers({ ...L, BUILDINGS: [] }, w, []), /the south gate is only/);
+    w.colliders.remove(sh2);
+  }
+  // dead: without the orchard (its fence, its trees and what is in it) the old paddock is dead ground.
+  {
+    const inOrchard = (x, z) => x > 14 && x < 34 && z > 29 && z < 43;
+    const plan = { ...L, PLOTS: L.PLOTS.filter((p) => p.id !== 'orchard'), PROPS: L.PROPS.filter((q) => !inOrchard(q.x, q.z)), TOWN_TREES: (L.TOWN_TREES || []).filter((t) => !inOrchard(t.x, t.z)) };
+    expect('dead space where the orchard was', T.deadSpace(plan, __fine), /dead space: about \d+ m2 around (1[89]|2\d|3[0-3]),(29|3\d|4[0-3])/);
+  }
+  // grass: a bed laid out on the meadow outside the wall.
+  expect('grass growing in a bed', T.grassInBeds({ ...L, PLOTS: [{ id: 'canary bed', x0: 44, z0: 20, x1: 50, z1: 26, crop: 'cabbage' }] }, T.groundReader(w)), /canary bed/);
+  return { failLines: miss.join(' || ') || 'none', canaries: 8 - miss.length + '/8' };
+})()"""
+
 STEPS = [
   {'eval': '@town_helpers.js'},
   # --- the plan: overlaps, terrain, doors, props
@@ -155,6 +242,7 @@ STEPS = [
     // Coarse flood over the whole valley from the spawn: the far ends of the roads and the places on them.
     const S = V.mapData.SPAWN;
     const world = T.flood(-330, -330, 330, 300, 1.5, S.x, S.z);
+    window.__valley = world;
     const reachFar = (label, x, z, r = 4) => { if (!world.reach(x, z, r)) T.fail(label + ' cannot be reached on foot from the spawn (' + x.toFixed(0) + ',' + z.toFixed(0) + ')'); };
     reachFar('the quarry road end', roads[0].pts.at(-1)[0], roads[0].pts.at(-1)[1]);
     reachFar('the mine mouth', V.mapData.MINE_ENTRANCE.x, V.mapData.MINE_ENTRANCE.z, 5);
@@ -165,6 +253,12 @@ STEPS = [
     reachFar('a mining rock', rock.x, rock.z, 4);
     const spot = g.resources.spots.find((s) => s.method === 'net');
     reachFar('the net fishing spot', spot.x, spot.z, 8);
+    // The Ledger quest's goals out east, walked from the east gate: the wrecked cart and the bandit captain.
+    const east = L.GATES.find((x) => x.id === 'east');
+    const fromGate = T.flood(-330, -330, 330, 300, 1.5, east.x + 3, east.z);
+    if (g.quests.wreckAt && !fromGate.reach(g.quests.wreckAt.x, g.quests.wreckAt.z, 4)) T.fail('promised: the wrecked cart (Ledger step 2) cannot be reached on foot from the east gate');
+    const camp = V.mapData.BANDIT_CAMP;
+    if (camp && !fromGate.reach(camp.x, camp.z, 10)) T.fail('promised: the bandit camp (Ledger step 3) cannot be reached on foot from the east gate');
     out.fails = T.fails.length;
     out.valleyCells = world.count;
     return out;
@@ -208,5 +302,15 @@ STEPS = [
     for (const id of ['aldwyn', 'maren', 'brom', 'tam', 'ysolde', 'mirelle', 'garrow', 'bess', 'wenna', 'hob']) if (!names.includes(id)) T.fail('missing NPC ' + id);
     return { npcs: names.length, fails: T.fails.length };
   })()"""},
+  # --- the grounds (checks from the critic's pass, docs/critic/town-2026-09-29.md "Recurring mistakes")
+  {'eval': GROUNDS},
   {'eval': "(() => { const f = __town.fails; return f.length ? f.join('\\n') : 'town ok'; })()"},
+  # --- canary: each grounds check must catch a deliberately broken copy of the plan
+  {'eval': CANARY},
+  # --- promised but missing: walk east over the bridge the lore promises
+  {'eval': """(() => { const g = __game; g.player.spawn(70, 1, Math.PI / 2); g.rig.yaw = g.player.yaw + Math.PI; g.rig.pitch = -0.1; g.sim(0.3); return { start: [+g.player.pos.x.toFixed(1), +g.player.pos.z.toFixed(1)] }; })()"""},
+  {'key': 'KeyW'},
+  {'eval': "__game.sim(10)"},
+  {'up': 'KeyW'},
+  {'eval': """(() => { const P = __game.player.pos; return { end: [+P.x.toFixed(1), +P.z.toFixed(1)], failLines: P.x > 100 ? 'none' : 'FAIL promised: walking east from x 70 for 10 s ends at x ' + P.x.toFixed(1) + ' (the bridge should carry you past x 100)' }; })()"""},
 ]

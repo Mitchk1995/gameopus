@@ -103,7 +103,9 @@ function boundary(sk, f) {
       const ux = (pb[0] - pa[0]) / len, uz = (pb[1] - pa[1]) / len;
       const mid = len / 2 + gT * len * (name === 'n' || name === 'e' ? 1 : -1);
       const g0 = mid - GATE / 2, g1 = mid + GATE / 2;
-      runs.push([pa, [pa[0] + ux * g0, pa[1] + uz * g0]], [[pa[0] + ux * g1, pa[1] + uz * g1], pb]);
+      // A hedge stops short of the gate posts (its leaves round over its end), so no post stands buried in it.
+      const back = f.edge === 'hedge' ? 0.45 : 0;
+      runs.push([pa, [pa[0] + ux * (g0 - back), pa[1] + uz * (g0 - back)]], [[pa[0] + ux * (g1 + back), pa[1] + uz * (g1 + back)], pb]);
       gate(sk, pa[0] + ux * g0, pa[1] + uz * g0, pa[0] + ux * g1, pa[1] + uz * g1, f);
     } else runs.push([pa, pb]);
     for (const [p, q] of runs) {
@@ -226,8 +228,8 @@ function gate(sk, x0, z0, x1, z1, f) {
   const post = (px, pz, label) => {
     const y = sk.ground(px, pz);
     sk.begin(label, px, pz);
-    sk.put(sk.box(0.22, 1.75, 0.22), m.wood, px, y - 0.4, pz, rot);
-    sk.put(sk.box(0.28, 0.06, 0.28), m.wood, px, y + 1.35, pz, rot);
+    sk.put(sk.timberBox(0.22, 1.75, 0.22, 'y'), m.timber, px, y - 0.4, pz, rot);
+    sk.put(sk.timberBox(0.28, 0.06, 0.28, 'x'), m.timber, px, y + 1.35, pz, rot);
     sk.solidCircle(px, pz, 0.15, y, 1.4);
   };
   post(x1, z1, 'gate post');
@@ -239,10 +241,11 @@ function gate(sk, x0, z0, x1, z1, f) {
   dx /= dl; dz /= dl;
   const sw = Math.atan2(-dz, dx), L = w - 0.35;
   const lx = x0 + dx * (0.13 + L / 2), lz = z0 + dz * (0.13 + L / 2);
-  for (let r = 0; r < 5; r++) sk.put(sk.box(L, 0.08, 0.05), m.wood, lx, hy + 0.22 + r * 0.22, lz, sw);
-  for (const e of [-0.5, 0.5]) sk.put(sk.box(0.09, 1.05, 0.07), m.wood, lx + dx * e * L, hy + 0.12, lz + dz * e * L, sw);
+  // Sawn timber with its grain along each bar (the kit's wood sheet has a metal strip that showed on thin bars).
+  for (let r = 0; r < 5; r++) sk.put(sk.timberBox(L, 0.08, 0.05, 'x'), m.timber, lx, hy + 0.22 + r * 0.22, lz, sw);
+  for (const e of [-0.5, 0.5]) sk.put(sk.timberBox(0.09, 1.05, 0.07, 'y'), m.timber, lx + dx * e * L, hy + 0.12, lz + dz * e * L, sw);
   // The brace, corner to corner.
-  sk.put(sk.box(Math.hypot(L, 0.85), 0.07, 0.045), m.wood, lx, hy + 0.6, lz, sw, 1, 1, 1, 0, Math.atan2(0.85, L));
+  sk.put(sk.timberBox(Math.hypot(L, 0.85), 0.07, 0.045, 'x'), m.timber, lx, hy + 0.6, lz, sw, 1, 1, 1, 0, Math.atan2(0.85, L));
   const sh = sk.colliders.addBox(lx, lz, L / 2 + 0.05, 0.08, sw, hy, hy + 1.15);
   sh.noCamera = true;
 }

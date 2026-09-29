@@ -895,7 +895,7 @@ function keeperHut(sk, tf, tx, tz, yaw, R0, xm) {
 }
 
 // ------------------------------------------------------------------ dock and jetty lanterns
-// Iron lamp posts like the town's: two at the head of the dock, and three along the jetty on piles.
+// Lantern posts like the town's: two at the head of the dock, and three along the jetty on piles.
 function dockLamps(sk) {
   const D = LANDMARKS.dock;
   // The jetty runs from the dock toward the middle of the lake (see resources.js).
@@ -917,17 +917,11 @@ function dockLamps(sk) {
 
 // A lamp standard on a timber pile beside the jetty deck.
 function pileLamp(sk, x, z, deck) {
-  const { m } = sk;
   const bed = sk.ground(x, z) - 0.3;
   const top = deck + 0.2;
   sk.begin('jetty lamp', x, z);
   log(sk, [x, bed, z], [x, top, z], 0.15, 0.13, sk.xm.barkDark, 8);
-  const y = top;
-  sk.put(sk.cyl(0.11, 0.14, 0.3, 8), m.iron, x, y, z);
-  sk.put(sk.cyl(0.055, 0.075, 2.5, 8), m.iron, x, y + 0.28, z);
-  sk.put(sk.box(0.34, 0.06, 0.34), m.iron, x, y + 2.75, z);
-  sk.put(sk.box(0.26, 0.42, 0.26), m.glass, x, y + 2.8, z);
-  sk.put(sk.cyl(0.005, 0.25, 0.22, 4), m.iron, x, y + 3.22, z, Math.PI / 4);
-  for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) sk.put(sk.box(0.03, 0.42, 0.03), m.iron, x + dx * 0.14, y + 2.8, z + dz * 0.14);
-  sk.colliders.addCircle(x, z, 0.17, bed, y + 3.3);
+  // A lantern post of oak standing on the pile (the town's kind: no cast-iron street lamps here).
+  sk.lamp(x, z, top, 0, { on: true });
+  sk.colliders.addCircle(x, z, 0.17, bed, top + 3.1);
 }

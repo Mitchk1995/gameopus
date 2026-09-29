@@ -101,7 +101,8 @@ export class Batcher {
     // Decorative bits (mugs, bottles, lanterns, candles) are drawn but never hold the camera
     // off, and neither do door leaves: you walk through them, so the camera does too.
     const box = (root.userData.box ??= new THREE.Box3().setFromObject(root));
-    this.tiny = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z) < TINY || PASSABLE.test(root.name);
+    // Soft things you walk through (crops, washing) don't hold the camera off either.
+    this.tiny = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z) < TINY || PASSABLE.test(root.name) || !!meta?.soft;
     root.traverse((o) => {
       if (!o.isMesh) return;
       const m = new THREE.Matrix4().multiplyMatrices(matrix, o.matrixWorld);

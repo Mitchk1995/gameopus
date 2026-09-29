@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { Kit, Batcher } from './kit.js';
 import { buildHouse, rng, STOREY } from './buildings.js';
-import { VILLAGE, ROADS, SPAWN, MINE_ENTRANCE } from './map.js';
+import { VILLAGE, ROADS, SPAWN, MINE_ENTRANCE, BANDIT_CAMP, BRIDGE } from './map.js';
 import * as A from './ashford.js';
-import { TownKit, boardTexture, findMaterial } from './townkit.js';
-import { placeProp, tag, fitUV } from './props.js';
+import { TownKit, boardTexture, texturedMaterial } from './townkit.js';
+import { placeProp } from './props.js';
 import { Door } from './doors.js';
+import { wallTower } from './townwall.js';
+import * as G from './grounds.js';
 
 // Ashford: a market town on a level terrace. Streets, the square, the rows of houses, the gates
 // and the wall are all read from ashford.js (see DESIGN.md, "Ashford v2"). This file turns that
@@ -21,7 +23,7 @@ export class Village {
     this.interactables = [];
     this.doors = [];
     this.layout = A;
-    this.mapData = { ROADS, SPAWN, MINE_ENTRANCE };
+    this.mapData = { ROADS, SPAWN, MINE_ENTRANCE, BANDIT_CAMP, BRIDGE };
   }
 
   async load() {
@@ -29,6 +31,7 @@ export class Village {
     const batch = new Batcher(this.kit);
     const y = VILLAGE.y;
     this.tk = new TownKit(this.kit, batch, this.world.colliders, this.world);
+    await this.tk.extras(this.assets);
     for (const b of A.BUILDINGS) {
       const by = y + (b.rise || 0);
       const spec = { ...b, seed: 101 + b.key * 17 };
@@ -75,9 +78,10 @@ export class Village {
   }
 
   // Wall lanterns beside every door: both sides of the public doors, one side of a house's (the
-  // side with wall to spare). Each is screwed flush to the wall with the lamp hanging at chest
-  // height, where you can walk into it, so it has a collider.
+  // side with wall to spare). Each is screwed flush to the wall with the lamp's underside 2.2 m up,
+  // over a head (the grounds' headroom check; the building rules own these lanterns and may move them).
   #lanterns(batch, y) {
+    const lift = 2.2 - this.kit.bounds('Lantern_Wall').min.y;
     for (const p of [this.places.bank, this.places.store, this.places.inn, ...this.places.houses]) {
       const door = p.openings[0];
       if (!door) continue;
@@ -86,32 +90,22 @@ export class Village {
       for (const s of sides) {
         if (!room(s)) continue;
         const q = this.at(p, door.lx + s * 1.0, p.d / 2 + 0.04);
-        this.#prop(batch, 'Lantern_Wall', q.x, q.z, p.rot, { y: p.y + 0.9 });
+        this.#prop(batch, 'Lantern_Wall', q.x, q.z, p.rot, { y: p.y + lift });
       }
     }
   }
 
-  // The wall, hedge and gates around the town.
+  // The town wall with its towers and gatehouses, the hedge with its field gates.
   #edge(batch) {
     const tk = this.tk;
     for (const w of A.WALLS) {
-      if (w.kind === 'stone') tk.stoneWall(w.a, w.b);
-      else tk.hedge(w.a, w.b, { height: 1.75, thick: 1.25 });
+      if (w.kind === 'stone') tk.townWall(w.a, w.b, w.out);
+      else tk.hedge(w.a, w.b, { height: 1.85, thick: A.THICK.hedge, ends: w.open, seed: w.edge * 17 + Math.round(Math.abs(w.a[0] * 3 + w.a[1])) });
     }
+    for (const t of A.TOWERS) wallTower(tk, t.x, t.z, { r: t.r });
     const sign = boardTexture('ASHFORD', { w: 512, h: 128 });
-    for (const g of A.GATES) tk.gate(g, sign);
-    // Small gaps get a pair of timber posts.
-    for (const g of A.GAPS) {
-      const ox = -g.out[1], oz = g.out[0];
-      for (const s of [-1, 1]) {
-        const px = g.x + ox * (g.width / 2 + 0.15) * s, pz = g.z + oz * (g.width / 2 + 0.15) * s;
-        const gy = this.world.heightAt(px, pz);
-        tk.begin('gap post', px, pz);
-        tk.put(tk.box(0.3, 1.9, 0.3), tk.m.wood, px, gy, pz, 0);
-        tk.put(tk.cyl(0.005, 0.28, 0.25, 4), tk.m.wood, px, gy + 1.9, pz, Math.PI / 4);
-        tk.solidCircle(px, pz, 0.2, gy, 1.9);
-      }
-    }
+    this.gatehouses = A.GATES.map((g) => ({ id: g.id, ...tk.gate({ ...g, out: g.wallOut }, sign) }));
+    for (const g of A.GAPS) tk.fieldGate({ ...g, out: g.wallOut });
     // The churchyard wall: west and east sides and the south side either side of the lych-gate.
     const cy = A.YARDS.find((r) => r.id === 'churchyard');
     tk.stoneWall([cy.x0, cy.z0], [cy.x0, cy.z1], null, { height: 1.1, thick: 0.5 });
@@ -120,81 +114,128 @@ export class Village {
     tk.stoneWall([1.8 + 1.9, cy.z1], [cy.x1, cy.z1], null, { height: 1.1, thick: 0.5 });
   }
 
-  // Gardens, allotments and paddocks: a fence with a gap, and what grows inside.
+  // Gardens, allotments, the orchard and the drying green: a fence with a gate (a wicket standing
+  // open), and what grows inside. A side formed by a house's back wall gets no fence: its ends stop a
+  // hand short of the wall.
   #plots(batch) {
     const tk = this.tk;
     for (const p of A.PLOTS) {
+      const back = p.back;
+      const inset = (side) => (side === back ? null : side);
       const sides = {
         n: [[p.x0, p.z0], [p.x1, p.z0]],
         s: [[p.x0, p.z1], [p.x1, p.z1]],
         w: [[p.x0, p.z0], [p.x0, p.z1]],
         e: [[p.x1, p.z0], [p.x1, p.z1]],
       };
+      // Fences running up to the house stop 0.15 m short of its wall.
+      if (back === 's') { sides.w[1] = [p.x0, p.z1 - 0.15]; sides.e[1] = [p.x1, p.z1 - 0.15]; }
+      if (back === 'n') { sides.w[0] = [p.x0, p.z0 + 0.15]; sides.e[0] = [p.x1, p.z0 + 0.15]; }
+      const cx = (p.x0 + p.x1) / 2, cz = (p.z0 + p.z1) / 2;
       for (const [k, [a, b]] of Object.entries(sides)) {
-        const pieces = k === p.gate ? gapped(a, b, 1.1) : [[a, b]];
-        for (const [c, d] of pieces) {
-          if (p.fence === 'hedge') tk.hedge(c, d, { height: 1.4, thick: 0.9 });
-          else if (p.fence === 'stone') tk.stoneWall(c, d, null, { height: 0.9, thick: 0.45 });
-          else tk.fence(c, d);
-        }
+        if (!inset(k)) continue;
+        if (k !== p.gate) { tk.fence(a, b, undefined, 'plot:' + p.id); continue; }
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
+        const mid = len * (p.gateAt ?? 0.5), half = 0.62;
+        const g0 = [a[0] + ux * (mid - half), a[1] + uz * (mid - half)], g1 = [a[0] + ux * (mid + half), a[1] + uz * (mid + half)];
+        tk.fence(a, g0, undefined, 'plot:' + p.id);
+        tk.fence(g1, b, undefined, 'plot:' + p.id);
+        // The wicket opens into the plot.
+        const ix = cx - (g0[0] + g1[0]) / 2, iz = cz - (g0[1] + g1[1]) / 2, il = Math.hypot(ix, iz);
+        const into = Math.abs(ux) > Math.abs(uz) ? [0, Math.sign(iz)] : [Math.sign(ix), 0];
+        tk.wicket(g0, g1, il ? into : [0, 1], 'plot:' + p.id);
       }
-      if (p.crop !== 'pen' && p.crop !== 'none') tk.crops(p, p.crop);
+      if (A.BEDS.has(p.crop)) tk.crops(p, p.crop);
     }
   }
 
-  // Everything with a reason: lamps, stalls, the well, benches, barrels, hay, graves.
+  // Everything with a reason: lanterns, stalls, the well and the cross, benches, barrels, hay, graves.
   #props(batch, y) {
     const tk = this.tk;
-    const rnd = rng(77);
-    const signTex = new Map();
+    const apples = new THREE.MeshStandardMaterial({ color: 0xa8321f, roughness: 0.55 });
+    const greens = new THREE.MeshStandardMaterial({ color: 0x5f8a3c, roughness: 0.8 });
+    const noticeMat = texturedMaterial(G.noticeTexture(), 0.9);
+    noticeMat.alphaTest = 0.5;
+    noticeMat.side = THREE.DoubleSide;
+    noticeMat.userData.atlas = true;
     for (const p of A.PROPS) {
       const h = this.world.heightAt(p.x, p.z);
       switch (p.type) {
         case 'kit':
           if (!p.skip) this.#prop(batch, p.name, p.x, p.z, p.rot, { r: p.r || null });
           break;
-        case 'lamp':
-          tk.lamp(p.x, p.z, h);
+        case 'lantern':
+          tk.lamp(p.x, p.z, h, p.rot);
+          break;
+        case 'brazier':
+          (this.braziers ??= []).push(G.brazier(tk, p.x, p.z));
           break;
         case 'stall':
           this.#prop(batch, p.name, p.x, p.z, p.rot);
           this.#goods(batch, p.x, p.z, p.rot, h, rng(Math.round(p.x * 31 + p.z * 17 + 900)), p.goods, p.name);
           break;
-        case 'well': {
-          const well = wellMesh(this.kit);
-          well.position.set(p.x, h, p.z);
-          this.scene.add(well);
-          this.world.solids.addObject(well);
-          this.world.colliders.addCircle(p.x, p.z, 1.25, h - 0.5, h + 1.0);
+        case 'well':
+          G.well(tk, p.x, p.z, p.rot);
           this.places.well = { x: p.x, z: p.z };
           break;
-        }
+        case 'cross':
+          this.places.cross = G.marketCross(tk, p.x, p.z);
+          break;
+        case 'flags': G.flagRing(tk, p.x, p.z, p.r0, p.r1); break;
+        case 'treeBench': G.ringBench(tk, p.x, p.z); break;
         case 'sign': {
           const tex = p.boards.map((b) => [boardTexture(b.text, { arrow: 1 }), boardTexture(b.text, { arrow: -1 })]);
           tk.sign(p.x, p.z, p.rot, p.boards.map((b) => ({ turn: Math.atan2(-b.dir[1], b.dir[0]) - p.rot })), tex);
           break;
         }
-        case 'notice': tk.noticeBoard(p.x, p.z, p.rot); break;
-        case 'trough': tk.trough(p.x, p.z, p.rot); break;
+        case 'notice': tk.noticeBoard(p.x, p.z, p.rot, noticeMat); break;
+        case 'trough': tk.trough(p.x, p.z, p.rot, { len: p.len || 1.8, stone: !!p.stone }); break;
         case 'pump': tk.pump(p.x, p.z, p.rot); break;
         case 'bale': tk.bale(p.x, p.z, p.rot, p.level || 0); break;
         case 'haystack': tk.haystack(p.x, p.z, p.r); break;
-        case 'woodpile': tk.woodpile(p.x, p.z, p.rot); break;
-        case 'washing': tk.washing([p.x, p.z], p.to); break;
+        case 'woodpile': tk.woodpile(p.x, p.z, p.rot, { block: p.block !== false }); break;
+        case 'washing': tk.washing([p.x, p.z], p.to, { seed: Math.round(Math.abs(p.x * 3 + p.z)) }); break;
+        case 'bleach': G.bleachingSheet(tk, p.x, p.z, p.rot); break;
+        case 'washtub': G.washtub(tk, p.x, p.z); break;
+        case 'shed': G.shed(tk, p.x, p.z, p.rot, { w: p.w, d: p.d }); break;
+        case 'compost': G.compost(tk, p.x, p.z, p.rot); break;
+        case 'skeps': G.skeps(tk, p.x, p.z, p.rot); break;
+        case 'ladder': G.ladder(tk, p.x, p.z, p.rot); break;
+        case 'basket': G.basket(tk, p.x, p.z, { fill: p.fill === 'apples' ? apples : p.fill === 'greens' ? greens : null }); break;
+        case 'handcart': G.handcart(tk, p.x, p.z, p.rot); break;
+        case 'cooper': G.cooperYard(tk, p.spots); break;
         case 'grave': tk.grave(p.x, p.z, p.rot); break;
         case 'lychgate': tk.lychgate(p.x, p.z, p.rot, h); break;
-        case 'cart': {
-          this.#prop(batch, 'Prop_Wagon', p.x, p.z, p.rot);
-          // Two barrels unloaded beside the wagon.
-          const c = Math.cos(p.rot), sn = Math.sin(p.rot);
-          for (const dz of [-0.8, -1.7]) this.#prop(batch, 'Barrel', p.x + 1.45 * c + dz * sn, p.z - 1.45 * sn + dz * c, 0);
-          break;
-        }
+        case 'wagon': this.#wagon(batch, p); break;
         default:
           break;
       }
     }
-    void signTex;
+  }
+
+  // A wagon (the kit's) with its load on the bed, not beside it: trusses of hay, or casks.
+  #wagon(batch, p) {
+    const tk = this.tk;
+    this.#prop(batch, 'Prop_Wagon', p.x, p.z, p.rot);
+    const c = Math.cos(p.rot), s = Math.sin(p.rot);
+    const at = (lx, lz) => [p.x + lx * c + lz * s, p.z - lx * s + lz * c];
+    // The bed's top, found on the model (the heap of hay at the back is part of the kit piece).
+    const top = this.kit.topAt('Prop_Wagon', 0, -1.1);
+    const bed = this.world.heightAt(p.x, p.z) + (Number.isFinite(top) ? top : 1.0);
+    if (p.load === 'hay') {
+      for (const [lx, lz, lvl] of [[-0.24, -0.9, 0], [0.24, -0.9, 0], [0, -0.9, 1]]) {
+        const [bx, bz] = at(lx, lz);
+        tk.bale(bx, bz, p.rot + Math.PI / 2, lvl, bed);
+      }
+      // The load is solid (a body walking into the cart meets the hay, not air).
+      const [lx, lz] = at(0, -0.9);
+      tk.colliders.addBox(lx, lz, 0.5, 0.47, p.rot, bed, bed + 0.86).owner = tk.cur.id;
+    } else if (p.load === 'casks') {
+      for (const lz of [-0.8, -1.55]) {
+        const [bx, bz] = at(0.2, lz);
+        this.#prop(batch, 'Barrel', bx, bz, lz, { y: bed, solid: false });
+      }
+    }
   }
 
   // Goods laid out along a stall's counter: left to right in the space the counter has, each one
@@ -288,60 +329,6 @@ export class Village {
     this.scene.add(g);
     return g;
   }
-}
-
-// A side of a plot with a gap of `w` metres in its middle: the two pieces either side.
-function gapped(a, b, half) {
-  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len, mid = len / 2;
-  return [[a, [a[0] + ux * (mid - half), a[1] + uz * (mid - half)]], [[a[0] + ux * (mid + half), a[1] + uz * (mid + half)], b]];
-}
-
-// A round stone well with a little roof and a bucket on a rope.
-function wellMesh(kit) {
-  const g = new THREE.Group();
-  const stoneMat = findMaterial(kit, 'MI_UnevenBrick') || new THREE.MeshStandardMaterial({ color: 0x8a8580 });
-  const woodMat = findMaterial(kit, 'MI_WoodTrim') || new THREE.MeshStandardMaterial({ color: 0x6b4a2f });
-  const ring = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(1.15, 1.2, 0.9, 20, 1, true), 2.0), stoneMat);
-  ring.position.y = 0.45;
-  const inner = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.9, 0.9, 0.9, 20, 1, true), 2.0), stoneMat);
-  inner.position.y = 0.45;
-  inner.material = stoneMat.clone();
-  inner.material.side = THREE.BackSide;
-  const lip = new THREE.Mesh(fitUV(new THREE.TorusGeometry(1.03, 0.16, 8, 24), 2.0), stoneMat);
-  lip.rotation.x = Math.PI / 2;
-  lip.position.y = 0.92;
-  const water = new THREE.Mesh(new THREE.CircleGeometry(0.9, 20), new THREE.MeshStandardMaterial({ color: 0x0b1a1c, roughness: 0.05 }));
-  water.rotation.x = -Math.PI / 2;
-  water.position.y = 0.3;
-  g.add(ring, inner, lip, water);
-  for (const s of [-1, 1]) {
-    const post = new THREE.Mesh(fitUV(new THREE.BoxGeometry(0.16, 2.1, 0.16), 2.2), woodMat);
-    post.position.set(s * 1.05, 1.05, 0);
-    g.add(post);
-  }
-  const axle = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.07, 0.07, 2.3, 8), 2.2), woodMat);
-  axle.rotation.z = Math.PI / 2;
-  axle.position.y = 1.75;
-  g.add(axle);
-  const roof = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.02, 1.7, 0.8, 4, 1), 4.3), findMaterial(kit, 'MI_RoundTiles') || woodMat);
-  roof.rotation.y = Math.PI / 4;
-  roof.scale.set(1, 1, 0.75);
-  roof.position.y = 2.45;
-  g.add(roof);
-  const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 4), new THREE.MeshStandardMaterial({ color: 0x9c8a66 }));
-  rope.position.set(0.2, 1.25, 0);
-  g.add(rope);
-  const bucket = kit.instance('Bucket_Wooden_1');
-  bucket.position.set(0.2, 0.62, 0);
-  g.add(bucket);
-  g.traverse((o) => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-    }
-  });
-  return tag(g, 'Well');
 }
 
 export { STOREY };

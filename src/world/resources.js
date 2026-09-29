@@ -4,9 +4,12 @@ import { Batcher } from './kit.js';
 import { rng } from './buildings.js';
 import { FIRE, KILN } from './ashford.js';
 import { placeProp, tag, fitUV, courseGeometry } from './props.js';
+import { TownKit } from './townkit.js';
+import { shed as hutBuild } from './grounds.js';
+import { ropeGeometry, canvasTexture, Builder } from './greens.js';
 import { Fire, fishingRings } from './effects.js';
 import { ROCKS, FISHING } from '../game/content.js';
-import { VILLAGE, LAKE, FARMS, SWIMS, MINE_ENTRANCE } from './map.js';
+import { VILLAGE, LAKE, FARMS, SWIMS, MINE_ENTRANCE, roadDistance } from './map.js';
 
 // The things you work with: ore rocks at the mine, fishing spots on the lake and
 // river, flax in the field, and the village's workstations (furnace and anvil in
@@ -29,11 +32,18 @@ export class Resources {
 
   async load() {
     const rockTex = await this.assets.texture('ground/cliff_a.webp');
-    this.rockMat = new THREE.MeshStandardMaterial({ map: rockTex, color: 0x9a948c, roughness: 0.92 });
-    this.#mine();
-    this.#caveMouth();
-    this.#fishing();
+    this.rockMat = new THREE.MeshStandardMaterial({ map: rockTex, color: 0xb2aca4, roughness: 0.92 });
+    this.rockMat.name = 'Rock_Cliff';
     const batch = new Batcher(this.kit);
+    // Built things out at the mine and the dock go through a TownKit (world-scale timber, bark, iron).
+    this.tk = new TownKit(this.kit, batch, this.world.colliders, this.world);
+    // The same surfaces as the town's (loaded once, by the village).
+    if (this.world.village?.tk?.extrasLoaded) Object.assign(this.tk.m, this.world.village.tk.m);
+    else await this.tk.extras(this.assets);
+    this.tk.nid = 2000000; // audit ids apart from the village's and the vale's
+    this.#mine();
+    this.#caveMouth(batch);
+    this.#fishing();
     this.#smithy(batch);
     this.#cookingFire(batch);
     this.#craftCorner(batch);
@@ -99,26 +109,19 @@ export class Resources {
     const g = new THREE.Group();
     g.position.set(x, y - 0.15, z);
     g.rotation.y = rnd() * Math.PI * 2;
-    const body = new THREE.Mesh(boulder(s, rnd), this.rockMat);
+    const shape = boulder(s, rnd);
+    const body = new THREE.Mesh(shape, this.rockMat);
     g.add(body);
     (this.rockBodies ??= []).push(body);
-    // Ore shows as nuggets set into the upper surface.
-    const veins = new THREE.Group();
-    const oreMat = new THREE.MeshStandardMaterial({ color: def.color, roughness: kind === 'clay' ? 0.85 : 0.45, metalness: ['copper', 'tin', 'iron'].includes(kind) ? 0.6 : 0 });
-    const n = kind === 'clay' ? 5 : 11;
-    for (let i = 0; i < n; i++) {
-      const a = rnd() * Math.PI * 2, el = 0.2 + rnd() * 0.85;
-      const dir = new THREE.Vector3(Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el));
-      const nug = new THREE.Mesh(new THREE.IcosahedronGeometry((kind === 'clay' ? 0.19 : 0.085) * s * (0.6 + rnd() * 0.8), 0), oreMat);
-      // Sit each nugget on the boulder's surface, half sunk in.
-      nug.position.copy(dir).multiply(new THREE.Vector3(0.95 * s, 0.62 * s, 0.95 * s)).add(new THREE.Vector3(0, 0.3 * s, 0));
-      nug.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
-      nug.scale.set(1.3, 0.55, 1);
-      nug.lookAt(nug.position.clone().multiplyScalar(2));
-      nug.updateMatrix();
-      veins.add(nug);
-    }
-    const merged = new THREE.Mesh(mergeGeometries(veins.children.map((n) => n.geometry.clone().applyMatrix4(n.matrix))), oreMat);
+    // Ore shows as veins: bands of the ore's colour where folds in the stone cross the rock's upper
+    // faces (copper green where it has weathered, tin pale grey, iron rust red, clay ochre), standing a
+    // hair proud of the stone. They go when the rock is worked out.
+    // (the placement's random sequence is kept as it was when the ore was nuggets: the quarry's rocks
+    // stay where the roads and the tests know them)
+    for (let i = 0; i < (kind === 'clay' ? 5 : 11) * 6; i++) rnd();
+    const veins = veinGeometry(shape, s, rng(Math.round(Math.abs(x * 131 + z * 71)) + 7), kind);
+    const oreMat = (this.oreMats ??= {})[kind] ??= new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: kind === 'clay' || kind === 'coal' ? 0.9 : 0.4, metalness: ['copper', 'tin', 'iron'].includes(kind) ? 0.55 : 0 });
+    const merged = new THREE.Mesh(veins, oreMat);
     merged.castShadow = true;
     g.add(merged);
     this.scene.add(g);
@@ -127,52 +130,111 @@ export class Resources {
     this.rocks.push(rock);
   }
 
-  // A timbered mine shaft into the hill: the way down to the Old Warren.
-  #caveMouth() {
+  // The adit into the hill, the way down to the Old Warren: a face of cliff rock round a timbered
+  // portal (two sets of posts and caps with lagging boards over them), the dark of the drift beyond,
+  // rails running out on sleepers to a tipped ore cart, a lantern on the post and the spoil heap.
+  #caveMouth(batch) {
     const T = this.world.terrain;
+    const tk = this.tk, m = tk.m;
     const { x, z, facing } = MINE_ENTRANCE;
     const fx = Math.sin(facing), fz = Math.cos(facing), rx = Math.cos(facing), rz = -Math.sin(facing);
+    const at = (a, o) => [x + rx * a + fx * o, z + rz * a + fz * o]; // a across the portal, o out of it
     const y = T.heightAt(x, z);
     const rnd = rng(77);
-    const g = new THREE.Group();
-    // Rocks piled in an arch.
-    const rocks = [];
-    for (let k = 0; k <= 10; k++) {
-      const t = Math.PI * (k / 10);
-      const px = Math.cos(t) * 2.6, py = Math.sin(t) * 3.0;
-      const b = new THREE.Mesh(boulder(0.8 + rnd() * 0.5, rnd), this.rockMat);
-      b.position.set(x + rx * px - fx * 0.3, y + py - 0.6, z + rz * px - fz * 0.3);
-      b.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
-      rocks.push(b);
+    // The rock face: big cliff-textured boulders banked round and over the portal.
+    tk.begin('mine face', x, z);
+    for (let k = 0; k <= 12; k++) {
+      const t = Math.PI * (k / 12), rr = 2.9 + rnd() * 0.5;
+      const [bx, bz] = at(Math.cos(t) * rr, -0.8 - rnd() * 0.6);
+      const size = 1.0 + rnd() * 0.7;
+      tk.put(fitUV(boulder(size, rnd), 2.6), this.rockMat, bx, y + Math.sin(t) * 3.1 - 0.9, bz, rnd() * 6, 1, 1.15, 0.85);
+      if (Math.sin(t) < 0.75) tk.solidCircle(bx, bz, size * 0.8, y + Math.sin(t) * 3.1 - 0.9, size * 1.4);
     }
-    for (const b of rocks) {
-      b.castShadow = b.receiveShadow = true;
-      g.add(b);
+    for (const a of [-4.6, 4.8]) {
+      const [bx, bz] = at(a, -1.6);
+      tk.put(fitUV(boulder(1.8, rnd), 2.6), this.rockMat, bx, y - 1.0, bz, rnd() * 6, 1.1, 1.3, 1);
+      tk.solidCircle(bx, bz, 1.6, y - 1.0, 3.2);
     }
-    // Timber frame and the dark inside.
-    const wood = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.9 });
-    for (const s of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.0, 0.25), wood);
-      post.position.set(x + rx * s * 1.45, y + 1.5, z + rz * s * 1.45);
-      post.rotation.y = facing;
-      post.castShadow = true;
-      g.add(post);
+    // Two timber sets: posts with a cap across, lagging boards laid over the caps and down the sides.
+    tk.begin('mine portal', x, z);
+    const setAt = [0.25, -1.2];
+    for (const o of setAt) {
+      for (const a of [-1.3, 1.3]) {
+        const [px, pz] = at(a, o);
+        tk.put(tk.poleGeometry(0.15, 0.13, 3.1), m.barkDark, px, y - 0.2, pz, facing, 1, 1, 1, 0, a > 0 ? -0.04 : 0.04);
+      }
+      const [cx, cz] = at(0, o);
+      tk.put(tk.logGeometry(0.16, 3.2, 9), [m.barkDark, m.endgrain, m.endgrain], cx, y + 2.95, cz, facing + Math.PI / 2);
     }
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.28, 0.3), wood);
-    lintel.position.set(x, y + 3.0, z);
-    lintel.rotation.y = facing;
-    lintel.castShadow = true;
-    g.add(lintel);
-    const dark = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 3.0), new THREE.MeshBasicMaterial({ color: 0x020202 }));
-    dark.position.set(x - fx * 0.35, y + 1.5, z - fz * 0.35);
-    dark.rotation.y = facing;
-    dark.userData.noCamera = true; // a painted-on shadow, not a wall
-    g.add(dark);
-    this.scene.add(tag(g, 'MineMouth'));
-    this.world.solids.addObject(g); // the camera collides with the real rocks and timbers
-    // Lantern on the post.
+    for (let i = 0; i < 7; i++) {
+      const a = -1.35 + i * 0.45;
+      const [lx, lz] = at(a, -0.47);
+      tk.put(tk.timberBox(0.4, 0.05, 1.9, 'z'), m.timber, lx, y + 3.12, lz, facing);
+    }
+    for (const a of [-1.42, 1.42]) for (let k = 0; k < 5; k++) {
+      const [lx, lz] = at(a, -0.47);
+      tk.put(tk.timberBox(0.05, 0.36, 1.8, 'z'), m.timber, lx, y + 0.2 + k * 0.52, lz, facing);
+    }
+    // The drift beyond: dark, going on into the hill.
+    const [dx, dz] = at(0, -2.9);
+    tk.put(tk.box(2.5, 2.9, 3.0), m.dark, dx, y - 0.1, dz, facing);
+    tk.solidBox(dx, dz, 1.25, 1.5, facing, y, 2.9);
+    // Rails on sleepers running out of the drift.
+    tk.begin('mine rails', x, z);
+    for (let o = -1.8; o < 5.2; o += 0.65) {
+      const [sx, sz] = at(0, o);
+      const gy = T.heightAt(sx, sz);
+      tk.put(tk.timberBox(1.1, 0.09, 0.16, 'x'), m.timber, sx, Math.max(gy, y) - 0.04, sz, facing);
+    }
+    for (const a of [-0.32, 0.32]) {
+      const [rx0, rz0] = at(a, 1.7);
+      tk.put(tk.box(0.05, 0.07, 7.0), m.iron, rx0, y + 0.05, rz0, facing);
+    }
+    // The ore cart, run out on the rails, heaped with ore.
+    const [kx, kz] = at(0, 2.6);
+    tk.begin('ore cart', kx, kz);
+    tk.put(tk.timberBox(0.8, 0.55, 1.1, 'z'), m.timber, kx, y + 0.3, kz, facing);
+    for (const e of [-1, 1]) {
+      const [bx, bz] = at(e * 0.41, 2.6);
+      tk.put(tk.box(0.03, 0.08, 1.14), m.iron, bx, y + 0.72, bz, facing);
+    }
+    for (const a of [-0.32, 0.32]) for (const o of [2.25, 2.95]) {
+      const [wx, wz] = at(a, o);
+      const wheel = (tk.geo.cartWheel ??= new THREE.CylinderGeometry(0.16, 0.16, 0.06, 12).rotateZ(Math.PI / 2));
+      tk.put(wheel, m.iron, wx, y + 0.21, wz, facing);
+    }
+    const oreHeap = (tk.geo.oreHeap ??= new THREE.SphereGeometry(0.42, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(0.95, 0.55, 1.2));
+    tk.put(fitUV(oreHeap.clone(), 1.2), this.rockMat, kx, y + 0.82, kz, facing);
+    tk.solidBox(kx, kz, 0.45, 0.6, facing, y, 0.95);
+    // A lantern on the right-hand post, facing out.
+    const [lx, lz] = at(1.3 + 0.16, 0.25);
+    tk.begin('mine lantern', lx, lz, false, true);
+    tk.bracketLantern(lx, y + 2.6, lz, facing + Math.PI / 2);
+    // The portal's posts and side boards are solid.
+    tk.begin('mine portal', x, z);
+    for (const o of setAt) for (const a of [-1.3, 1.3]) tk.solidCircle(...at(a, o), 0.17, y, 3.0);
+    for (const a of [-1.42, 1.42]) tk.solidBox(...at(a, -0.47), 0.06, 0.95, facing, y, 2.8);
+    // The spoil heap beside the portal: waste rock tipped from the carts.
+    const [hx, hz] = at(-5.2, 3.0);
+    tk.begin('spoil heap', hx, hz);
+    const heap = new THREE.SphereGeometry(2.4, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    const hp = heap.attributes.position;
+    for (let i = 0; i < hp.count; i++) {
+      const vx = hp.getX(i), vy = hp.getY(i), vz = hp.getZ(i);
+      const n = Math.sin(vx * 3.1) * Math.sin(vz * 2.7) * 0.15 + Math.sin(vx * 7 + vz * 5) * 0.06;
+      hp.setXYZ(i, vx * (1 + n), vy * 0.55 * (1 + n), vz * (1 + n) * 0.8);
+    }
+    heap.computeVertexNormals();
+    const hy = T.heightAt(hx, hz);
+    tk.put(fitUV(heap, 2.2), this.rockMat, hx, hy - 0.25, hz, facing);
+    for (let k = 0; k < 7; k++) {
+      const a = rnd() * Math.PI * 2, d = 2.2 + rnd() * 1.2;
+      tk.put(fitUV(boulder(0.25 + rnd() * 0.2, rnd), 1.2), this.rockMat, hx + Math.cos(a) * d, T.heightAt(hx + Math.cos(a) * d, hz + Math.sin(a) * d) - 0.1, hz + Math.sin(a) * d, rnd() * 6);
+    }
+    tk.solidCircle(hx, hz, 2.0, hy, 1.1);
+    // The light the lantern gives.
     const lamp = new THREE.PointLight(0xffb060, 3, 7, 1.6);
-    lamp.position.set(x + rx * 1.45 + fx * 0.3, y + 2.3, z + rz * 1.45 + fz * 0.3);
+    lamp.position.set(lx + fx * 0.5, y + 2.1, lz + fz * 0.5);
     this.scene.add(lamp);
     for (const s of [-1, 1]) this.world.colliders.addCircle(x + rx * s * 2.3, z + rz * s * 2.3, 0.9, y - 1, y + 4);
     this.world.colliders.addBox(x - fx * 0.8, z - fz * 0.8, 1.4, 0.4, facing, y - 1, y + 4);
@@ -274,7 +336,7 @@ export class Resources {
       s.castShadow = true;
       stones.add(s);
     }
-    const logMat = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.9 });
+    const logMat = this.tk.m.barkDark;
     for (let i = 0; i < 4; i++) {
       const l = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.9, 7), logMat);
       l.rotation.set(Math.PI / 2 - 0.35, (i / 4) * Math.PI * 2, 0);
@@ -312,7 +374,8 @@ export class Resources {
       return [po.x + lx * c + lz * s, po.z - lx * s + lz * c];
     };
     this.places = { ...(this.places || {}), potter: po };
-    const woodMat = findMaterial(this.kit, 'MI_WoodTrim') || new THREE.MeshStandardMaterial({ color: 0x6b4a2c });
+    // Planed wood, not the kit's trim sheet (its metal strip showed on the wheels' thin parts).
+    const woodMat = this.tk.m.planed || findMaterial(this.kit, 'MI_WoodTrim');
     const brick = findMaterial(this.kit, 'MI_RedBrick') || this.rockMat;
     // Spinning wheel.
     {
@@ -459,26 +522,42 @@ export class Resources {
   }
 
   // ------------------------------------------------------------------ jetty
+  // The dock at the end of the lake road: the jetty's planks on stout piles, mooring posts with rope at
+  // its end, and on the shore by Old Tam his fisher's hut, a rowing boat turned over on the shingle,
+  // nets hung to dry on poles, and his crates and a barrel.
   #jetty(batch) {
-    // Planks from the end of the lake road out over the water.
-    const T = this.world.terrain;
+    const T = this.world.terrain, tk = this.tk, m = tk.m;
     const sx = -52, sz = 168;
     const dir = new THREE.Vector2(LAKE.x - sx, LAKE.z - sz).normalize();
     const rot = Math.atan2(dir.x, dir.y);
     const deck = 0.55;
+    const rx = Math.cos(rot), rz = -Math.sin(rot);
+    // Jetty frame: a along the jetty (out over the water), c across it (+ to the right looking out).
+    const at = (a, c) => [sx + dir.x * a + rx * c, sz + dir.y * a + rz * c];
     for (let i = 0; i < 7; i++) {
       const x = sx + dir.x * (i * 2 + 1), z = sz + dir.y * (i * 2 + 1);
       batch.add('Floor_WoodDark', x, deck, z, rot);
       batch.add('Floor_WoodDark', x, deck - 0.03, z, rot + Math.PI);
       for (const side of [-1, 1]) {
-        const px = x + Math.cos(rot) * side * 0.95, pz = z - Math.sin(rot) * side * 0.95;
+        const [px, pz] = at(i * 2 + 1, side * 0.95);
         const h = T.heightAt(px, pz);
-        const post = new THREE.Mesh(fitUV(new THREE.CylinderGeometry(0.09, 0.1, deck - h + 0.4, 6), 2.2), findMaterial(this.kit, 'MI_WoodTrim'));
-        post.position.set(px, (deck + h) / 2, pz);
-        post.castShadow = true;
-        this.scene.add(tag(post, 'JettyPost'));
-        this.world.colliders.addCircle(px, pz, 0.11, h - 0.4, deck + 0.2);
+        tk.begin('jetty pile', px, pz);
+        tk.put(tk.poleGeometry(0.12, 0.11, +(deck - h + 0.75).toFixed(2), 8), m.barkDark, px, h - 0.4, pz);
+        tk.solidCircle(px, pz, 0.13, h - 0.4 + 0.5, deck + 0.35 - h + 0.4 - 0.5);
       }
+    }
+    // Mooring posts at the far end, a rope made fast round each and coiled on the deck.
+    for (const side of [-1, 1]) {
+      const [px, pz] = at(13.4, side * 0.72);
+      tk.begin('mooring post', px, pz, false, true); // on the deck
+      tk.put(tk.poleGeometry(0.1, 0.09, 0.62, 8), m.barkDark, px, deck - 0.02, pz);
+      const coil = (tk.geo.ropeCoil ??= new THREE.TorusGeometry(0.1, 0.022, 5, 12).rotateX(Math.PI / 2));
+      tk.put(coil, m.rope, px, deck + 0.42, pz);
+      tk.solidCircle(px, pz, 0.11, deck, 0.62);
+      const [qx, qz] = at(12.8, side * 0.45);
+      tk.begin('rope coil', qx, qz, true, true);
+      const flat = (tk.geo.ropeFlat ??= new THREE.TorusGeometry(0.18, 0.02, 5, 14).rotateX(Math.PI / 2));
+      for (let k = 0; k < 3; k++) tk.put(flat, m.rope, qx, deck + 0.02 + k * 0.035, qz, 0, 1 - k * 0.12, 1, 1 - k * 0.12);
     }
     // Walkable deck (a thin box the player can stand on).
     const len = 14;
@@ -487,9 +566,63 @@ export class Resources {
     deckBox.noCamera = true;
     deckBox.floor = true;
     this.jettyEnd = { x: sx + dir.x * len, z: sz + dir.y * len, dx: dir.x, dz: dir.y };
+    // The shore by the jetty's head: find dry, level ground off the road for each thing, stepping
+    // inland until there is some.
+    const dry = (a, c, r) => {
+      for (let k = 0; k < 16; k++, a -= 0.5) {
+        const [x, z] = at(a, c);
+        const h = T.heightAt(x, z);
+        const [rd, rw] = roadDistance(x, z);
+        let lo = Infinity, hi = -Infinity;
+        for (const [dx, dz] of [[r, 0], [-r, 0], [0, r], [0, -r]]) { const g = T.heightAt(x + dx, z + dz); lo = Math.min(lo, g); hi = Math.max(hi, g); }
+        if (lo > 0.35 && hi - lo < 0.5 && rd > rw + r + 0.3) return [x, z];
+      }
+      return null;
+    };
+    const tam = { x: -50.5, z: 171.5 };
+    const clearOfTam = (p, r) => p && Math.hypot(p[0] - tam.x, p[1] - tam.z) > r + 0.8;
+    // Two crates and a barrel in a row where Tam can reach them, on a level patch of the shore.
+    const cp = dry(-1.4, -2.9, 1.7);
+    if (cp && clearOfTam(cp, 1.7)) {
+      const ca = (cp[0] - sx) * dir.x + (cp[1] - sz) * dir.y, cc = (cp[0] - sx) * rx + (cp[1] - sz) * rz;
+      for (const [dc, name, turn] of [[-1.1, 'Crate_Wooden', 0.25], [0, 'Crate_Wooden', -0.2], [1.05, 'Barrel', 0]]) {
+        const [px, pz] = at(ca, cc + dc);
+        let lo = Infinity;
+        for (const [ex, ez] of [[0.4, 0], [-0.4, 0], [0, 0.4], [0, -0.4], [0, 0]]) lo = Math.min(lo, T.heightAt(px + ex, pz + ez));
+        placeProp({ kit: this.kit, batch, scene: this.scene, colliders: this.world.colliders }, name, px, lo - 0.02, pz, rot + turn);
+      }
+    }
+    // A rowing boat turned over on the shingle, bow toward the water, resting on a pair of chocks.
+    const bp = dry(-2.5, 3.6, 1.6);
+    if (clearOfTam(bp, 1.6)) {
+      const by = T.heightAt(bp[0], bp[1]);
+      tk.begin('upturned boat', bp[0], bp[1]);
+      tk.put((tk.geo.hull ??= hullGeometry()), m.timber, bp[0], by + 0.12, bp[1], rot + 0.3, 1, 1, 1, Math.PI, 0);
+      for (const e of [-0.9, 0.9]) {
+        const q = [bp[0] + Math.sin(rot + 0.3) * e, bp[1] + Math.cos(rot + 0.3) * e];
+        tk.put(tk.timberBox(1.2, 0.16, 0.16, 'x'), m.timber, q[0], T.heightAt(q[0], q[1]) - 0.04, q[1], rot + 0.3);
+      }
+      tk.solidBox(bp[0], bp[1], 0.62, 1.9, rot + 0.3, by, 0.75);
+    }
+    // Nets hung to dry between two poles.
+    const np = dry(-3.6, -5.6, 1.5);
+    if (np) {
+      const ny = T.heightAt(np[0], np[1]);
+      const a0 = [np[0] - rx * 1.4, np[1] - rz * 1.4], a1 = [np[0] + rx * 1.4, np[1] + rz * 1.4];
+      for (const q of [a0, a1]) {
+        tk.begin('net pole', q[0], q[1]);
+        tk.put(tk.poleGeometry(0.05, 0.045, 2.3, 7), m.bark, q[0], T.heightAt(q[0], q[1]) - 0.2, q[1]);
+        tk.solidCircle(q[0], q[1], 0.07, T.heightAt(q[0], q[1]), 2.1);
+      }
+      tk.begin('drying nets', np[0], np[1], true);
+      tk.put(ropeBetween([a0[0], ny + 2.0, a0[1]], [a1[0], ny + 2.0, a1[1]], 0.12), m.rope, 0, 0, 0);
+      tk.put((tk.geo.net ??= netGeometry(2.6, 1.5)), (this.netMat ??= netMaterial()), np[0], ny + 1.98, np[1], rot + Math.PI / 2);
+    }
+    // Tam's hut, up the shore behind the jetty, its door to the water.
+    const hp = dry(-7.5, -4.4, 1.8);
+    if (hp) hutBuild(tk, hp[0], hp[1], rot, { w: 2.8, d: 2.2, h: 2.3 });
   }
 
-  // ------------------------------------------------------------------ flax
   #flax() {
     const f = FARMS[1];
     const rnd = rng(55);
@@ -572,7 +705,118 @@ export function boulder(size, rnd) {
     p.setXYZ(i, v.x, v.y + size * 0.3, v.z);
   }
   g.computeVertexNormals();
+  // Rock at its own size (2.4 m a repeat), projected along each vertex's main direction, so the stone's
+  // grain and cracks show instead of one smeared texel.
+  const n = g.attributes.normal, uv = new Float32Array(p.count * 2);
+  for (let i = 0; i < p.count; i++) {
+    const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i)), az = Math.abs(n.getZ(i));
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const [u, w] = ay >= ax && ay >= az ? [x, z] : ax >= az ? [z, y] : [x, y];
+    uv[i * 2] = u / 2.4 + k[0];
+    uv[i * 2 + 1] = w / 2.4 + k[1];
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   return g;
+}
+
+// Ore veins on a rock (the boulder's own triangles where folds in the stone cross its upper faces),
+// lifted a hair off the stone and coloured by the ore: copper orange with green weathering, tin pale
+// grey, iron rust red, clay ochre, coal black.
+function veinGeometry(g, s, rnd, kind) {
+  const pos = g.attributes.position, nor = g.attributes.normal, idx = g.index;
+  const d1 = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize();
+  const d2 = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize();
+  const fr = (3.2 + rnd() * 2) / s, ph = rnd() * 6, width = kind === 'clay' || kind === 'coal' ? 0.26 : 0.15;
+  const base = new THREE.Color(kind === 'tin' ? 0x8f969a : ROCKS[kind]?.color ?? 0x888888);
+  const alt = kind === 'copper' ? new THREE.Color(0x3f8f72) : base.clone().multiplyScalar(0.75);
+  const P = [], N = [], C = [], a = new THREE.Vector3(), c = new THREE.Vector3();
+  const cnt = idx ? idx.count : pos.count;
+  for (let i = 0; i < cnt; i += 3) {
+    c.set(0, 0, 0);
+    for (let k = 0; k < 3; k++) c.add(a.fromBufferAttribute(pos, idx ? idx.getX(i + k) : i + k));
+    c.multiplyScalar(1 / 3);
+    if (c.y < s * 0.35) continue;
+    const f = Math.abs(Math.sin(c.dot(d1) * fr + ph + 0.9 * Math.sin(c.dot(d2) * fr * 0.7)));
+    if (f > width) continue;
+    const col = rnd() < 0.35 ? alt : base;
+    for (let k = 0; k < 3; k++) {
+      const vi = idx ? idx.getX(i + k) : i + k;
+      P.push(pos.getX(vi) + nor.getX(vi) * 0.015, pos.getY(vi) + nor.getY(vi) * 0.015, pos.getZ(vi) + nor.getZ(vi) * 0.015);
+      N.push(nor.getX(vi), nor.getY(vi), nor.getZ(vi));
+      C.push(col.r, col.g, col.b);
+    }
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+  return out;
+}
+
+// A clinker rowing boat's hull (open, no thwarts): 3.6 m long along z, 1.2 m in the beam, pointed at
+// both ends, the gunwale at y = 0 and the keel 0.55 m below; planks run along it.
+function hullGeometry(L = 3.6, beam = 1.2, depth = 0.55) {
+  const B = new Builder(), ni = 16, nj = 10;
+  const rows = [];
+  for (let i = 0; i <= ni; i++) {
+    const z = -L / 2 + (L * i) / ni, e = Math.max(0, 1 - ((2 * z) / L) ** 2);
+    const w = (beam / 2) * Math.pow(e, 0.55), d = depth * (0.75 + 0.25 * e) + 0.08 * ((2 * z) / L) ** 2;
+    const row = [];
+    let arc = 0, prev = null;
+    for (let j = 0; j <= nj; j++) {
+      const t = (Math.PI * j) / nj;
+      // Clinker: each strake stands a little proud of the one below.
+      const lap = 1 + 0.03 * ((j % 2) - 0.5);
+      const p = [w * Math.cos(t) * lap, -d * Math.sin(t) + (1 - e) * 0.15, z];
+      if (prev) arc += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+      prev = p;
+      row.push(B.vert(p, [0, -1, 0], [z / 2.2, arc / 0.645]));
+    }
+    rows.push(row);
+  }
+  for (let i = 0; i < ni; i++) for (let j = 0; j < nj; j++) B.quad(rows[i][j], rows[i + 1][j], rows[i + 1][j + 1], rows[i][j + 1]);
+  return B.build({ computeNormals: true });
+}
+
+// A fishing net hung over a line to dry: a panel sagging between its ends, folds deepening downward.
+function netGeometry(w, h) {
+  const B = new Builder(), nx = 12, ny = 8;
+  for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) {
+    const s = i / nx, t = j / ny, x = (s - 0.5) * w;
+    const y = -0.12 * Math.sin(s * Math.PI) - t * h * (0.9 + 0.1 * Math.sin(s * Math.PI));
+    const z = Math.sin(s * Math.PI * 5) * 0.06 * t;
+    B.vert([x, y, z], [0, 0, 1], [s * w * 3, t * h * 3]);
+  }
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const a = j * (nx + 1) + i;
+    B.quad(a, a + 1, a + nx + 2, a + nx + 1);
+  }
+  return B.build({ computeNormals: true });
+}
+
+// Knotted twine in diamonds, the rest open (alpha).
+function netMaterial() {
+  const tex = canvasTexture(64, 64, (g, W) => {
+    g.clearRect(0, 0, W, W);
+    g.strokeStyle = '#6e5a40';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(0, 0); g.lineTo(W, W); g.moveTo(W, 0); g.lineTo(0, W);
+    g.moveTo(-W / 2, W / 2); g.lineTo(W / 2, -W / 2); g.moveTo(W / 2, W * 1.5); g.lineTo(W * 1.5, W / 2);
+    g.moveTo(W / 2, -W / 2); g.lineTo(W * 1.5, W / 2); g.moveTo(-W / 2, W / 2); g.lineTo(W / 2, W * 1.5);
+    g.stroke();
+    g.fillStyle = '#5a4630';
+    for (const [x, y] of [[0, 0], [W, 0], [0, W], [W, W], [W / 2, W / 2]]) { g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill(); }
+  }, { repeat: true });
+  const m = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1 });
+  m.name = 'Net_Twine';
+  m.userData = { atlas: true };
+  return m;
+}
+
+// A line between two points, sagging in the middle.
+function ropeBetween(a, b, sag) {
+  return ropeGeometry(a, b, sag, 0.008);
 }
 
 function findMaterial(kit, name) {
