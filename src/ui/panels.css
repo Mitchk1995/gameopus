@@ -232,6 +232,7 @@
 }
 .vital i { position: absolute; inset: 0 auto 0 0; border-radius: 10px; transition: width 0.25s; }
 .vital.hp i { background: linear-gradient(#d94a4a, #9c2626); }
+.vital.sta i { background: linear-gradient(#d9c25a, #9b7d1f); }
 .vital span {
   position: absolute;
   inset: 0;

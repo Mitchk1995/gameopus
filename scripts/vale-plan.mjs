@@ -62,6 +62,8 @@ for (let j = 0; j < SH; j++)
     } else {
       const [path, forest, cobble] = M.groundAt(x, z);
       const [meadow, heath, marsh, dry, moss, dust] = M.biomeAt(x, z);
+      const [bar, reeds, flax] = M.shoreAt ? M.shoreAt(x, z) : [0, 0, 0];
+      const [wheat, greens, plough] = M.fieldsAt ? M.fieldsAt(x, z) : [0, 0, 0];
       c = [100, 138, 66];
       c = mixc(c, [128, 160, 70], meadow * 0.7);
       c = mixc(c, [120, 112, 92], heath * 0.7);
@@ -70,7 +72,13 @@ for (let j = 0; j < SH; j++)
       c = mixc(c, [64, 96, 58], forest * 0.7);
       c = mixc(c, [58, 88, 60], moss * forest * 0.5);
       c = mixc(c, [128, 122, 116], dust * 0.7);
-      if (h < 1.4) c = mixc(c, [200, 186, 140], Math.min(1, (1.4 - h) / 0.9));
+      c = mixc(c, [196, 184, 150], bar * 0.9);
+      c = mixc(c, [150, 150, 96], reeds * 0.6);
+      c = mixc(c, [214, 176, 86], wheat);
+      c = mixc(c, [70, 118, 50], greens);
+      c = mixc(c, [104, 80, 58], plough);
+      c = mixc(c, [96, 128, 150], flax * 0.8);
+      if (h < 0.35) c = mixc(c, [190, 178, 140], Math.min(1, (0.35 - h) / 0.5));
       if (slope > 0.5) c = mixc(c, [128, 124, 118], Math.min(1, (slope - 0.5) * 1.4));
       if (h > 95) c = mixc(c, [238, 240, 246], Math.min(1, (h - 95) / 30) * (slope < 2.2 ? 1 : 0.4));
       c = mixc(c, [190, 166, 122], Math.min(1, path * 1.2));
@@ -117,6 +125,14 @@ if (!flag('--plain')) {
     el.push(label(c[0].x, c[0].z, c[1], { size: 13, col: '#ffd' }));
   }
   el.push(label(M.BRIDGE.x, M.BRIDGE.z, 'Bridge', { size: 11, col: '#fff', dy: -10 }));
+  if (M.FORD) el.push(label(M.FORD.x, M.FORD.z, 'Ford', { size: 11, col: '#dff', dy: -10 }));
+  if (M.FALLS) el.push(label(M.FALLS.pool[0], M.FALLS.pool[1], 'Whitespring Falls', { size: 11, col: '#dff', dy: 22 }));
+  for (const f of M.FARMS || []) {
+    const c = Math.cos(f.rot), s = Math.sin(f.rot);
+    const corner = (lx, lz) => [f.x + lx * c + lz * s, f.z - lx * s + lz * c];
+    const pts = [corner(-f.w / 2, -f.d / 2), corner(f.w / 2, -f.d / 2), corner(f.w / 2, f.d / 2), corner(-f.w / 2, f.d / 2), corner(-f.w / 2, -f.d / 2)];
+    el.push(poly(pts, 0.8, f.edge === 'hedge' ? '#2f5a22' : f.edge === 'wall' ? '#8a8a88' : '#6b4a2f'));
+  }
 }
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SW}" height="${SH}" viewBox="0 0 ${SW} ${SH}">${el.join('\n')}</svg>`;
 await mkdir(path.dirname(out), { recursive: true });

@@ -1,7 +1,8 @@
 name: CI
 
-# Builds the game, checks the combat numbers, and plays a few headless scenarios in
-# Chromium (software GL) on every push to main and every pull request.
+# Builds the game, checks the combat numbers, and plays the headless scenarios in Chromium
+# (software GL) on every push to main and every pull request. Each scenario gets its own job,
+# so the wait is the slowest scenario rather than the sum of a group of them.
 on:
   push:
     branches: [main]
@@ -31,10 +32,53 @@ jobs:
           path: dist
           retention-days: 3
 
-  playtest:
-    needs: build
+  # Which scenarios this change needs: every file whose first line starts `# ci`. On a pull
+  # request, one whose first line says `# ci paths=a/,b/` only plays when the PR touches one of
+  # those path prefixes (or the CI and test plumbing). Everything plays on pushes to main and on
+  # manual runs.
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
+    outputs:
+      scenarios: ${{ steps.list.outputs.scenarios }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: list
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=""
+          if [ "$EVENT" = pull_request ]; then changed="$(git diff --name-only "$BASE_SHA" HEAD)"; fi
+          wanted() {
+            [ -z "$changed" ] && return 0
+            paths="$(head -1 "$1" | sed -n 's/.*paths=\([^ ]*\).*/\1/p')"
+            [ -z "$paths" ] && return 0
+            for p in ${paths//,/ } .github/ scripts/playtest.mjs tests/playtest/play.py package.json; do
+              echo "$changed" | grep -q "^$p" && return 0
+            done
+            return 1
+          }
+          list=""
+          for f in $(grep -l '^# ci' tests/playtest/*.py | sort); do
+            name=$(basename "$f" .py)
+            if wanted "$f"; then list="$list $name"; else echo "skipping $name (nothing it covers changed)"; fi
+          done
+          echo "playing:$list"
+          echo "scenarios=$(printf '%s\n' $list | jq -R . | jq -cs 'map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+
+  scenarios:
+    needs: [build, plan]
+    if: needs.plan.outputs.scenarios != '[]'
+    name: play ${{ matrix.scenario }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJSON(needs.plan.outputs.scenarios) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,24 +91,37 @@ jobs:
           name: dist
           path: dist
       - run: npx playwright install --with-deps chromium
-      - name: Play the scenarios
+      - name: Play ${{ matrix.scenario }}
         env:
           SOFTWARE_GL: '1'
           READY_TIMEOUT: '240000'
+          SCENARIO: ${{ matrix.scenario }}
         run: |
           export CHROME="$(node -e "import('playwright-core').then(m => console.log(m.chromium.executablePath()))")"
-          status=0
-          for f in $(grep -l '^# ci' tests/playtest/*.py | sort); do
-            scenario=$(basename "$f" .py)
-            echo "::group::$scenario"
-            python3 tests/playtest/play.py "tests/playtest/$scenario.py" || status=1
-            echo "::endgroup::"
-          done
-          exit $status
+          # The texture comparison renders a lot of frames; a small window keeps it quick.
+          if [ "$SCENARIO" = look ]; then export W=640 H=360; fi
+          python3 tests/playtest/play.py "tests/playtest/$SCENARIO.py"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playtest-shots
+          name: playtest-shots-${{ matrix.scenario }}
           path: tests/playtest/out
           if-no-files-found: ignore
           retention-days: 3
+
+  # One check named "playtest" that is green only when the build and every scenario passed (or
+  # there was nothing to play); the automerge workflow and pull request checks look for this name.
+  playtest:
+    needs: [build, plan, scenarios]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          BUILD: ${{ needs.build.result }}
+          PLAN: ${{ needs.plan.result }}
+          SCENARIOS: ${{ needs.scenarios.result }}
+        run: |
+          echo "build: $BUILD, plan: $PLAN, scenarios: $SCENARIOS"
+          [ "$BUILD" = success ] && [ "$PLAN" = success ] || exit 1
+          case "$SCENARIOS" in success|skipped) ;; *) exit 1 ;; esac

@@ -1,18 +1,11 @@
 import './questui.css';
 import { QUESTS } from '../content/quests.js';
 import { icon } from './icons.js';
+import { el } from './dom.js';
 
 // Quest interface: the journal (the quest tab of the side panel), a small tracker
 // in the corner with the step you're on, and the scroll that unrolls when a quest
 // is finished.
-
-const el = (tag, cls, html) => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (html !== undefined) e.innerHTML = html;
-  return e;
-};
-
 export class QuestUI {
   constructor({ quests, studio }) {
     this.quests = quests;

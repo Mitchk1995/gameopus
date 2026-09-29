@@ -1,5 +1,5 @@
 STEPS = [
-  {'eval': '@m4_helpers.js'},
+  {'eval': '@dungeon_helpers.js'},
   {'eval': "(() => { const g = __game; g.enterDungeon().then(() => (window.__entered = true)); return 1; })()"},
   {'wait': 4000},
   # --- chest

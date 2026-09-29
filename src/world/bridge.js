@@ -62,7 +62,9 @@ export function buildBridge(sk) {
   const Lm = Math.ceil(L);
   for (let i = 0; i < Lm; i++) {
     const u = -half + (L * (i + 0.5)) / Lm, len = L / Lm;
-    const y1 = deckY(u), y0 = Number.isFinite(soffit(u)) ? soffit(u) - 0.2 : yb0;
+    // A slab reaching past the springing covers the abutment's face down to the foot as well.
+    const sa = soffit(u - len / 2), sb = soffit(u + len / 2);
+    const y1 = deckY(u), y0 = Number.isFinite(sa) && Number.isFinite(sb) ? Math.min(sa, sb) - 0.2 : yb0;
     const [x, z] = f.at(u, 0);
     const sh = sk.colliders.addBox(x, z, len / 2 + 0.01, WIDTH / 2, 0, y0, y1);
     sh.floor = true;

@@ -88,7 +88,7 @@ async function start() {
     rig.update(dt, input, player.pos, { sprinting: player.gait === 'Sprint_Loop', aiming: game.ranged.aiming });
     hero.update(sdt);
     game.afterAnimate(sdt);
-    hero.root.visible = rig.cur > 1.0;
+    hero.root.visible = rig.cur > (hero.root.visible ? 0.85 : 1.05); // hysteresis: no flicker at the threshold
     input.endFrame();
   };
   game.draw = (dt) => {

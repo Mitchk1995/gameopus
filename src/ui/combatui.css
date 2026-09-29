@@ -1,0 +1,43 @@
+.splat {
+  position: fixed; left: 0; top: 0; z-index: 3; pointer-events: none;
+  min-width: 26px; height: 26px; padding: 0 6px; box-sizing: border-box;
+  display: grid; place-items: center;
+  font: 800 15px/1 var(--sans); color: #fff; text-shadow: 0 1px 2px #000;
+  border-radius: 13px 13px 13px 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 0 0 1.5px rgba(0,0,0,0.35);
+  font-variant-numeric: tabular-nums;
+  will-change: transform, opacity;
+}
+.splat.dmg { background: radial-gradient(circle at 40% 35%, #e24a3c, #9b1a14); }
+.splat.zero { background: radial-gradient(circle at 40% 35%, #4d7fe0, #22448f); }
+.splat.crit { background: radial-gradient(circle at 40% 35%, #ffd35a, #c07a10); color: #2a1600; text-shadow: none; font-size: 17px; height: 30px; }
+.splat.heal { background: radial-gradient(circle at 40% 35%, #58c46a, #1f7a33); }
+.splat.me { border-radius: 13px 13px 3px 13px; }
+.splat.word { background: rgba(15,12,8,0.85); font: 700 13px/1 var(--serif); letter-spacing: .06em; color: #ffe39a; border-radius: 6px; }
+.ebar { position: fixed; left: 0; top: 0; z-index: 3; pointer-events: none; width: 46px; height: 6px; margin-left: -23px;
+  background: #9c1d1d; box-shadow: 0 0 0 1px rgba(0,0,0,0.7); }
+.ebar i { display: block; height: 100%; background: #38c24c; }
+.lock { position: fixed; left: 0; top: 0; z-index: 3; pointer-events: none; width: 18px; height: 18px; margin: -9px 0 0 -9px;
+  border: 2px solid #ffe39a; transform: rotate(45deg); box-shadow: 0 0 8px rgba(255,210,120,0.8); }
+.lock[hidden], .ebar[hidden], .tframe[hidden] { display: none; }
+.tframe { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 3;
+  width: 260px; padding: 7px 12px 9px; box-sizing: border-box; pointer-events: none;
+  background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 8px; box-shadow: var(--shadow); }
+.tframe .nm { display: flex; justify-content: space-between; font: 700 14px/1 var(--serif); letter-spacing: .04em; color: #f4e4bf; }
+.tframe .nm small { font: 500 13px/1 var(--sans); color: var(--ink-dim); letter-spacing: 0; }
+.tframe .hp { margin-top: 6px; height: 7px; border-radius: 4px; background: #5a1414; overflow: hidden; }
+.tframe .hp i { display: block; height: 100%; background: linear-gradient(#e0473c, #a11d18); transition: width .2s; }
+.tframe.boss { width: min(520px, calc(100vw - 460px)); min-width: 300px; }
+.tframe.boss .nm { font-size: 17px; }
+.tframe.boss .hp { height: 12px; }
+/* The skill tracker steps aside where the target frame would run into it. */
+@media (max-width: 1400px) { .bossfight .goal.show { opacity: 0; } }
+@media (max-width: 1140px) { .targeting .goal.show { opacity: 0; } }
+.hurtfx { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0;
+  box-shadow: inset 0 0 120px 40px rgba(170, 20, 10, 0.55); transition: opacity .5s; }
+.hurtfx.on { opacity: 1; transition: none; }
+.dead { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; pointer-events: none;
+  background: rgba(10, 0, 0, 0); transition: background 1.2s; }
+.dead.on { background: rgba(10, 0, 0, 0.72); }
+.dead div { font: 700 40px/1 var(--serif); color: #e8c9a0; letter-spacing: .06em; opacity: 0; transition: opacity 1s .4s; }
+.dead.on div { opacity: 1; }

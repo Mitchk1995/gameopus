@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Batcher } from './kit.js';
 import { SiteKit } from './sitekit.js';
 import { buildBridge } from './bridge.js';
+import { buildFields } from './fields.js';
+import { buildRocks } from './rocks.js';
 import { buildExits } from './exits.js';
 import { buildWaymarks } from './waymarks.js';
 import { siteMaterials } from './siteparts.js';
@@ -30,6 +32,8 @@ export class Sites {
     const cliff = { map: await this.assets.texture('ground/cliff_a.webp'), normal: await this.assets.texture('ground/cliff_nr.webp', { srgb: false }) };
     this.mat = siteMaterials(this.sk, cliff);
     this.parts.bridge = buildBridge(this.sk);
+    await buildFields(this.sk, this.assets);
+    this.parts.rocks = await buildRocks(this.sk, this.assets);
     this.parts.exits = buildExits(this);
     this.parts.waymarks = buildWaymarks(this);
     this.mesh = this.batch.build();

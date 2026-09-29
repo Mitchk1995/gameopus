@@ -53,6 +53,9 @@ export class Door {
     this.colliders = colliders;
     this.shut = colliders.addBox(def.x, def.z, this.fit.half, LEAF_THICK + 0.04, def.yaw, def.y - 0.5, def.y + DOOR_CLEAR);
     this.shut.door = this;
+    // The leaf moves, so the camera's triangle index leaves it out; while shut, this box stands in
+    // for it (the frame's own triangles would otherwise mark it as covered and let the lens through).
+    this.shut.keepCamera = true;
     // The open leaf stands inside, square to the wall, beside the doorway.
     const [ox, oz] = toWorld(this.fit.hingeX, -this.fit.width / 2);
     this.ajar = colliders.addBox(ox, oz, LEAF_THICK + 0.02, this.fit.width / 2, def.yaw, def.y - 0.5, def.y + DOOR_CLEAR);

@@ -75,13 +75,7 @@ export class CharacterFactory {
     root.updateMatrixWorld(true);
     root.traverse((o) => {
       if (!o.isMesh) return;
-      o.castShadow = true;
-      o.receiveShadow = true;
-      // Cull by a generous sphere around the bind pose, so animation can't escape it.
-      if (o.isSkinnedMesh) {
-        o.computeBoundingSphere();
-        o.boundingSphere.radius = Math.max(o.boundingSphere.radius * 1.6, 1.2);
-      }
+      prepareMesh(o);
       if (spec.tint && o.material?.name?.includes(spec.tintMaterial || 'Ranger')) {
         o.material = o.material.clone();
         o.material.color.multiply(new THREE.Color(spec.tint));
@@ -90,6 +84,17 @@ export class CharacterFactory {
       }
     });
     return new Character(root, bones, this.clips);
+  }
+}
+
+// Shadows on, and for skinned meshes a culling sphere generous enough around the bind
+// pose that animation can't escape it.
+export function prepareMesh(o) {
+  o.castShadow = true;
+  o.receiveShadow = true;
+  if (o.isSkinnedMesh) {
+    o.computeBoundingSphere();
+    o.boundingSphere.radius = Math.max(o.boundingSphere.radius * 1.6, 1.2);
   }
 }
 
@@ -125,6 +130,7 @@ export class Character {
     this.clips = clips;
     this.mixer = new THREE.AnimationMixer(root);
     this.actions = new Map();
+    this.marked = new Map();
     this.current = null;
     this.mixer.addEventListener('finished', (e) => this.onFinished?.(e.action.getClip().name));
   }
@@ -153,7 +159,17 @@ export class Character {
     return next;
   }
 
+  // Poses laid over the animation after it ran (a swing, the bow's aim, a chest lean) mark
+  // the bones they change first. The mixer only rewrites a bone whose animated value moved,
+  // so a bone with a steady rotation would keep the layer's leftover and get it added
+  // again next frame; putting the marked bones back before each update stops that.
+  mark(bone) {
+    if (!this.marked.has(bone)) this.marked.set(bone, bone.quaternion.clone());
+  }
+
   update(dt) {
+    for (const [bone, q] of this.marked) bone.quaternion.copy(q);
+    this.marked.clear();
     this.mixer.update(dt);
   }
 }

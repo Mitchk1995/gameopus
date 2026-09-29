@@ -45,6 +45,10 @@ export class Grass {
       Object.assign(sh.uniforms, {
         uHeight: { value: terrain.heightTex },
         uGround: { value: terrain.groundTex },
+        uBioA: { value: terrain.biomeA },
+        uBioB: { value: terrain.biomeB },
+        uShore: { value: terrain.shoreTex },
+        uFields: { value: terrain.fieldsTex },
         uHalf: { value: WORLD.half },
         uN: { value: WORLD.size + 1 },
         uTime: this.time,
@@ -53,14 +57,16 @@ export class Grass {
       });
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', `#include <common>
-          uniform sampler2D uHeight, uGround;
+          uniform sampler2D uHeight, uGround, uBioA, uBioB, uShore, uFields;
           uniform float uHalf, uN, uTime;
           uniform vec2 uCenter;
           uniform vec3 uPusher;
           attribute vec2 aOffset;
           attribute vec3 aRand;
+          attribute float aHead;
           varying float vTip;
           varying vec3 vTint;
+          varying vec3 vHead;
           float gH(vec2 p) { return textureLod(uHeight, (p + uHalf + 0.5) / uN, 0.0).r; }
           float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
           float gNoise(vec2 p) {
@@ -74,21 +80,42 @@ export class Grass {
           vec3 cover = textureLod(uGround, gBase / (uHalf * 2.0) + 0.5, 0.0).rgb;
           float gY = gH(gBase);
           vec3 gN = normalize(vec3(gH(gBase - vec2(1.0, 0.0)) - gH(gBase + vec2(1.0, 0.0)), 2.0, gH(gBase - vec2(0.0, 1.0)) - gH(gBase + vec2(0.0, 1.0))));
+          vec2 gUV = gBase / (uHalf * 2.0) + 0.5;
+          vec3 bA = textureLod(uBioA, gUV, 0.0).rgb, bB = textureLod(uBioB, gUV, 0.0).rgb;
+          vec3 gSh = textureLod(uShore, gUV, 0.0).rgb, gFl = textureLod(uFields, gUV, 0.0).rgb;
           float meadow = (1.0 - smoothstep(0.15, 0.55, cover.r)) * (1.0 - smoothstep(0.1, 0.4, cover.b));
           meadow *= 1.0 - smoothstep(0.35, 0.8, cover.g) * 0.8;
-          meadow *= smoothstep(1.3, 1.9, gY) * smoothstep(0.78, 0.9, gN.y) * (1.0 - smoothstep(24.0, 40.0, gY));
+          meadow *= smoothstep(0.7, 1.3, gY) * smoothstep(0.78, 0.9, gN.y) * (1.0 - smoothstep(24.0, 40.0, gY));
+          // None on the bars, in the fields (their crops grow there) or on the scree; sparse on the heath.
+          meadow *= (1.0 - smoothstep(0.2, 0.6, gSh.r)) * (1.0 - smoothstep(0.2, 0.6, max(max(gFl.r, gFl.g), max(gFl.b, gSh.b))));
+          meadow *= (1.0 - bA.g * 0.45) * (1.0 - bB.b * 0.8);
           // Patchy: some ground is lush, some is short and sparse.
           float gPatch = gNoise(gBase * 0.09) * 0.7 + gNoise(gBase * 0.31) * 0.3;
           float keep = step(aRand.z, meadow * (0.55 + gPatch * 0.7));
           float grow = keep * (1.0 - smoothstep(${FADE[0].toFixed(1)}, ${FADE[1].toFixed(1)}, gDist));
+          // Tall and rank in the marsh and the dry scrub, short on the heath.
+          float tall = 1.0 + bA.b * 0.5 + bB.r * 0.35 - bA.g * 0.35;
           float gScale = grow * (0.65 + aRand.y * 0.45) * (0.65 + gPatch * 0.55);
-          float gDry = smoothstep(0.38, 0.78, gNoise(gBase * 0.011 + 3.0) * 0.7 + gNoise(gBase * 0.045) * 0.3);
-          vTint = mix(vec3(0.07, 0.15, 0.03), vec3(0.17, 0.17, 0.06), gDry) * (0.8 + aRand.y * 0.4);
+          // Coloured by where it grows, like the ground under it: meadow greens, golden dry grass in
+          // bandit country, heather browns on the heath, dark sedge in the marsh.
+          float gDry = smoothstep(0.35, 0.8, gNoise(gBase * 0.011 + 3.0) * 0.7 + gNoise(gBase * 0.045) * 0.3);
+          vec3 tint = mix(vec3(0.05, 0.085, 0.02), vec3(0.085, 0.09, 0.028), gDry);
+          tint = mix(tint, mix(vec3(0.1, 0.066, 0.024), vec3(0.15, 0.1, 0.035), gDry), bB.r * 0.9);
+          tint = mix(tint, vec3(0.068, 0.058, 0.04), bA.g * 0.7);
+          tint = mix(tint, vec3(0.032, 0.048, 0.02), bA.b * 0.8);
+          tint = mix(tint, vec3(0.035, 0.06, 0.017), bB.g * 0.5);
+          vTint = tint * (0.8 + aRand.y * 0.4);
           vTip = position.y;
+          // One tuft in a dozen in the meadows is a flower: a head on its tallest blade.
+          float r2 = fract(aRand.y * 7.13 + aRand.z * 3.71);
+          float bloom = step(0.9, r2) * clamp(bA.r * 1.2 - bB.r - bA.g * 0.5, 0.0, 1.0) * step(0.35, gPatch);
+          float fk = fract(r2 * 13.7);
+          vHead = aHead * (fk < 0.4 ? vec3(0.4, 0.3, 0.03) : fk < 0.62 ? vec3(0.34, 0.34, 0.31) : fk < 0.84 ? vec3(0.2, 0.075, 0.18) : vec3(0.09, 0.13, 0.32));
+          gScale *= mix(1.0, bloom, aHead);
           vec3 objectNormal = gN;`)
         .replace('#include <begin_vertex>', `
           float gc = cos(aRand.x), gs = sin(aRand.x);
-          vec3 transformed = vec3(position.x * gc - position.z * gs, position.y, position.x * gs + position.z * gc) * gScale;
+          vec3 transformed = vec3(position.x * gc - position.z * gs, position.y * tall, position.x * gs + position.z * gc) * gScale;
           float bend = position.y * position.y * gScale;
           // Wind: slow gusts plus a quicker flutter.
           float gust = sin(uTime * 1.1 + gBase.x * 0.07 + gBase.y * 0.05) * 0.5 + 0.5;
@@ -103,7 +130,8 @@ export class Grass {
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
           varying float vTip;
-          varying vec3 vTint;`)
+          varying vec3 vTint;
+          varying vec3 vHead;`)
         // Both sides of a blade take the ground's normal, so back faces aren't dark.
         .replace('#include <normal_fragment_begin>', `
           float faceDirection = 1.0;
@@ -111,10 +139,13 @@ export class Grass {
           vec3 nonPerturbedNormal = normal;`)
         .replace('#include <color_fragment>', `#include <color_fragment>
           float gt = clamp(vTip / 0.5, 0.0, 1.0);
-          diffuseColor.rgb = vTint * mix(0.62, 1.25, gt) * mix(vec3(1.0), vec3(1.08, 1.06, 0.8), gt * gt);`)
+          diffuseColor.rgb = vTint * mix(0.62, 1.25, gt) * mix(vec3(1.0), vec3(1.08, 1.06, 0.8), gt * gt);
+          if (dot(vHead, vHead) > 0.0001) diffuseColor.rgb = vHead;`)
         .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
-          // Light through the blades.
-          reflectedLight.indirectDiffuse += diffuseColor.rgb * 0.22 * gt;`);
+          // Light through the blades; blades hardly shine.
+          reflectedLight.indirectDiffuse += diffuseColor.rgb * 0.22 * gt;
+          reflectedLight.directSpecular *= 0.3;
+          reflectedLight.indirectSpecular *= 0.3;`);
     };
     const mesh = new THREE.Mesh(inst, mat);
     mesh.frustumCulled = false;
@@ -142,6 +173,7 @@ function tuftGeometry() {
   const pos = [], idx = [];
   let seed = 3;
   const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  let top = null;
   for (let b = 0; b < 7; b++) {
     const ang = r() * Math.PI * 2, rad = Math.sqrt(r()) * 0.13;
     const bx = Math.cos(ang) * rad, bz = Math.sin(ang) * rad;
@@ -165,10 +197,25 @@ function tuftGeometry() {
     }
     const a = base + (segs - 1) * 2;
     idx.push(a, a + 1, a + 2);
+    const tip = pos.length / 3 - 1;
+    if (!top || pos[tip * 3 + 1] > top[1]) top = [pos[tip * 3], pos[tip * 3 + 1], pos[tip * 3 + 2]];
   }
+  // A flower head on the tallest blade: a little round face turned up to the sky, tipped a touch
+  // (hidden unless the tuft blooms).
+  const blades = pos.length / 3;
+  const s = 0.03, b0 = pos.length / 3;
+  pos.push(top[0], top[1] + 0.012, top[2]);
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2;
+    pos.push(top[0] + Math.cos(a) * s, top[1] + Math.cos(a) * s * 0.35, top[2] + Math.sin(a) * s);
+  }
+  for (let k = 0; k < 7; k++) idx.push(b0, b0 + 1 + ((k + 1) % 7), b0 + 1 + k);
+  const head = new Float32Array(pos.length / 3);
+  head.fill(1, blades);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(pos.length).fill(0).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  g.setAttribute('aHead', new THREE.Float32BufferAttribute(head, 1));
   g.setIndex(idx);
   return g;
 }

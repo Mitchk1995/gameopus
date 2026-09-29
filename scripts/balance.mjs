@@ -58,7 +58,7 @@ const pad = (s, n) => String(s).padEnd(n);
 for (const st of STAGES) {
   console.log(`\n${st.name}: ${st.weapon}, ${st.armour.length ? st.armour.join(', ') : 'no armour'}; ${st.bow} + ${st.arrow}; magic ${st.magic}; ${st.hp} hp`);
   console.log(pad('monster', 26), pad('sword: hit/max/ttk', 22), pad('bow: hit/max/ttk', 20), pad('spell: hit/max/ttk', 22), 'it hits you: chance/avg per swing');
-  for (const [id, m] of Object.entries(MONSTERS)) {
+  for (const m of Object.values(MONSTERS)) {
     const a = melee(st, m), r = ranged(st, m), g = magic(st, m), inc = incoming(st, m);
     const ttk = (x) => `${(m.hp / x.dps).toFixed(0)}s`;
     console.log(

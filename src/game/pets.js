@@ -65,7 +65,6 @@ export class Pets {
       char = await g.fight.factory.create({ model: 'puglin', skin: 2, scale: 0.42 });
       root = char.root;
       const crown = buildItem('warren_crown', g.assets);
-      crown.scale.setScalar(1 / 0.42 * 0.9);
       const head = char.bones.Head;
       const s = new THREE.Vector3();
       head.getWorldScale(s);
