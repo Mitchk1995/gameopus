@@ -1,5 +1,8 @@
 // The people of Ashford, as data. Each has:
-//   look       outfit, body and hair for the character factory
+//   look       what they wear and how they look, for the character factory (the fields
+//              are listed at the top of src/actors/character.js). Nobody but the player
+//              wears the ranger outfit in green; tests/playtest/npc_looks.py checks that
+//              no two people share a look and that nobody could pass for the player.
 //   at         where they stand: { place, x, z } inside or beside a village building
 //              (local metres), { station, dx, dz, facing } beside a workstation,
 //              { x, z, facing } in the world, { loop: [radius, angle, points] } for a
@@ -24,7 +27,11 @@ const bye = { text: 'Goodbye.', end: true };
 export const PEOPLE = [
   {
     id: 'aldwyn', name: 'Aldwyn', role: 'banker',
-    look: { outfit: 'male_peasant', body: 'male', hair: 'hair_buzzed', beard: 'hair_beard', eyebrows: 'eyebrows_regular' },
+    // Sober and prosperous: a wine-dark coat over black, iron-grey hair neatly parted, a pale indoor face.
+    look: {
+      outfit: 'male_peasant', body: 'male', hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular', hairColor: 'grey', skin: 'pale',
+      dye: { torso: 0x6a2634, arms: 0x2a2a2e, legs: 0x1e1e24, feet: 0x1a1a1a }, scale: 1.04, build: 0.96,
+    },
     idle: 'Idle_FoldArms_Loop', at: { place: 'bank', x: 0, z: -2.6 },
     persona: `Aldwyn runs the Bank of Ashford, a stone building on the north side of the market square, at the head of Lake Street.
 Precise, dry, quietly proud that nothing has gone missing from his vaults in forty years (bar one goat, which he will not discuss further).
@@ -47,7 +54,11 @@ Speaks formally and briefly, with a very dry wit. Keeps careful accounts of ever
 
   {
     id: 'maren', name: 'Maren', role: 'shopkeeper',
-    look: { outfit: 'female_peasant', body: 'female', hair: 'hair_buns', eyebrows: 'eyebrows_female' },
+    // Cheerful and practical: a mustard blouse, a short chestnut bob.
+    look: {
+      outfit: 'female_peasant', body: 'female', hair: 'hair_simpleparted', eyebrows: 'eyebrows_female', hairColor: 'chestnut', skin: 'fair',
+      dye: { torso: 0xd0a030, arms: 0xe8d8b0, legs: 0x504030, feet: 0x6a4a2a }, build: 1.03,
+    },
     at: { place: 'store', x: 0, z: -1.9 },
     persona: `Maren keeps the general store on the west side of the market square: axes, pickaxes, hammers, knives, nets and a few weapons. She buys almost anything.
 Cheerful, chatty and practical, the first person newcomers ask for advice. Knows what each tool is for and where to use it.`,
@@ -72,7 +83,13 @@ Cheerful, chatty and practical, the first person newcomers ask for advice. Knows
 
   {
     id: 'brom', name: 'Brom', role: 'smith',
-    look: { outfit: 'male_peasant', body: 'male', hair: 'hair_buzzed', beard: 'hair_beard', eyebrows: 'eyebrows_regular' },
+    // Huge and soot-stained: a charcoal jerkin with blackened leather, bracers and a belt, a big black beard.
+    look: {
+      outfit: 'male_peasant', body: 'male', parts: { torso: 'male_ranger', feet: 'male_ranger' }, addons: ['bracers', 'belt'],
+      hair: 'hair_buzzed', beard: 'hair_beard', eyebrows: 'eyebrows_regular', hairColor: 'black', skin: 'weathered',
+      dye: { torso: 0x26262a, arms: 0x2c2620, legs: 0x26221e }, leather: 0x24160e,
+      gear: [{ kind: 'apron', color: 0x4a3120, trim: 0x2a1a10, length: 0.5 }], scale: 1.03, build: 1.12,
+    },
     idle: 'Idle_FoldArms_Loop', at: { place: 'smithy', x: -2.0, z: -0.2 },
     persona: `Brom is Ashford's smith: huge, soot-stained, blunt, and proud of his craft. His smithy is on the south-east corner of the market square, open to the street so passers-by can watch the forge, with a furnace and an anvil.
 He teaches anyone willing: copper and tin smelt into bronze, iron takes a steadier hand, steel needs coal as well as iron ore. Bars plus a hammer at the anvil make weapons, armour and arrowtips.
@@ -150,7 +167,12 @@ Few words, gruff humour, soft spot for Old Tam, low opinion of Garrow's guarding
 
   {
     id: 'tam', name: 'Old Tam', role: 'fisher',
-    look: { outfit: 'male_ranger', body: 'male', hair: 'hair_long', beard: 'hair_beard', eyebrows: 'eyebrows_regular' },
+    // An old fisherman in oilskin browns, long white hair and beard, a knitted cap; small and a little bent.
+    look: {
+      outfit: 'male_ranger', body: 'male', addons: ['belt'], hair: 'hair_long', beard: 'hair_beard', eyebrows: 'eyebrows_regular',
+      hairColor: 'white', skin: 'ruddy', dye: { cloth: 0x7a5a2a }, leather: 0x3a2818,
+      gear: [{ kind: 'hat', style: 'knit', color: 0x2a3a52 }], scale: 0.96, build: 0.98,
+    },
     at: { x: -50.5, z: 171.5, facing: 2.6 },
     persona: `Old Tam has fished the lake south of the village for sixty years and sells nets, fly rods and feathers from the end of the lake road, by the jetty.
 Gruff, weathered, fond of tall tales that he insists are true. Short, salty sentences. Calls people "young'un".
@@ -240,7 +262,12 @@ Obsessed with Old Gnasher, a pike as long as a rowboat that lives in the deep ho
 
   {
     id: 'ysolde', name: 'Ysolde', role: 'potter',
-    look: { outfit: 'female_ranger', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female' },
+    // Earthy: a terracotta blouse, clay-brown skirt tones, a cream apron, dark hair in buns.
+    look: {
+      outfit: 'female_peasant', body: 'female', hair: 'hair_buns', eyebrows: 'eyebrows_female', hairColor: 'darkbrown', skin: 'tan',
+      dye: { torso: 0xb5583a, arms: 0xd0b898, legs: 0x8a5a3a, feet: 0x704a30 },
+      gear: [{ kind: 'apron', color: 0x9a6a44, trim: 0xd8c8a8 }],
+    },
     at: { place: 'potter', x: 2.0, z: 0.3 },
     persona: `Ysolde is the village potter and spinner, working in the open workshop on the west side of the market square: a spinning wheel and a potter's wheel under the roof, and the kiln in the alcove beside it.
 Calm, patient, a little dreamy, speaks in unhurried sentences and notices small beautiful things.
@@ -255,7 +282,11 @@ Crafting: dig clay at the quarry, soften it with water from the well, shape pots
 
   {
     id: 'mirelle', name: 'Mirelle', role: 'mage',
-    look: { outfit: 'female_peasant', body: 'female', hair: 'hair_buns', eyebrows: 'eyebrows_female', tint: 0x2e3a86, tintMaterial: 'Peasant' },
+    // A travelling mage: deep violet, long black hair, a pale face.
+    look: {
+      outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female', hairColor: 'black', skin: 'pale',
+      dye: { torso: 0x5a3a9a, arms: 0x6a4aa8, legs: 0x2a2038, feet: 0x2a2038 },
+    },
     at: PEOPLE_AT.mirelle,
     persona: `Mirelle is a travelling mage who has set up a rune stall on the west side of the market aisle in Ashford's square, selling runes and staves. Quick-witted, theatrical, delighted by anyone curious about magic, and a little vain about her own spellwork.
 She teaches the four strike spells: Wind Strike (magic level 1: an air rune and a mind rune), Water Strike (level 5), Earth Strike (level 9) and Fire Strike (level 13), each hitting harder and needing more runes. With a staff in hand you gather the spell in your open hand and let it fly; a staff of air saves you the air runes.
@@ -282,7 +313,12 @@ She thinks swords are loud and bows are fiddly. She has heard the goblins under 
 
   {
     id: 'garrow', name: 'Garrow', role: 'guard',
-    look: { outfit: 'male_ranger', body: 'male', hair: 'hair_buzzed', eyebrows: 'eyebrows_regular' },
+    // The town watch: the ranger's harness in blue (no hood, no green), a pauldron and bracers, a crimson tabard.
+    look: {
+      outfit: 'male_ranger', body: 'male', addons: ['pauldron', 'bracers', 'belt'], hair: 'hair_buzzed', eyebrows: 'eyebrows_regular',
+      hairColor: 'brown', skin: 'weathered', dye: { cloth: 0x1c3466 }, leather: 0x2a1c12,
+      gear: [{ kind: 'tabard', color: 0x7a1e26, trim: 0xc9a030 }], scale: 1.03, build: 1.05,
+    },
     idle: 'Idle_FoldArms_Loop', at: PEOPLE_AT.garrow,
     persona: `Garrow is Ashford's only guard, posted at the east gate, where Bridge Street leaves town. Twenty years on the job, dutiful in his own slow way, tired, defensive about how much he leans on things.
 Knows the roads: north-west to the quarry and mine, east over the bridge past the farms to the bandit woods, south to the lake. Bandits camp in the eastern woods under a captain with a fancy blade and a worse temper. Goblins camp in the woods north-west of the village.`,
@@ -333,7 +369,12 @@ Knows the roads: north-west to the quarry and mine, east over the bridge past th
 
   {
     id: 'bess', name: 'Bess', role: 'innkeeper',
-    look: { outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female' },
+    // Warm and loud: brick red, a long ginger mane, a floury apron, a ruddy face, a sturdy build.
+    look: {
+      outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female', hairColor: 'ginger', skin: 'ruddy',
+      dye: { torso: 0xb03028, arms: 0xf0e8d8, legs: 0x4a3a2c, feet: 0x5a3a24 },
+      gear: [{ kind: 'apron', color: 0xf0ead8, trim: 0xc8b898 }], build: 1.08,
+    },
     at: { place: 'inn', x: -0.9, z: -4.7 },
     persona: `Bess keeps the Crooked Pike, the big inn on the north-east corner of the market square, with a communal hearth out front. Warm, loud, quick to laugh, and the valley's best source of gossip.
 Sells bread and ale. Knows everyone's business and loves to share it, kindly. Has already named her inn after Old Tam's legendary fish.`,
@@ -363,7 +404,11 @@ Sells bread and ale. Knows everyone's business and loves to share it, kindly. Ha
 
   {
     id: 'wenna', name: 'Wenna', role: 'villager',
-    look: { outfit: 'female_peasant', body: 'female', hair: 'hair_long', eyebrows: 'eyebrows_female' },
+    // A friendly neighbour in soft blues, a short fair crop, a little smaller than most.
+    look: {
+      outfit: 'female_peasant', body: 'female', hair: 'hair_buzzedfemale', eyebrows: 'eyebrows_female', hairColor: 'fair', skin: 'fair',
+      dye: { torso: 0x8090c8, arms: 0xe0e4f0, legs: 0x4a4e5c, feet: 0x5c4a34 }, scale: 0.97,
+    },
     at: { route: PEOPLE_AT.wenna.route }, speed: 1.0,
     persona: `Wenna is a villager who walks her rounds of the market stalls every day, basket on her arm. Friendly, a little nosy, loves the weather and her cat.`,
     dialogue: {
@@ -376,7 +421,11 @@ Sells bread and ale. Knows everyone's business and loves to share it, kindly. Ha
 
   {
     id: 'hob', name: 'Hob', role: 'villager',
-    look: { outfit: 'male_peasant', body: 'male', hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular' },
+    // A sunburnt farmhand: undyed linen, sandy hair under a straw hat.
+    look: {
+      outfit: 'male_peasant', body: 'male', hair: 'hair_simpleparted', eyebrows: 'eyebrows_regular', hairColor: 'blond', skin: 'ruddy',
+      dye: { torso: 0xd8c8a0, legs: 0x5a4a30 }, gear: [{ kind: 'hat', style: 'straw', color: 0xc9a85a, band: 0x5a3a24 }],
+    },
     at: { route: PEOPLE_AT.hob.route, reverse: PEOPLE_AT.hob.reverse }, speed: 1.15,
     persona: `Hob is a farmhand from the fields east of the river who spends more time in the village square than in the fields. Easygoing, lazy, full of opinions about everything.`,
     dialogue: {
