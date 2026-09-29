@@ -102,6 +102,36 @@ licences that allow redistribution qualify.
 | MoCap Online, T.C. Sword free pack | free; MoCap Online EULA (not open) | UE/FBX mocap | Out unless its EULA allows raw files in a public repo. |
 | CMU mocap (RancidMilk conversions), Bandai Namco dataset | free / CC BY-NC-ND | various | Out: no sword combat, or no derivatives allowed. |
 
+No more outfits exist for our skeleton. The free Standard download of Modular Character Outfits
+(Fantasy) holds only the Peasant and Ranger outfits, male and female; its other ten outfits are in the
+paid Source edition (we only use what is free), and Quaternius has published no other outfit pack for the
+Universal Base Characters rig as of September 2026 (checked on quaternius.com and quaternius.itch.io; the
+older Ultimate Modular Men/Women packs are on a different rig).
+People are therefore told apart by what the character factory can do with those four outfits.
+
+### Villagers who look like themselves
+
+The owner noticed a villager in their own green ranger outfit, and a critic found the town full of
+clones (two peasants in one look, three in the ranger's, every head of hair the same silver). Now a
+look (`look` in `src/content/people.js`, fields listed at the top of `src/actors/character.js`) is
+built from these levers, so ten people share four outfits and nobody is a copy:
+
+- **Pieces.** Garments can come from different outfits of the same body (`parts`: a ranger torso and
+  boots over peasant trousers), and the ranger's hood, pauldron, bracers and belts are options (`addons`).
+- **Dyes.** `dye` colours each garment: the peasant cloth is multiplied by it, and on the ranger
+  outfit it *replaces the green* cloth while leaving leather, metal and trim alone (`leather` colours
+  those). The green ranger outfit is the player's; anyone else wearing ranger pieces has them dyed.
+- **Hair.** The hair files are grey, so `hairColor` (black, darkbrown, brown, chestnut, auburn, ginger,
+  blond, fair, grey, white, or a hex) tints hair, beard and brows; `beardColor` and `browColor` override.
+- **Skin, height, build.** `skin` (pale to dark, or a hex) tints the face and hands together; `scale`
+  and `build` are height and width, within a few percent.
+- **Gear.** A few things are built in code and hung on the rig: an `apron` and a `tabard` (cloth
+  panels skinned to spine, hips and legs so they follow the body), and `hat`s (straw, knit, pointed).
+
+`tests/playtest/npc_looks.py` fails if two villagers, or a villager and the player, are too alike
+(a "look distance" summed over garments, colours in Lab, hair, beard, skin, gear, height and build),
+or if anyone wears the ranger's green. It also photographs the cast (`docs/town/after/npc_lineup.jpg`, with `npc_lineup_left.jpg` and `npc_lineup_right.jpg` close-ups).
+
 ## Roadmap
 
 - [x] M1 World and feel: sky and sun, terrain, water, trees and grass, the village, the
