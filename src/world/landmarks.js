@@ -426,7 +426,11 @@ function abbey(sk, xm, keep) {
   const targets = [[-13, 9], [-5.6, 9.5], [0, 9], [5.6, 9.5], [11.2, 9], [X1 + T / 2, 20], [-18.5, 19]].map(([lx, h]) => { const [x, z] = f.at(lx, HW); return [x, base + h, z]; });
   const eyes = [[-8, 53], [-8, 66], [-9, 84], [-8, 30]].map(([x, z]) => [x, sk.ground(x, z) + 1.7, z]);
   keep.push(sightOut(ABBEY_HILL.x, ABBEY_HILL.z, 115, eyes, targets));
-  return { x: f.ox, z: f.oz, base, frame: f, door: f.at(DOOR, HW) };
+  // Points for tests and views: the door, just inside it, outside the next bay, the gable's apex and the tower top.
+  return {
+    x: f.ox, z: f.oz, base, frame: f, door: f.at(DOOR, HW), inside: f.at(DOOR, 0), outside: f.at(DOOR, HW + 3), bayOutside: f.at(0, HW + 1.2), bayInside: f.at(0, 0),
+    apex: [f.at(X1 + T / 2, 0)[0], base + 21.6, f.at(X1 + T / 2, 0)[1]], towerTop: [f.at(-18.5, 0)[0], base + 18, f.at(-18.5, 0)[1]],
+  };
 }
 
 // A round hole (an oculus) as an opening outline.
@@ -627,7 +631,7 @@ function beacon(sk, xm, sites, smoke, keep) {
   sites.updaters.push((dt) => fire.update(dt));
   smoke.add(L.x, dy + 2.6, L.z, { puffs: 48, life: 22, rise: 60, size: [1.0, 14], grey: 0.52, opacity: 0.76, spread: 5, seed: 3 });
   keep.push(circleOut(L.x, L.z, 14));
-  return { x: L.x, z: L.z, base, top: base + TOP + 1.85, fire };
+  return { x: L.x, z: L.z, base, top: base + TOP + 1.85, fire, R: R0 + 0.35, approach: f.at(0, R0 + 3) };
 }
 
 // ------------------------------------------------------------------ the mine headframe
@@ -730,7 +734,8 @@ function headframe(sk, xm, smoke, keep) {
   timberStack(sk, f, base, 2.0, 4.2, xm);
   for (const [lx, lz, R, Hh] of [[-1.2, 4.3, 1.2, 1.0], [5.8, 4.6, 1.0, 0.8]]) { const [x, z] = f.at(lx, lz); rubble(sk, xm, x, z, R, Hh, rng(lx * 100 + lz), 'spoil heap'); }
   keep.push(circleOut(L.x, L.z, 12));
-  return { x: L.x, z: L.z, base, top: wheelY + WR, chimney: [cx, base + chH, cz] };
+  const way = roadById('headframe').pts;
+  return { x: L.x, z: L.z, base, top: wheelY + WR, wheel: [wx, wheelY, wz], chimney: [cx, base + chH, cz], yard: f.at(SX - 1, -3.6), pathEnd: way[way.length - 1] };
 }
 
 // A timber shed on a stone footing with a board roof, closed (the winding engine is inside).
@@ -846,7 +851,7 @@ function lighthouse(sk, xm, keep) {
   sk.colliders.addCircle(tx, tz, R0 + 0.6, y0, gy + 1.2);
   keeperHut(sk, f, tx, tz, doorYaw, R0, xm);
   keep.push(circleOut(tx, tz, 13));
-  return { x: tx, z: tz, base: floor, top: gy + 0.35 + LH + (LR + 0.2) * 0.72 + 1.1 };
+  return { x: tx, z: tz, base: floor, top: gy + 0.35 + LH + (LR + 0.2) * 0.72 + 1.1, R: R0 + 0.6, approach: [ex - ux * 2, ez - uz * 2] };
 }
 
 // The keeper's cottage: stone walls, a door, a window, a tiled roof and a chimney, beside the path.

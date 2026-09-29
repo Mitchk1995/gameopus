@@ -75,8 +75,7 @@ function banditFort(sk, xm) {
   gateway(sk, xm, C, R, east, GATE, rnd, 'east gate', flagTex);
   breach(sk, xm, C, R, south, BREACH, rnd);
   // Fighting walkways either side of the west gate, each with a stair down at its far end.
-  walkway(sk, xm, C, R, west + GATE + 0.12, west + GATE + 0.95, rnd, 'far');
-  walkway(sk, xm, C, R, west - GATE - 0.95, west - GATE - 0.12, rnd, 'near');
+  const walkways = [walkway(sk, xm, C, R, west + GATE + 0.12, west + GATE + 0.95, rnd, 'far'), walkway(sk, xm, C, R, west - GATE - 0.95, west - GATE - 0.12, rnd, 'near')];
   // The watch tower on the north side, over the tents, looking down both roads.
   const tAng = -Math.PI / 2 + 0.52;
   const [tx, tz] = polar(C, tAng, 14.6);
@@ -107,7 +106,7 @@ function banditFort(sk, xm) {
     stump(sk, xm, x, z, 0.22 + rnd() * 0.14, 0.3 + rnd() * 0.3, rnd);
     placed++;
   }
-  return { x: C.x, z: C.z, R, west, east, south, tower: [tx, tz] };
+  return { x: C.x, z: C.z, R, west, east, south, gate: 2 * GATE * R, tower: [tx, tz], walkways };
 }
 
 // How far round the fort the trees were cleared.
@@ -248,7 +247,15 @@ function walkway(sk, xm, C, R, a0, a1, rnd, stairEnd) {
     const [x, z] = polar(C, b, r0 - run * (steps - 1 - i) + run / 2 - 0.02);
     const g = sk.ground(x, z), top = g + rise * (i + 1);
     sk.put(timberBox(sk, 1.05, top - g + 0.3, run + 0.02, 'x'), xm.timber, x, g - 0.3, z, yaw);
-    const st = sk.colliders.addBox(x, z, 0.66, run / 2 + 0.01, yaw, g - 0.3, top);
+  }
+  // Its colliders are a ramp of thin standable slabs through the middles of the treads: a tread is
+  // 0.3 m deep and a person 0.32 m round, so step-shaped boxes would stop anyone at the first riser.
+  const c0 = r0 - run * (steps - 1) + run / 2 - 0.02, foot0 = c0 - run / 2, nSlab = Math.ceil((r0 - foot0) / 0.1);
+  for (let k = 0; k < nSlab; k++) {
+    const rr = foot0 + ((r0 - foot0) * (k + 0.5)) / nSlab;
+    const [x, z] = polar(C, b, rr);
+    const g = sk.ground(x, z), h = Math.min(DECK - 0.01, Math.max(rise * 0.5, rise + ((rr - c0) * rise) / run));
+    const st = sk.colliders.addBox(x, z, 0.66, (r0 - foot0) / nSlab / 2 + 0.005, yaw, g - 0.3, g + h);
     st.floor = true;
   }
   // Stringers either side.
@@ -257,6 +264,9 @@ function walkway(sk, xm, C, R, a0, a1, rnd, stairEnd) {
     const pTop = polar(C, b + off / r0, r0 - 0.05), pBot = polar(C, b + off / (r0 - steps * run), r0 - steps * run - 0.1);
     beam(sk, [pBot[0], sk.ground(pBot[0], pBot[1]) + 0.1, pBot[1]], [pTop[0], deckY(pTop[0], pTop[1]) - 0.05, pTop[1]], 0.08, 0.24, xm.timber);
   }
+  // Where it is (for tests): the deck's height at its middle, the stair's foot and the deck above it.
+  const am = (a0 + a1) / 2, [mx, mz] = polar(C, am, (r0 + r1) / 2);
+  return { a0, a1, r0, r1, mid: [mx, mz], deck: deckY(mx, mz), foot: polar(C, b, r0 - steps * run - 0.8), top: polar(C, b, (r0 + r1) / 2) };
 }
 
 // A timber watch tower: four leaning log legs, braces, a railed platform with a roof, a ladder.
