@@ -19,7 +19,12 @@ const SWING_MOVE = 0.7;       // share of jog speed you keep while swinging
 // angle, the swinging arm the rest (the shares add up to 1).
 const SWING_LEAN = [['spine_01', 0.15], ['spine_02', 0.22], ['spine_03', 0.25], ['clavicle_r', 0.1], ['upperarm_r', 0.28]];
 const SWING_BLEND = 0.03;     // seconds for the layered swing to fade in over the legs
-const ROLL = { clip: 'Roll', rate: 1.2, scale: 0.8, control: 0.95, iframes: [0.04, 0.55] };
+// The dodge roll. The clip glides at an even speed, which reads as floaty, so the body instead
+// bursts off the mark and eases to a stop: `dist` metres over the clip's first `travel` seconds
+// (clip time), half of it an even glide and half an ease-out. Control returns at `control`, and
+// `iframes` is the untouchable stretch (both in clip time; the clip plays at `rate`). Roll_Tuck is
+// the library's roll with its long flat dive swept through in 0.07 s (scripts/compose-clips.mjs).
+const ROLL = { clip: 'Roll_Tuck', rate: 1.5, dist: 3.6, travel: 0.87, control: 0.9, iframes: [0.03, 0.6] };
 
 export class Player {
   constructor({ world, character, input }) {
@@ -106,8 +111,8 @@ export class Player {
   }
 
   // ---------------------------------------------------------------- combat
-  // A swing: the clip plays at the move's speed, the body lunges forward with the
-  // animator's root motion until the blade connects, and onHit fires at that moment.
+  // A swing: the clip plays at the move's speed, in place unless the move has a `lunge` (none
+  // do now: the owner wants swings to stay where they are), and onHit fires as the blade connects.
   startAttack(move, onHit) {
     if (this.state === 'act') this.stopAction();
     // Coming out of the finisher (a low, twisted follow-through) the body straightens into
@@ -235,12 +240,20 @@ export class Player {
     return { t, afterHit: this.hitDone, canChain: this.hitDone && t >= this.move.hit + (this.move.next ?? 0.1) };
   }
 
-  startBlock(shield) {
+  // The guard: blade held upright in front, left forearm raised (anims/combat.glb, built by
+  // scripts/compose-clips.mjs), with or without a shield. A blow on it jolts it back briefly.
+  startBlock() {
     if (this.state === 'act') this.stopAction();
     this.state = 'block';
     this.stateTime = 0;
-    this.blockClip = shield ? 'Idle_Shield_Loop' : 'Sword_Block';
-    this.char.play(this.blockClip, { loop: !!shield, speed: shield ? 1 : 1.6, fade: 0.08, restart: true });
+    this.guardJolt = 0;
+    this.char.play('Sword_Guard_Loop', { fade: 0.08, restart: true });
+  }
+
+  // A blow landed on the guard (not a parry): the guard rocks back and settles.
+  blockHit() {
+    if (this.state !== 'block') return;
+    this.guardJolt = this.char.play('Sword_Guard_Hit', { loop: false, fade: 0.04, restart: true }).getClip().duration;
   }
 
   endBlock() {
@@ -367,10 +380,7 @@ export class Player {
       const k = 1 - Math.exp(-14 * dt);
       this.vel.x += (wish.x * 1.4 - this.vel.x) * k;
       this.vel.z += (wish.z * 1.4 - this.vel.z) * k;
-      if (this.blockClip === 'Sword_Block') {
-        const a = this.char.current;
-        if (a && a.time > 0.32) a.paused = true;
-      }
+      if (this.guardJolt > 0 && (this.guardJolt -= dt) <= 0) this.char.play('Sword_Guard_Loop', { fade: 0.1 });
     } else if (this.state === 'hurt' && this.knock) {
       const step = Math.min(this.knock.left, dt * 4);
       this.pos.addScaledVector(this.knock.dir, step);
@@ -427,7 +437,8 @@ export class Player {
 
   #rollStep() {
     const t = this.stateTime * ROLL.rate;
-    const dist = travelled(rootMotion.clips[ROLL.clip], t) * ROLL.scale;
+    const u = Math.min(1, t / ROLL.travel);
+    const dist = ROLL.dist * (0.5 * u + 0.5 * (1 - (1 - u) * (1 - u)));
     const step = dist - this.rollDone;
     this.rollDone = dist;
     this.pos.x += this.rollDir.x * step;

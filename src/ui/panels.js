@@ -212,7 +212,7 @@ export class Panels {
       if (!cell || !this.state.inv.slots[+cell.dataset.i]) return;
       e.preventDefault();
       this.hideTip();
-      this.#menu(e.clientX, e.clientY, this.actions.options(+cell.dataset.i));
+      this.showMenu(e.clientX, e.clientY, this.actions.options(+cell.dataset.i));
     });
     this.grid.addEventListener('mouseover', (e) => {
       const cell = e.target.closest('.slot');
@@ -376,7 +376,8 @@ export class Panels {
     this.tip.hidden = true;
   }
 
-  #menu(x, y, options) {
+  // A right-click menu of { label, run } at the pointer (the pack uses it, and so does the shop window).
+  showMenu(x, y, options) {
     this.menu.innerHTML = '';
     for (const o of options) {
       const b = el('button', '', o.label);

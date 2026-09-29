@@ -28,10 +28,11 @@ class Win {
 // Windows the game opens: bank, make (choose a recipe and how many), shop, skill guide.
 // Only one is open at a time. Every window reports closing through onClose.
 export class Menus {
-  constructor({ state, studio, onClose }) {
+  constructor({ state, studio, onClose, showMenu }) {
     this.state = state;
     this.studio = studio;
     this.onClose = onClose;
+    this.showMenu = showMenu; // (x, y, [{ label, run }]): the right-click menu the pack uses
     this.win = new Win(() => this.close());
     this.kind = null;
     this.qty = 1;
@@ -158,10 +159,10 @@ export class Menus {
   }
 
   // ------------------------------------------------------------ shop
-  openShop({ name, owner, stock, onBuy }) {
+  openShop({ name, owner, stock, onBuy, onExamine }) {
     this.kind = 'shop';
-    this.shop = { stock, onBuy };
-    this.win.title(name, `${owner} · click to buy, click your pack to sell`);
+    this.shop = { stock, onBuy, onExamine };
+    this.win.title(name, `${owner} · click to buy, right-click for more, click your pack to sell`);
     this.win.foot.innerHTML = '';
     this.qty = this.shopQty ?? 1;
     this.win.foot.append(el('span', 'sub', 'Buy'), this.#qtyButtons([['1', 1], ['5', 5], ['10', 10]], (v) => (this.shopQty = v)), el('span', 'spacer'));
@@ -181,6 +182,15 @@ export class Menus {
       cell.innerHTML = `<img alt="${it.name}" src="${this.studio.icon(s.id)}"><span class="qty ${cls}">${q}</span>`;
       cell.title = `${it.name}: ${fmt(s.price)} coins`;
       cell.addEventListener('click', () => this.shop.onBuy(s, this.qty));
+      cell.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const nm = `<span class="n">${it.name}</span>`;
+        this.showMenu?.(e.clientX, e.clientY, [
+          { label: `Value ${nm}`, run: () => this.shop.onExamine?.(s, `${it.name} costs ${fmt(s.price)} coins${s.n > 0 ? ` (${fmt(s.n)} in stock)` : ', and the shop is out of it'}.`) },
+          ...[1, 5, 10, 50].map((n) => ({ label: `Buy ${n} ${nm}`, run: () => this.shop.onBuy(s, n) })),
+          { label: `Examine ${nm}`, run: () => this.shop.onExamine?.(s, it.examine || it.name) },
+        ]);
+      });
       grid.append(cell);
     }
     this.win.body.innerHTML = '';

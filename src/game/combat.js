@@ -189,17 +189,21 @@ export const HP_XP_PER_DAMAGE = 4 / 3;
 //         lands on the crosshair (tests/playtest/melee_aim.py checks it). Measure them by
 //         sampling the clip at its crossing time when a clip or its hit time changes.
 // A swing is A -> B -> C: A cuts right to left and ends raised, B comes down and across to
-// the right, C sweeps low from the right back across to the left.
+// the right, C is the heavy blow's diagonal cut (high right to low left) taken from the top of
+// its wind-up, where B leaves the blade. (C used to be Sword_Regular_C, whose sweep carries on
+// into a full-body spin: cut short, the body snapped back from facing sideways.)
+// Swings play in place (`lunge: 0`): stepping forward on every slash felt like sliding. A move can
+// still carry a lunge in metres if one should ever step in on purpose.
 export const PLAYER_MOVES = {
   light: [
-    { clip: 'Sword_Regular_A', hit: 0.247, speed: 1.25, range: 2.3, arc: 70, stamina: 10, kind: 'light', lunge: 0.6, next: 0.055, aimPitch: -0.22, aimReach: 1.0, recover: 'Sword_Regular_A_Rec' },
-    { clip: 'Sword_Regular_B', hit: 0.252, speed: 1.25, range: 2.3, arc: 70, stamina: 10, kind: 'light', lunge: 0.4, next: 0.1, aimPitch: -0.26, aimReach: 1.08, recover: 'Sword_Regular_B_Rec' },
-    { clip: 'Sword_Regular_C', hit: 0.176, speed: 1.0, range: 2.5, arc: 110, stamina: 16, kind: 'finisher', lunge: 0.7, next: 0.15, end: 0.55, aimPitch: -0.57, aimReach: 1.05 },
+    { clip: 'Sword_Regular_A', hit: 0.247, speed: 1.25, range: 2.3, arc: 70, stamina: 10, kind: 'light', lunge: 0, next: 0.055, aimPitch: -0.22, aimReach: 1.0, recover: 'Sword_Regular_A_Rec' },
+    { clip: 'Sword_Regular_B', hit: 0.252, speed: 1.25, range: 2.3, arc: 70, stamina: 10, kind: 'light', lunge: 0, next: 0.1, aimPitch: -0.26, aimReach: 1.08, recover: 'Sword_Regular_B_Rec' },
+    { clip: 'Sword_Attack', from: 0.25, hit: 0.431, speed: 1.0, range: 2.5, arc: 110, stamina: 16, kind: 'finisher', lunge: 0, next: 0.15, end: 0.72, aimPitch: 0.07, aimReach: 1.21 },
   ],
-  heavy: { clip: 'Sword_Attack', from: 0.03, hit: 0.431, speed: 1.05, range: 2.6, arc: 60, stamina: 24, kind: 'heavy', lunge: 0.8, next: 0.1, end: 0.75, aimPitch: 0.07, aimReach: 1.21 },
+  heavy: { clip: 'Sword_Attack', from: 0.03, hit: 0.431, speed: 1.05, range: 2.6, arc: 60, stamina: 24, kind: 'heavy', lunge: 0, next: 0.1, end: 0.75, aimPitch: 0.07, aimReach: 1.21 },
   // Bare-handed: the punch clips idle for their first tenth of a second, so they start late.
   unarmed: {
-    light: { clip: 'Punch_Jab', from: 0.1, hit: 0.17, speed: 1.15, range: 1.5, arc: 70, stamina: 10, kind: 'light', lunge: 0.5, next: 0.05, end: 0.55, aimPitch: -0.05, aimReach: 0.62 },
-    heavy: { clip: 'Punch_Cross', from: 0.11, hit: 0.22, speed: 0.95, range: 1.6, arc: 60, stamina: 24, kind: 'heavy', lunge: 0.7, next: 0.1, end: 0.7, aimPitch: 0, aimReach: 0.68 },
+    light: { clip: 'Punch_Jab', from: 0.1, hit: 0.17, speed: 1.15, range: 1.5, arc: 70, stamina: 10, kind: 'light', lunge: 0, next: 0.05, end: 0.55, aimPitch: -0.05, aimReach: 0.62 },
+    heavy: { clip: 'Punch_Cross', from: 0.11, hit: 0.22, speed: 0.95, range: 1.6, arc: 60, stamina: 24, kind: 'heavy', lunge: 0, next: 0.1, end: 0.7, aimPitch: 0, aimReach: 0.68 },
   },
 };

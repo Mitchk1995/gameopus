@@ -200,11 +200,13 @@ STEPS = [
       check('lock-on target is the one hit: ' + name, r.e2 >= 1 && r.target === E2, 'locked foe hit ' + r.e2 + 'x, aimed at ' + (r.target === E2 ? 'it' : 'something else'));
     }
     F.lock = null;
-    // Nothing near the crosshair: no target, and the body faces along the crosshair.
+    // Nothing near the crosshair: no target, and the body faces along the crosshair. Swings play in
+    // place now (no lunge), so putting the blade through the crosshair line at arm's length, with the
+    // camera over the right shoulder, takes a turn of about 30 degrees: allow up to 0.6 rad.
     for (const name of ['A', 'C']) {
       const r = swingAt(name, {}, () => { onRay(E1, 6.0); });
       const face = Math.abs(Math.atan2(Math.sin(r.yaw - (g.rig.yaw + Math.PI)), Math.cos(r.yaw - (g.rig.yaw + Math.PI))));
-      check('swings straight along the aim at nothing: ' + name, r.target === null && face < 0.5, 'target ' + r.target + ', body ' + (face * 57.3).toFixed(0) + ' deg off the camera heading');
+      check('swings straight along the aim at nothing: ' + name, r.target === null && face < 0.6, 'target ' + r.target + ', body ' + (face * 57.3).toFixed(0) + ' deg off the camera heading');
     }
     away();
     keys.clear();
@@ -227,7 +229,8 @@ STEPS = [
       if (cur && cur.hitAt !== null && P.state === 'attack' && P.move === cur.move) cur.side = side();
       F.stamina = 100;
     }
-    const order = swings.slice(0, 7).map((s) => s.clip.replace('Sword_Regular_', '').replace('Sword_Attack', 'H')).join('');
+    // The finisher (C) reuses the heavy blow's clip, so name the moves by kind, not by clip.
+    const order = swings.slice(0, 7).map((s) => (s.move.kind === 'finisher' ? 'C' : s.move.kind === 'heavy' ? 'H' : s.clip.replace('Sword_Regular_', ''))).join('');
     check('chain order', order === 'ABCABCA', order + ' (each press cuts in as soon as the last blow has landed)');
     const gaps = swings.slice(1, 7).map((s, i) => s.start - swings[i].start);
     check('chain window is short', gaps.every((d) => d < 0.42), 'gaps ' + gaps.map((d) => (d * 1000).toFixed(0)).join(', ') + ' ms');
