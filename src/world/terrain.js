@@ -192,6 +192,11 @@ export class Terrain {
             nr += mix(n1, n2, mixK) * w;
           }
           float tLum(vec3 c) { return dot(c, vec3(0.3, 0.55, 0.15)); }
+          // Crags finer than the 1 m heightmap: a height made of noise that changes with height as fast
+          // as across, so steep faces break into knobs and ledges instead of smooth sheets or ribs.
+          float tCrag(vec3 p) {
+            return tNoise(vec2(p.x + p.z, p.y * 1.4) * 0.3) * 0.55 + tNoise(vec2(p.x - p.z * 0.7, p.y * 1.8) * 0.8) * 0.3 + tNoise(p.xz * 0.6 + p.y * 0.25) * 0.15;
+          }
           // Stripes across a heading, faded out once they are finer than a few pixels.
           float tRowsAt(vec2 p, vec2 dir, float spacing, float px, out float fade) {
             float u = (p.x * dir.x - p.y * dir.y) / spacing;
@@ -369,6 +374,14 @@ export class Terrain {
             }
           }
           if (w[6] > 0.004) {
+            // Bend the cliff's normal by the crag height (fading out once they are too fine to see).
+            float cf = smoothstep(0.7, 0.2, tPx) * w[6];
+            if (cf > 0.01) {
+              float c0 = tCrag(tp);
+              vec3 cg = vec3(tCrag(tp + vec3(0.3, 0.0, 0.0)) - c0, tCrag(tp + vec3(0.0, 0.3, 0.0)) - c0, tCrag(tp + vec3(0.0, 0.0, 0.3)) - c0) / 0.3;
+              cg -= tn * dot(cg, tn);
+              tn = normalize(tn - cg * 2.2 * cf);
+            }
             // Cliffs are projected from the sides as well, so steep faces don't smear.
             vec3 bw = pow(abs(tn), vec3(4.0));
             bw /= bw.x + bw.y + bw.z;

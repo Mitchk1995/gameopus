@@ -110,7 +110,7 @@ export class Grass {
           float r2 = fract(aRand.y * 7.13 + aRand.z * 3.71);
           float bloom = step(0.9, r2) * clamp(bA.r * 1.2 - bB.r - bA.g * 0.5, 0.0, 1.0) * step(0.35, gPatch);
           float fk = fract(r2 * 13.7);
-          vHead = aHead * (fk < 0.4 ? vec3(0.42, 0.33, 0.035) : fk < 0.7 ? vec3(0.5, 0.5, 0.47) : fk < 0.88 ? vec3(0.2, 0.075, 0.18) : vec3(0.09, 0.13, 0.32));
+          vHead = aHead * (fk < 0.4 ? vec3(0.4, 0.3, 0.03) : fk < 0.62 ? vec3(0.34, 0.34, 0.31) : fk < 0.84 ? vec3(0.2, 0.075, 0.18) : vec3(0.09, 0.13, 0.32));
           gScale *= mix(1.0, bloom, aHead);
           vec3 objectNormal = gN;`)
         .replace('#include <begin_vertex>', `

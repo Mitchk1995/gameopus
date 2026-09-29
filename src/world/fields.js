@@ -21,20 +21,22 @@ export function greyStone(mat) {
 
 // Leaves all over a hedge's lumpy volume (length along x, standing on y = 0): cards turned every
 // way, thickest on the top and sides, a few straggling out.
-function leafCards(sk, len, h, thick, ends, phase) {
+// `open` says which ends of this length are open ([start, end]): those get leafy end faces.
+function leafCards(sk, len, h, thick, open, phase) {
+  const ends = (open[0] ? 1 : 0) + (open[1] ? 1 : 0);
   const pos = [], uv = [], nrm = [], idx = [];
   const r = () => sk.rnd();
   // The top of the hedge rises and falls along it, so its line against the sky is never ruled.
   const topAt = (x) => h * (0.9 + 0.07 * Math.sin(x * 1.9 + phase) + 0.05 * Math.sin(x * 4.7 + phase * 2.3));
-  const n = Math.round(len * 95 + ends * 30);
+  const n = Math.round(len * 95 + ends * 70);
   for (let i = 0; i < n; i++) {
     // A point on the hedge's skin: its two sides, its rounded top, and its open ends.
     let x = (r() - 0.5) * len;
     const t = r(), top = topAt(x);
     let y, z, nx = 0, ny, nz;
-    if (i >= n - ends * 30) {
+    if (i >= n - ends * 70) {
       // An end: cards over the rounded end face.
-      const e = i % 2 ? 1 : -1;
+      const e = open[0] && open[1] ? (i % 2 ? 1 : -1) : open[0] ? -1 : 1;
       x = e * len / 2 + e * r() * 0.12;
       y = top * (0.08 + r() * 0.85); z = (r() - 0.5) * thick * 0.9; nx = e; ny = 0.2; nz = 0;
     } else if (t < 0.34) { y = top * (0.06 + r() * 0.8); z = -thick / 2; ny = 0; nz = -1; }
@@ -71,7 +73,7 @@ export async function buildFields(sk, assets) {
   const [leaf, cobble] = await Promise.all([assets.texture('trees/leaves_oak.webp', { repeat: false }), assets.texture('ground/cobble_a.webp')]);
   MAT.leaf = new THREE.MeshStandardMaterial({ map: leaf, color: 0x6f8c55, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 });
   // The hedge's heart: dark and shadowed, so gaps between the leaves read as depth, not paint.
-  MAT.core = new THREE.MeshStandardMaterial({ color: 0x18230f, roughness: 1 });
+  MAT.core = new THREE.MeshStandardMaterial({ color: 0x1f3016, roughness: 1 });
   MAT.leaf.name = 'HedgeLeaf';
   MAT.stone = greyStone(new THREE.MeshStandardMaterial({ map: cobble, color: 0xcdc8bf, roughness: 0.96 }));
   MAT.stone.name = 'DryStone';
@@ -127,7 +129,7 @@ function hedgerow(sk, pts) {
       const cx = a[0] + ux * seg * (j + 0.5), cz = a[1] + uz * seg * (j + 0.5);
       const gy = sk.ground(cx, cz), h = 1.75 + sk.rnd() * 0.35, thick = 1.25;
       sk.begin('hedgerow', cx, cz);
-      const ends = (j === 0 ? 1 : 0) + (j === k - 1 ? 1 : 0), ph = (cx + cz) * 0.37;
+      const ends = [j === 0, j === k - 1], ph = (cx + cz) * 0.37;
       sk.put(sk.hedgeBlock(seg + 0.3, h * 0.86, thick * 0.74, sk.rnd() * 20, true), MAT.core, cx, gy - 0.15, cz, rot);
       sk.put(leafCards(sk, seg + 0.3, h, thick, ends, ph), MAT.leaf, cx, gy - 0.15, cz, rot);
       sk.solidBox(cx, cz, seg / 2 + 0.05, thick / 2 + 0.1, rot, gy - 0.35, h + 0.1);

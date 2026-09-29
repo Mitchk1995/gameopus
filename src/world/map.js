@@ -907,7 +907,14 @@ function computeProfiles() {
     if (FORD && r.id === 'harbour') {
       let fi = -1, fd = 6;
       for (let i = 0; i < n; i++) { const d = Math.hypot(xs[i] - FORD.x, zs[i] - FORD.z); if (d < fd) { fd = d; fi = i; } }
-      if (fi >= 0) for (let i = 0; i < n; i++) y[i] = Math.min(y[i], FORD_Y + Math.max(0, Math.abs(i - fi) * DS - FORD.half - 2) * (r.grade - 0.02));
+      if (fi >= 0) {
+        // Short ramps (steeper than the road's own grade, as a ford's are) down into the water and up
+        // again; the ramp line soon rises above the road, which is left as it was beyond.
+        for (let i = 0; i < n; i++) {
+          const dist = Math.abs(i - fi) * DS;
+          y[i] = Math.min(y[i], FORD_Y + Math.max(0, dist - FORD.half - 2) * 0.32);
+        }
+      }
     }
     r.prof = { n, xs, zs, ys: y, ds: DS, y0, y1 };
     built.push(r);

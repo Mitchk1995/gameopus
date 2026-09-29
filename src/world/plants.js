@@ -208,7 +208,7 @@ const GEOMETRY = {
       const a = r() * 6.283, u = Math.sqrt(r());
       const x = Math.cos(a) * u * 0.45, z = Math.sin(a) * u * 0.45, y = 0.04 + (1 - u * u) * 0.22 * (0.8 + r() * 0.4);
       const top = y > 0.13;
-      card(b, x, y, z, 0.13 + r() * 0.07, a, 0.95 - u * 0.5, top && r() < 0.8 ? [0.11, 0.04, 0.09] : [0.05, 0.042, 0.028]);
+      card(b, x, y, z, 0.13 + r() * 0.07, a, 0.95 - u * 0.5, top && r() < 0.8 ? [0.13, 0.05, 0.11] : [0.075, 0.062, 0.04]);
     }
   }, 21),
   bracken: () => clump((b, r) => {
@@ -220,12 +220,12 @@ const GEOMETRY = {
   }, 31),
   wheat: () => clump((b, r) => {
     // Stalks of ripe wheat with their ears.
-    for (let i = 0; i < 8; i++) {
-      const a = r() * 6.283, d = Math.sqrt(r()) * 0.3;
+    for (let i = 0; i < 10; i++) {
+      const a = r() * 6.283, d = Math.sqrt(r()) * 0.34;
       const h = 0.85 + r() * 0.25;
       const x = Math.cos(a) * d, z = Math.sin(a) * d;
-      blade(b, x, z, h, 0.008, r() * 6.283, 0.05, [0.07, 0.055, 0.02], [0.13, 0.09, 0.03]);
-      head(b, x + 0.02, h, z, 0.02, 0.1, [0.16, 0.11, 0.035], 3);
+      blade(b, x, z, h, 0.009, r() * 6.283, 0.05, [0.08, 0.06, 0.022], [0.16, 0.11, 0.035]);
+      head(b, x + 0.02, h, z, 0.028, 0.13, [0.19, 0.13, 0.042], 3);
     }
   }, 41),
   greens: () => clump((b, r) => {
