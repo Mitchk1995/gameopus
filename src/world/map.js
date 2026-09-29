@@ -173,23 +173,27 @@ function rimWall(x, z) {
   const calm = exitCalm(x, z);
   // Forested foothills that roll along the wall.
   let h = smooth(-130, 6, d) * (6 + 8 * ridged(x * 0.011 + 1.1, z * 0.011 + 6.6, 3));
-  // The face is layered rock. Above the foot it follows a smoother line than the foot's little
-  // coves (whose wobble, carried all the way up, drew the face as rows of even vertical pleats):
-  // broad buttresses and bays instead, stepped by strata into ledges and short cliffs that dip
-  // gently across the range, with crags and knobs of every size and direction on top.
+  // The face is layered rock. Noise that only varies across the map (not up the face) runs down a
+  // steep face unchanged from foot to crest and draws it as rows of even vertical pleats. So above
+  // the foot the face follows a smoother line (broad buttresses and bays, 100 m apart), its crags are
+  // sampled from a noise that shifts with height (each band of rock its own, every twenty metres or
+  // so, wider than tall: ledges and bosses rather than ribs), and soft strata step it into ledges
+  // and short cliffs that dip gently across the range.
   const face0 = faceAt(d);
   let face = face0;
   if (calm > 0 && d > -8) {
     const dFace = d - (fbm(x * 0.031 + 2, z * 0.031 + 9) - 0.5) * 12 + (fbm(x * 0.009 + 4.4, z * 0.009 - 7.3) - 0.5) * 34;
     const d2 = mix(d, dFace, smooth(2, 18, d));
     let f = faceAt(d2);
-    const H = 7 + 5 * fbm(x * 0.006 + 5, z * 0.006 - 2);
+    const H = 8 + 5 * fbm(x * 0.006 + 5, z * 0.006 - 2);
     const dip = (x * 0.05 + z * 0.03) + 9 * fbm(x * 0.004 + 1, z * 0.004 + 4);
     const k = (f + dip) / H, i = Math.floor(k), t = k - i;
-    const stepped = (i + (t < 0.6 ? t * 0.35 : 0.21 + (t - 0.6) * 1.975)) * H - dip;
-    f = mix(f, stepped, 0.5 * smooth(6, 24, d2) * smooth(170, 120, d2));
-    const crag = ridged(x * 0.024 + 3.3, z * 0.024 - 1.2, 3) * 0.6 + fbm(x * 0.07 + 8, z * 0.07 + 1) * 0.4;
-    f += smooth(6, 26, d2) * smooth(150, 90, d2) * (crag - 0.45) * 16;
+    // A soft terrace: steep risers and gentle treads, with no sharp kinks for the 1 m grid to saw.
+    const stepped = (i + t - Math.sin(t * Math.PI * 2) / (Math.PI * 2) * 0.85) * H - dip;
+    f = mix(f, stepped, 0.55 * smooth(6, 24, d2) * smooth(170, 120, d2));
+    const band = face0 * 0.03;
+    const crag = fbm(x * 0.022 + band * 0.9 + 3.3, z * 0.022 - band * 0.7 - 1.2, 3) * 0.65 + fbm(x * 0.06 - band * 1.3 + 8, z * 0.06 + band + 1, 2) * 0.35;
+    f += smooth(6, 26, d2) * smooth(150, 90, d2) * (crag - 0.5) * 18;
     face = mix(face0, f, calm);
     // Scree fans spill out of the gullies at the foot of the cliffs.
     h += calm * screeAt(x, z, d);
@@ -462,10 +466,12 @@ function fallsCarve(h, x, z) {
   const [lx, lz] = FALLS.lip, [ux, uz] = FALLS.top;
   const ax = ux - lx, az = uz - lz, al = Math.hypot(ax, az);
   const u = ((x - lx) * ax + (z - lz) * az) / al, v = Math.abs((x - lx) * az - (z - lz) * ax) / al;
-  if (u > -6 && u < al + 20 && v < 40) {
-    const floor = FALLS.height - 2 + Math.max(0, u) * 1.9;
+  if (u > -6 && u < al + 24 && v < 16) {
+    // The ravine's floor climbs with the mountain, never more than a few metres down in it.
+    const cu = Math.max(0, u), s0 = surface0(lx + (ax / al) * cu, lz + (az / al) * cu);
+    const floor = Math.min(mix(FALLS.height - 2, s0 - 6, smooth(0, 9, cu)), s0 - 3);
     const y = floor + Math.max(0, v - 2.2) * 1.5;
-    if (y < h) h = mix(h, smin(h, y, 2), smooth(-6, 2, u));
+    if (y < h) h = mix(h, smin(h, y, 2), smooth(-6, 2, u) * smooth(al + 24, al + 4, u));
   }
   return h;
 }
@@ -773,7 +779,7 @@ export function flowAt(x, z) {
     rough = Math.max(rough, smooth(13, 2, dl));
   }
   // Riffles over the ford.
-  if (FORD) rough = Math.max(rough, smooth(16, 6, Math.hypot(x - FORD.x, z - FORD.z)) * 0.7);
+  if (FORD) rough = Math.max(rough, smooth(16, 6, Math.hypot(x - FORD.x, z - FORD.z)) * 0.38);
   return [fx, fz, rough];
 }
 

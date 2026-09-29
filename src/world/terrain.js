@@ -288,9 +288,10 @@ export class Terrain {
             float greenRow = tRowsAt(tp.xz, dirF, 0.75, tPx, fadeA);
             float flaxRow = tRowsAt(tp.xz, dirX, 0.62, tPx, fadeB);
             earth *= mix(1.0, 0.72 + 0.5 * furrow, crop.b * fadeA * (1.0 - road));
-            vec3 greens = mix(vec3(0.02, 0.048, 0.012), vec3(0.04, 0.085, 0.02), fine);
-            earth = mix(earth, greens, crop.g * (1.0 - road) * mix(0.55, smoothstep(0.35, 0.8, greenRow), fadeA));
-            vec3 wheat = mix(vec3(0.2, 0.135, 0.042), vec3(0.28, 0.19, 0.062), tNoise(tp.xz * 0.5) * 0.6 + fine * 0.4);
+            vec3 greens = mix(vec3(0.02, 0.045, 0.012), vec3(0.035, 0.07, 0.018), fine);
+            // Near, the soil shows between the rows the plants stand in; far off the rows blur to green.
+            earth = mix(earth, greens, crop.g * (1.0 - road) * mix(0.55, 0.12 * fine, fadeA));
+            vec3 wheat = mix(vec3(0.12, 0.08, 0.024), vec3(0.17, 0.115, 0.034), tNoise(tp.xz * 0.5) * 0.6 + fine * 0.4);
             earth = mix(earth, wheat, crop.r * (1.0 - road) * 0.92);
             vec3 flaxc = mix(vec3(0.03, 0.055, 0.03), vec3(0.05, 0.075, 0.06), fine);
             earth = mix(earth, flaxc, shore.b * (1.0 - road) * mix(0.6, smoothstep(0.3, 0.8, flaxRow), fadeB));
@@ -326,8 +327,8 @@ export class Terrain {
             meadow = mix(meadow, vec3(0.036, 0.062, 0.02), smoothstep(0.6, 0.2, lush) * 0.45);
             green = mix(green, meadow, bioA.r * 0.85);
             // Dry scrub: golden and tawny grass with greyer tufts; never white.
-            vec3 dry = mix(vec3(0.095, 0.058, 0.021), vec3(0.135, 0.088, 0.03), smoothstep(0.3, 0.8, lush + (fine - 0.5) * 0.5));
-            dry = mix(dry, vec3(0.08, 0.066, 0.04), smoothstep(0.55, 0.85, fine) * 0.5);
+            vec3 dry = mix(vec3(0.105, 0.06, 0.02), vec3(0.15, 0.092, 0.028), smoothstep(0.3, 0.8, lush + (fine - 0.5) * 0.5));
+            dry = mix(dry, vec3(0.085, 0.064, 0.036), smoothstep(0.55, 0.85, fine) * 0.45);
             green = mix(green, dry, bioB.r * 0.92);
             // The marsh: dark and wet.
             green = mix(green, vec3(0.028, 0.038, 0.016), bioA.b * 0.8);
@@ -336,7 +337,8 @@ export class Terrain {
             green = mix(green, heather, bioA.g * 0.75);
             // Woodland edges: darker, mossier grass.
             green = mix(green, vec3(0.028, 0.05, 0.014), bioB.g * 0.5);
-            vec3 grass = green * mix(vec3(1.0), mix(vec3(gl), ga / vec3(0.235, 0.174, 0.079), 0.45), 0.8);
+            // The scan's own hue (greenish) is let through in the meadows, not in the straw of the scrub.
+            vec3 grass = green * mix(vec3(1.0), mix(vec3(gl), ga / vec3(0.235, 0.174, 0.079), 0.45 * (1.0 - bioB.r * 0.8)), 0.8);
             tAlb += max(grass, vec3(0.0)) * w[0];
             tNr += gn * w[0];
             // Wild flowers: little round heads in drifts through the meadow grass, drawn while a head is

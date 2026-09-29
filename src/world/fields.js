@@ -21,25 +21,33 @@ export function greyStone(mat) {
 
 // Leaves all over a hedge's lumpy volume (length along x, standing on y = 0): cards turned every
 // way, thickest on the top and sides, a few straggling out.
-function leafCards(sk, len, h, thick) {
+function leafCards(sk, len, h, thick, ends, phase) {
   const pos = [], uv = [], nrm = [], idx = [];
-  const n = Math.round(len * 58);
   const r = () => sk.rnd();
+  // The top of the hedge rises and falls along it, so its line against the sky is never ruled.
+  const topAt = (x) => h * (0.9 + 0.07 * Math.sin(x * 1.9 + phase) + 0.05 * Math.sin(x * 4.7 + phase * 2.3));
+  const n = Math.round(len * 95 + ends * 30);
   for (let i = 0; i < n; i++) {
-    // A point on the rounded cross-section: the two sides and the top.
-    const x = (r() - 0.5) * len * 0.98;
-    const t = r();
-    let y, z, ny, nz;
-    if (t < 0.35) { y = h * (0.1 + r() * 0.75); z = -thick / 2; ny = 0; nz = -1; }
-    else if (t < 0.7) { y = h * (0.1 + r() * 0.75); z = thick / 2; ny = 0; nz = 1; }
-    else { const a = (r() - 0.5) * 2.4; y = h * 0.82 + Math.cos(a) * h * 0.14; z = Math.sin(a) * thick * 0.45; ny = Math.cos(a); nz = Math.sin(a); }
-    const out = (r() - 0.25) * 0.14;
-    const cx = x, cy = y + ny * out, cz = z * 0.92 + nz * out;
-    const s = 0.2 + r() * 0.16;
+    // A point on the hedge's skin: its two sides, its rounded top, and its open ends.
+    let x = (r() - 0.5) * len;
+    const t = r(), top = topAt(x);
+    let y, z, nx = 0, ny, nz;
+    if (i >= n - ends * 30) {
+      // An end: cards over the rounded end face.
+      const e = i % 2 ? 1 : -1;
+      x = e * len / 2 + e * r() * 0.12;
+      y = top * (0.08 + r() * 0.85); z = (r() - 0.5) * thick * 0.9; nx = e; ny = 0.2; nz = 0;
+    } else if (t < 0.34) { y = top * (0.06 + r() * 0.8); z = -thick / 2; ny = 0; nz = -1; }
+    else if (t < 0.68) { y = top * (0.06 + r() * 0.8); z = thick / 2; ny = 0; nz = 1; }
+    else { const q = (r() - 0.5) * 2.6; y = top * 0.8 + Math.cos(q) * top * 0.18; z = Math.sin(q) * thick * 0.46; ny = Math.cos(q); nz = Math.sin(q); }
+    // A few sprigs stand proud of the clipped face; most lie in it.
+    const out = (r() < 0.1 ? 0.12 + r() * 0.22 : (r() - 0.3) * 0.12);
+    const cx = x + nx * out, cy = y + ny * out, cz = z * 0.94 + nz * out;
+    const s = 0.22 + r() * 0.2;
     // Two edge vectors of the card, turned at random about its outward normal.
-    const a = r() * 6.283, b = (r() - 0.5) * 1.2;
-    const e1 = new THREE.Vector3(Math.cos(a), Math.sin(a) * 0.6 + b * 0.3, Math.sin(a) * 0.3).normalize().multiplyScalar(s);
-    const nn = new THREE.Vector3(r() - 0.5, ny + 0.4, nz).normalize();
+    const ang = r() * 6.283, tilt = (r() - 0.5) * 1.2;
+    const e1 = new THREE.Vector3(Math.cos(ang), Math.sin(ang) * 0.6 + tilt * 0.3, Math.sin(ang) * 0.3).normalize().multiplyScalar(s);
+    const nn = new THREE.Vector3(nx + (r() - 0.5) * 0.6, ny + 0.4, nz).normalize();
     const e2 = new THREE.Vector3().crossVectors(nn, e1).normalize().multiplyScalar(s);
     const base = pos.length / 3;
     for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
@@ -61,7 +69,9 @@ function leafCards(sk, len, h, thick) {
 
 export async function buildFields(sk, assets) {
   const [leaf, cobble] = await Promise.all([assets.texture('trees/leaves_oak.webp', { repeat: false }), assets.texture('ground/cobble_a.webp')]);
-  MAT.leaf = new THREE.MeshStandardMaterial({ map: leaf, color: 0x86a86a, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 });
+  MAT.leaf = new THREE.MeshStandardMaterial({ map: leaf, color: 0x6f8c55, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 });
+  // The hedge's heart: dark and shadowed, so gaps between the leaves read as depth, not paint.
+  MAT.core = new THREE.MeshStandardMaterial({ color: 0x18230f, roughness: 1 });
   MAT.leaf.name = 'HedgeLeaf';
   MAT.stone = greyStone(new THREE.MeshStandardMaterial({ map: cobble, color: 0xcdc8bf, roughness: 0.96 }));
   MAT.stone.name = 'DryStone';
@@ -117,8 +127,9 @@ function hedgerow(sk, pts) {
       const cx = a[0] + ux * seg * (j + 0.5), cz = a[1] + uz * seg * (j + 0.5);
       const gy = sk.ground(cx, cz), h = 1.75 + sk.rnd() * 0.35, thick = 1.25;
       sk.begin('hedgerow', cx, cz);
-      sk.put(sk.hedgeBlock(seg + 0.3, h * 0.92, thick * 0.78, sk.rnd() * 20, true), sk.m.hedgeCore, cx, gy - 0.15, cz, rot);
-      sk.put(leafCards(sk, seg + 0.3, h, thick), MAT.leaf, cx, gy - 0.15, cz, rot);
+      const ends = (j === 0 ? 1 : 0) + (j === k - 1 ? 1 : 0), ph = (cx + cz) * 0.37;
+      sk.put(sk.hedgeBlock(seg + 0.3, h * 0.86, thick * 0.74, sk.rnd() * 20, true), MAT.core, cx, gy - 0.15, cz, rot);
+      sk.put(leafCards(sk, seg + 0.3, h, thick, ends, ph), MAT.leaf, cx, gy - 0.15, cz, rot);
       sk.solidBox(cx, cz, seg / 2 + 0.05, thick / 2 + 0.1, rot, gy - 0.35, h + 0.1);
     }
   }

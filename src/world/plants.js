@@ -19,7 +19,7 @@ const KINDS = {
     sway: 0.18, near: (x, z) => shoreAt(x, z)[1] > 0.1 || biomeAt(x, z)[2] > 0.3,
   },
   heather: {
-    count: 6500, size: 70, fade: [24, 33], lattice: null,
+    count: 5200, size: 70, fade: [24, 33], lattice: null, leaf: 'oak', lum: true,
     mask: `smoothstep(0.25, 0.6, bA.g) * (1.0 - smoothstep(0.1, 0.4, gc.r)) * smoothstep(1.2, 1.8, gy) * smoothstep(0.8, 0.9, gN.y) * (1.0 - bB.b)`,
     sway: 0.03, near: (x, z) => biomeAt(x, z)[1] > 0.2,
   },
@@ -29,7 +29,7 @@ const KINDS = {
     sway: 0.08, near: (x, z) => groundAt(x, z)[1] > 0.3,
   },
   wheat: {
-    count: 9000, size: 56, fade: [22, 28], lattice: [0.62, 0.62],
+    count: 9000, size: 64, fade: [26, 32], lattice: [0.62, 0.62],
     mask: `smoothstep(0.55, 0.9, fl.r)`,
     sway: 0.14, near: (x, z) => fieldsAt(x, z)[0] > 0.1,
   },
@@ -80,8 +80,11 @@ export class Plants {
         inst.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offs, 2));
         inst.setAttribute('aRand', new THREE.InstancedBufferAttribute(rnd, 3));
       }
-      const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, side: THREE.DoubleSide, envMapIntensity: 0.6, vertexColors: true });
-      if (k.leaf && leaves?.[k.leaf]) Object.assign(mat, { map: leaves[k.leaf], alphaTest: 0.5, color: new THREE.Color(0.55, 0.7, 0.4) });
+      const mat = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0, side: THREE.DoubleSide, envMapIntensity: 0.45, vertexColors: true });
+      // Each kind patches in its own GLSL (mask, wrap, sway): without its own cache key three.js would
+      // hand every kind with the same settings the first kind's compiled program.
+      mat.customProgramCacheKey = () => `plants-${name}`;
+      if (k.leaf && leaves?.[k.leaf]) Object.assign(mat, { map: leaves[k.leaf], alphaTest: 0.5, color: new THREE.Color(k.lum ? 0xffffff : 0x8c9a66) });
       mat.onBeforeCompile = (sh) => {
         Object.assign(sh.uniforms, {
           uHeight: { value: terrain.heightTex },
@@ -139,10 +142,12 @@ export class Plants {
             float wave = sin(uTime * 2.1 + pBase.x * 0.8 + pBase.y * 0.6 + aRand.y * 6.0);
             transformed.xz += vec2(0.8, 0.45) * bend * ${S(k.sway)} * (0.4 + gust * 0.8 + wave * 0.25);
             transformed += vec3(pBase.x, gy - 0.03, pBase.y);`);
+        if (k.lum) sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+            diffuseColor.rgb = vColor.rgb * dot(sampledDiffuseColor.rgb, vec3(0.3, 0.55, 0.15)) * 3.2;`);
         sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
             reflectedLight.indirectDiffuse += diffuseColor.rgb * 0.15;
-            reflectedLight.directSpecular *= 0.35;
-            reflectedLight.indirectSpecular *= 0.35;`);
+            reflectedLight.directSpecular *= 0.15;
+            reflectedLight.indirectSpecular *= 0.15;`);
       };
       const mesh = new THREE.Mesh(inst, mat);
       mesh.frustumCulled = false;
@@ -192,45 +197,47 @@ const GEOMETRY = {
     for (let i = 0; i < 13; i++) {
       const a = r() * 6.283, d = Math.sqrt(r()) * 0.22;
       const h = 1.2 + r() * 1.0;
-      blade(b, Math.cos(a) * d, Math.sin(a) * d, h, 0.016 + r() * 0.01, r() * 6.283, 0.05 + r() * 0.12, [0.1, 0.12, 0.05], [0.24, 0.23, 0.12]);
-      if (i < 4) head(b, Math.cos(a) * d, h * 0.82, Math.sin(a) * d, 0.03, 0.2, [0.12, 0.07, 0.035]);
+      blade(b, Math.cos(a) * d, Math.sin(a) * d, h, 0.016 + r() * 0.01, r() * 6.283, 0.05 + r() * 0.12, [0.045, 0.058, 0.022], [0.1, 0.095, 0.045]);
+      if (i < 4) head(b, Math.cos(a) * d, h * 0.82, Math.sin(a) * d, 0.03, 0.2, [0.04, 0.022, 0.011]);
     }
   }, 11),
   heather: () => clump((b, r) => {
-    // A low, rounded cushion of fine wiry stems, dark below, misted purple-pink with flower on top.
-    for (let i = 0; i < 70; i++) {
-      const a = r() * 6.283, d = Math.sqrt(r()) * 0.42;
-      const h = (0.34 - d * 0.42) * (0.75 + r() * 0.4);
-      blade(b, Math.cos(a) * d, Math.sin(a) * d, h, 0.026, a + 1.5, 0.25 + d, [0.035, 0.034, 0.022], r() < 0.7 ? [0.2, 0.085, 0.16] : [0.09, 0.075, 0.045]);
+    // A low, rounded cushion of little leafy sprigs, dark and woody below, misted purple with flower
+    // on top. (Its texture gives only the leaves' shape and shading; the colour is its own.)
+    for (let i = 0; i < 32; i++) {
+      const a = r() * 6.283, u = Math.sqrt(r());
+      const x = Math.cos(a) * u * 0.45, z = Math.sin(a) * u * 0.45, y = 0.04 + (1 - u * u) * 0.22 * (0.8 + r() * 0.4);
+      const top = y > 0.13;
+      card(b, x, y, z, 0.13 + r() * 0.07, a, 0.95 - u * 0.5, top && r() < 0.8 ? [0.11, 0.04, 0.09] : [0.05, 0.042, 0.028]);
     }
   }, 21),
   bracken: () => clump((b, r) => {
     // Fronds on their stalks, rising and then arching out from the middle.
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * 6.283 + r() * 0.5;
-      frond(b, a, 0.75 + r() * 0.35, 0.24 + r() * 0.06, [0.5, 0.62, 0.42], [0.7, 0.85, 0.55]);
+      frond(b, a, 0.75 + r() * 0.35, 0.24 + r() * 0.06, [0.45, 0.5, 0.36], [0.72, 0.78, 0.5]);
     }
   }, 31),
   wheat: () => clump((b, r) => {
     // Stalks of ripe wheat with their ears.
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 8; i++) {
       const a = r() * 6.283, d = Math.sqrt(r()) * 0.3;
       const h = 0.85 + r() * 0.25;
       const x = Math.cos(a) * d, z = Math.sin(a) * d;
-      blade(b, x, z, h, 0.008, r() * 6.283, 0.05, [0.2, 0.15, 0.06], [0.36, 0.26, 0.09]);
-      head(b, x + 0.02, h, z, 0.018, 0.1, [0.42, 0.3, 0.1]);
+      blade(b, x, z, h, 0.008, r() * 6.283, 0.05, [0.07, 0.055, 0.02], [0.13, 0.09, 0.03]);
+      head(b, x + 0.02, h, z, 0.02, 0.1, [0.16, 0.11, 0.035], 3);
     }
   }, 41),
   greens: () => clump((b, r) => {
     // A cabbage: a tight heart in a ring of broad outer leaves.
-    const heart = new THREE.IcosahedronGeometry(0.15, 1);
-    heart.scale(1, 0.8, 1).translate(0, 0.14, 0);
-    add(b, heart, [0.08, 0.16, 0.05]);
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * 6.283 + r() * 0.4;
-      const leaf = new THREE.CircleGeometry(0.16, 7);
-      leaf.scale(1, 1.3, 1).rotateX(-1.05).rotateY(-a + Math.PI / 2).translate(Math.cos(a) * 0.14, 0.1, Math.sin(a) * 0.14);
-      add(b, leaf, [0.05, 0.11, 0.04]);
+    const heart = new THREE.IcosahedronGeometry(0.17, 1);
+    heart.scale(1, 0.85, 1).translate(0, 0.16, 0);
+    add(b, heart, [0.055, 0.085, 0.07]);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * 6.283 + r() * 0.4;
+      const leaf = new THREE.CircleGeometry(0.2, 8);
+      leaf.scale(1, 1.25, 1).rotateX(-1.15 - r() * 0.25).rotateY(-a + Math.PI / 2).translate(Math.cos(a) * 0.19, 0.08, Math.sin(a) * 0.19);
+      add(b, leaf, i % 2 ? [0.035, 0.062, 0.048] : [0.042, 0.07, 0.052]);
     }
   }, 51),
 };
@@ -273,19 +280,33 @@ function blade(b, x, z, h, w, rot, lean, c0, c1) {
 }
 
 // A small upright head (a cattail's sausage, an ear of wheat): a four-sided spindle.
-function head(b, x, y, z, r, h, col) {
+function head(b, x, y, z, r, h, col, N = 6) {
+  // A rounded spindle: N sides, two rings, closed at both ends.
   const base = b.pos.length / 3;
-  const ring = [[r, 0], [0, r], [-r, 0], [0, -r]];
   b.pos.push(x, y, z);
-  b.col.push(...col);
-  for (const [dx, dz] of ring) { b.pos.push(x + dx, y + h * 0.5, z + dz); b.col.push(...col); }
-  b.pos.push(x, y + h, z);
-  b.col.push(...col);
-  for (let i = 0; i < 6; i++) b.uv.push(0.5, 0.5);
-  for (let i = 0; i < 4; i++) {
-    const a = base + 1 + i, n = base + 1 + ((i + 1) % 4);
-    b.idx.push(base, n, a, a, n, base + 5);
+  for (const [t, k] of [[0.18, 0.85], [0.82, 0.85]]) for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    b.pos.push(x + Math.cos(a) * r * k, y + h * t, z + Math.sin(a) * r * k);
   }
+  b.pos.push(x, y + h, z);
+  for (let i = 0; i < 2 + N * 2; i++) { b.col.push(...col); b.uv.push(0.5, 0.5); }
+  for (let i = 0; i < N; i++) {
+    const a = base + 1 + i, n = base + 1 + ((i + 1) % N), a2 = a + N, n2 = n + N;
+    b.idx.push(base, n, a, a, n, a2, n, n2, a2, a2, n2, base + 1 + N * 2);
+  }
+}
+
+// A leafy card (textured with a sprig) standing at (x, y, z), turned by a and tilted out by lean.
+function card(b, x, y, z, s, a, lean, col) {
+  const base = b.pos.length / 3;
+  const c = Math.cos(a), sn = Math.sin(a);
+  const ox = c * Math.sin(lean) * s, oz = sn * Math.sin(lean) * s, oy = Math.cos(lean) * s;
+  for (const [u, v] of [[-1, 0], [1, 0], [1, 1], [-1, 1]]) {
+    b.pos.push(x - sn * s * 0.6 * u + ox * v, y - s * 0.35 + oy * v, z + c * s * 0.6 * u + oz * v);
+    b.col.push(...col);
+    b.uv.push((u + 1) / 2, v);
+  }
+  b.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
 
 // A bracken frond: a bare stalk rising from the ground, then a leafy blade arching out, broad in the
