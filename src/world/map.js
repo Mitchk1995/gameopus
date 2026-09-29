@@ -22,6 +22,9 @@ export const BANDIT_CAMP = { x: 262, z: 70, r: 22 };
 export const GOBLIN_CAMP = { x: -96, z: -44, r: 9 };
 // Just inside the south gate, looking up Lake Street to the market square and the bank.
 export const SPAWN = { x: -8, z: 53, facing: Math.PI };
+// Bump this whenever the land or the town is laid out anew: a position saved under another layout
+// could now be inside a house or a hill, so the player starts at SPAWN instead.
+export const LAYOUT = 2;
 
 // Hills you can see from the square. Each is a soft dome; the landmark stands on its crown.
 export const ABBEY_HILL = { x: -6, z: -204, r: 100, h: 42, crown: 20 };

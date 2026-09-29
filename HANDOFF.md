@@ -38,7 +38,7 @@ the collection log (so dodge is not C). Swinging while moving keeps you going at
   `playtest` are green and it has no conflicts (hourly, and whenever CI finishes). **Label a PR
   `hold` to stop it** (world-v2 is meant to carry `hold` until someone has looked at its screenshots).
 - `npm run sync` pulls/pushes; `npm run app` opens the game in its own window;
-  `npm run package` builds `release/win-unpacked/Aldermere.exe`.
+  `npm run package` builds `release/Aldermere/Aldermere.exe`.
 - To make an open PR re-run CI on the latest workflow: `gh api -X PUT repos/Mitchk1995/gameopus/pulls/N/update-branch`.
 - Helpers' scratch copies live under `.claude/worktrees/` (git-ignored). On Windows, a temporary
   worktree can't be deleted while a shell is inside it; `cd` out first, remove a junction before the
@@ -75,7 +75,7 @@ Check `git log origin/main` for the truth.
 1. Make sure every open PR merged (or fix what CI says). Then clean up CLAUDE.md into one current
    list and drop stale "Open feedback" sections.
 2. Rebuild the desktop app from main (`npm run package`) and tell the owner to double-click
-   `release\win-unpacked\Aldermere.exe`. Saves in the app are separate from the browser's. The exe that
+   `release\Aldermere\Aldermere.exe`. Saves in the app are separate from the browser's. The exe that
    exists now is older (movement, combat, textures, camera v1; no town, buildings or combat aim).
 3. Review world-v2 yourself with screenshots (top-down of the whole vale, each exit, bridge, landmarks,
    fort, spawn view); lift `hold` when it reads as a place with places to go.

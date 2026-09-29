@@ -18,8 +18,10 @@ Progress saves in the browser (localStorage).
 ## Desktop app
 
 `npm run app` builds the game and opens it in its own window (no browser bars; F11 toggles
-fullscreen). `npm run package` builds a double-clickable `release/win-unpacked/Aldermere.exe`.
-The desktop app keeps its own saves, separate from the browser's.
+fullscreen). `npm run package` builds a double-clickable `release/Aldermere/Aldermere.exe`,
+replacing the previous copy (if the game is still open, the new one goes to
+`release/Aldermere-<date>-<time>/` instead). The desktop app keeps its own saves, separate
+from the browser's.
 
 ## Keeping in sync
 

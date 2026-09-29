@@ -14,7 +14,7 @@ import { icon } from '../ui/icons.js';
 import { IconStudio, buildItem, setBarkTextures } from '../ui/itemart.js';
 import { Resources } from '../world/resources.js';
 import { Npc } from '../actors/npcs.js';
-import { VILLAGE, SPAWN } from '../world/map.js';
+import { VILLAGE, SPAWN, LAYOUT } from '../world/map.js';
 import { PEOPLE } from '../content/people.js';
 import { SHOPS } from '../content/shops.js';
 import { Quests } from './quests.js';
@@ -95,9 +95,9 @@ export class Game {
     this.state.skills.listeners.add(({ after, before }) => after > before && this.audio.play('levelup'));
     this.#hand();
     this.#showHeld();
-    // Put the player back where they left off.
+    // Put the player back where they left off, if that spot is from the world as it is laid out now.
     const p = this.state.pos;
-    if (p && Number.isFinite(p.x)) this.player.spawn(p.x, p.z, p.yaw ?? SPAWN.facing);
+    if (p && Number.isFinite(p.x) && p.layout === LAYOUT) this.player.spawn(p.x, p.z, p.yaw ?? SPAWN.facing);
     this.rig.yaw = this.player.yaw + Math.PI;
     this.panels.message('Welcome to Ashford. Tab opens your pack, E uses what you look at.', 'game');
     addEventListener('beforeunload', () => this.save());
@@ -143,7 +143,11 @@ export class Game {
   }
 
   save() {
-    this.state.pos = { x: +this.player.pos.x.toFixed(2), z: +this.player.pos.z.toFixed(2), yaw: +this.player.yaw.toFixed(3) };
+    // Down in the Old Warren the player's position is in the dungeon's own space: save the cave
+    // mouth instead, where leaving the dungeon puts you.
+    const e = this.realm === 'dungeon' ? this.resources.caveExit : null;
+    const at = e ? { x: e.x, z: e.z, yaw: e.facing } : { x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw };
+    this.state.pos = { x: +at.x.toFixed(2), z: +at.z.toFixed(2), yaw: +at.yaw.toFixed(3), layout: LAYOUT };
     this.state.save();
   }
 

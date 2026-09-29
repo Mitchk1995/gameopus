@@ -20,8 +20,13 @@ is in flight, and the next steps in order. Read it first, and rewrite it at the 
 
 - `npm run dev` for live editing; `npm run build` for `dist/`. `npm run app` opens the built
   game as a desktop window (`desktop/main.cjs`, Electron); `npm run package` makes
-  `release/win-unpacked/Aldermere.exe`, which is how the owner plays (build it in `D:\diablolike` on
-  an up-to-date `main`; the app keeps its own saves). npm 11 skips Electron's download step: if
+  `release/Aldermere/Aldermere.exe`, which is how the owner plays (build it in `D:\diablolike` on an
+  up-to-date `main`; the app keeps its own saves in `%APPDATA%\Aldermere`). It builds into
+  `release/build/` and `scripts/place-app.mjs` swaps the result into `release/Aldermere/`; if that
+  folder is in use (the game is open, or the Claude app still holds `app.asar` because a tool read
+  inside it; never Glob or Read inside `release/`), the build lands in `release/Aldermere-<time>/`
+  instead, and you must tell the owner that path. To check a build, launch it with
+  `--user-data-dir=<temp>` so the owner's save isn't touched. npm 11 skips Electron's download step: if
   `npx electron` says it failed to install, unzip the cached zip in
   `%LOCALAPPDATA%\electron\Cache` into `node_modules/electron/dist` and write `electron.exe` to
   `node_modules/electron/path.txt`.
