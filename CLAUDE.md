@@ -1,5 +1,7 @@
 # Aldermere: notes for Claude
 
+**New session? Read `HANDOFF.md` first** (owner preferences, what's merged and in flight, next steps).
+
 A single-player, OSRS-style world in three.js (r186, Vite). Read `DESIGN.md` for the
 player's decisions and pillars; they outrank taste. The player tests by playing and
 gives direct feedback on feel and looks. Delegated: git, branches, PRs and merging.
